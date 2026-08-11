@@ -11,6 +11,9 @@ inherited pipeline simply omitted the combinations it never saw, which makes a
 real zero and a missing observation look identical — a distinction that matters
 a great deal in a panel.
 
+Every figure is labelled with text. Pictograms belong in documents written
+around this output, not in the working figures the pipeline emits.
+
 Run it directly to execute the whole pipeline and produce the matrix:
 
     python -m src.matrix
@@ -28,8 +31,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from matplotlib.colors import LogNorm
-from matplotlib.lines import Line2D
-from matplotlib.patches import Circle, FancyArrow, Polygon, Rectangle
 
 try:  # regular package import
     from src import config, loading, parties
@@ -39,9 +40,6 @@ except ImportError:  # executed as a plain script from inside src/
     import loading  # type: ignore[no-redef]
     import parties  # type: ignore[no-redef]
     from provenance import RunLog  # type: ignore[no-redef]
-
-
-GRID_KEYS = None  # set below, after config is available
 
 
 def _grid_keys() -> list[str]:
@@ -313,146 +311,6 @@ def render_heatmaps(paths: dict[str, Path], log: RunLog) -> int:
 
 
 # ---------------------------------------------------------------------------
-# Presentation figure
-# ---------------------------------------------------------------------------
-# The pictograms below are drawn with plain shapes rather than loaded from image
-# files. Nothing has to be shipped, licensed or credited, and the figure stays
-# reproducible from the repository alone.
-
-
-def _glyph_pedestrian(ax) -> None:
-    ax.add_patch(Circle((0.5, 0.80), 0.11, color="black"))
-    ax.add_line(Line2D([0.5, 0.5], [0.68, 0.42], color="black", lw=2.2))
-    ax.add_line(Line2D([0.5, 0.30], [0.42, 0.12], color="black", lw=2.2))
-    ax.add_line(Line2D([0.5, 0.70], [0.42, 0.12], color="black", lw=2.2))
-    ax.add_line(Line2D([0.5, 0.26], [0.62, 0.50], color="black", lw=2.2))
-    ax.add_line(Line2D([0.5, 0.74], [0.62, 0.50], color="black", lw=2.2))
-
-
-def _glyph_bicycle(ax) -> None:
-    for cx in (0.22, 0.78):
-        ax.add_patch(Circle((cx, 0.28), 0.19, fill=False, color="black", lw=2.0))
-    ax.add_line(Line2D([0.22, 0.45, 0.78], [0.28, 0.28, 0.28], color="black", lw=1.8))
-    ax.add_line(Line2D([0.45, 0.55], [0.28, 0.60], color="black", lw=1.8))
-    ax.add_line(Line2D([0.22, 0.55], [0.28, 0.60], color="black", lw=1.8))
-    ax.add_line(Line2D([0.55, 0.78], [0.60, 0.28], color="black", lw=1.8))
-    ax.add_line(Line2D([0.45, 0.66], [0.62, 0.62], color="black", lw=2.0))
-
-
-def _glyph_motorcycle(ax) -> None:
-    for cx in (0.20, 0.80):
-        ax.add_patch(Circle((cx, 0.26), 0.17, fill=False, color="black", lw=2.6))
-    ax.add_patch(Polygon([[0.28, 0.34], [0.62, 0.34], [0.70, 0.50], [0.40, 0.50]], closed=True, color="black"))
-    ax.add_line(Line2D([0.62, 0.80], [0.40, 0.26], color="black", lw=2.2))
-    ax.add_line(Line2D([0.40, 0.30], [0.50, 0.66], color="black", lw=2.2))
-    ax.add_line(Line2D([0.20, 0.42], [0.66, 0.66], color="black", lw=2.4))
-
-
-def _glyph_car(ax) -> None:
-    ax.add_patch(Polygon(
-        [[0.08, 0.30], [0.20, 0.52], [0.62, 0.52], [0.80, 0.30]], closed=True, color="black"))
-    ax.add_patch(Rectangle((0.08, 0.24), 0.84, 0.14, color="black"))
-    for cx in (0.26, 0.74):
-        ax.add_patch(Circle((cx, 0.20), 0.10, color="black"))
-        ax.add_patch(Circle((cx, 0.20), 0.04, color="white"))
-
-
-def _glyph_public_transport(ax) -> None:
-    ax.add_patch(Rectangle((0.10, 0.24), 0.80, 0.50, color="black"))
-    for x in (0.18, 0.38, 0.58):
-        ax.add_patch(Rectangle((x, 0.52), 0.14, 0.14, color="white"))
-    ax.add_patch(Rectangle((0.76, 0.52), 0.08, 0.14, color="white"))
-    for cx in (0.28, 0.72):
-        ax.add_patch(Circle((cx, 0.20), 0.09, color="black"))
-        ax.add_patch(Circle((cx, 0.20), 0.035, color="white"))
-
-
-def _glyph_other(ax) -> None:
-    ax.text(0.5, 0.45, "?", ha="center", va="center", fontsize=26, fontweight="bold", color="black")
-
-
-def _glyph_self(ax) -> None:
-    ax.add_patch(Circle((0.5, 0.45), 0.26, fill=False, color="black", lw=2.4))
-    ax.add_patch(FancyArrow(0.50, 0.71, 0.16, 0.0, width=0.015, head_width=0.11,
-                            head_length=0.10, color="black", length_includes_head=True))
-
-
-GLYPHS = {
-    config.PEDESTRIAN: _glyph_pedestrian,
-    config.BICYCLE: _glyph_bicycle,
-    config.MOTORCYCLE: _glyph_motorcycle,
-    config.CAR: _glyph_car,
-    config.PUBLIC_TRANSPORT: _glyph_public_transport,
-    config.OTHER: _glyph_other,
-    config.SELF_COUNTERPART: _glyph_self,
-}
-
-
-def _draw_glyph(ax, actor: str) -> None:
-    ax.set_xlim(0, 1)
-    ax.set_ylim(0, 1)
-    ax.set_aspect("equal")
-    ax.axis("off")
-    GLYPHS[actor](ax)
-
-
-def render_presentation_figure(paths: dict[str, Path], log: RunLog, count_name: str = "parties") -> Path:
-    """One figure of the aggregate matrix labelled with pictograms instead of text.
-
-    Separate from the working heatmaps on purpose: those are read alongside their
-    numbers and need legible category names, this one is meant to be looked at.
-    """
-    table = _read_crosstab(paths[f"crosstab_{count_name}"])
-    values = table.to_numpy(dtype=float)
-    masked = np.ma.masked_where(values <= 0, values)
-    positive = values[values > 0]
-
-    cmap = plt.get_cmap(config.HEATMAP_COLORMAP).copy()
-    cmap.set_bad(config.HEATMAP_EMPTY_COLOR)
-    norm = LogNorm(vmin=float(positive.min()) if positive.size else 1.0,
-                   vmax=float(positive.max()) if positive.size else 2.0)
-
-    n_rows, n_cols = values.shape
-    fig = plt.figure(figsize=(10.5, 7.4))
-    grid = fig.add_gridspec(
-        n_rows + 1, n_cols + 1,
-        width_ratios=[0.55] + [1] * n_cols,
-        height_ratios=[0.55] + [1] * n_rows,
-        wspace=0.06, hspace=0.06,
-        left=0.06, right=0.88, top=0.88, bottom=0.06,
-    )
-
-    for col, actor in enumerate(table.columns):
-        _draw_glyph(fig.add_subplot(grid[0, col + 1]), actor)
-    for row, actor in enumerate(table.index):
-        _draw_glyph(fig.add_subplot(grid[row + 1, 0]), actor)
-
-    ax = fig.add_subplot(grid[1:, 1:])
-    image = ax.imshow(masked, cmap=cmap, norm=norm, aspect="auto")
-    ax.set_xticks([])
-    ax.set_yticks([])
-    for row, col in itertools.product(range(n_rows), range(n_cols)):
-        value = values[row, col]
-        colour = "#999999" if value <= 0 else ("white" if norm(value) > 0.55 else "black")
-        ax.text(col, row, f"{int(value):,}", ha="center", va="center", fontsize=10, color=colour)
-
-    bar = fig.colorbar(image, ax=ax, fraction=0.045, pad=0.02)
-    bar.set_label("affected parties (logarithmic scale)")
-    fig.suptitle(
-        f"Inter-mode casualty matrix — {count_name} — Bogota {config.FIRST_YEAR}-{config.LAST_YEAR}",
-        fontsize=13, y=0.975,
-    )
-    fig.text(0.47, 0.935, "rows: affected party      columns: counterpart",
-             fontsize=9, color="#444444", ha="center")
-
-    out_path = log.run_dir / config.FIGURES_SUBDIR / f"{config.PRESENTATION_PREFIX}__matrix_{count_name}.png"
-    fig.savefig(out_path, dpi=config.FIGURE_DPI)
-    plt.close(fig)
-    log.info("wrote the presentation figure: %s", out_path.name)
-    return out_path
-
-
-# ---------------------------------------------------------------------------
 # Verification
 # ---------------------------------------------------------------------------
 
@@ -606,7 +464,7 @@ def main() -> int:
     log.info("run directory: %s", log.run_dir)
 
     units = loading.load_territorial_units(log)
-    casualties = loading.load_casualties(log)
+    casualties = loading.load_casualties(log, units=units)
     vehicles = loading.load_vehicles(log)
     passed, _ = loading.verify_against_legacy(casualties, vehicles, log)
     if not passed:
@@ -618,7 +476,6 @@ def main() -> int:
 
     paths = export(long_table, log)
     render_heatmaps(paths, log)
-    render_presentation_figure(paths, log)
 
     log.table("record funnel:", log.funnel())
     if not verify(long_table, affected, units, log):

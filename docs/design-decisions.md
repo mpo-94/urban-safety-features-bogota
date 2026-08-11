@@ -40,7 +40,7 @@ carried, so the second is larger for the same underlying records.
 | D11 | Parties with no territorial unit leave the pipeline at aggregation | Methodological | Closed | Yes |
 | D12 | Figures are drawn from the exported tables, on a shared logarithmic scale | Implementation | Closed | Yes |
 | D13 | Output layout separates analysis tables from presentation tables | Implementation | Closed | Yes |
-| D14 | Pictograms are drawn in code rather than shipped as image files | Implementation | Closed | Yes |
+| D14 | Pictograms in pipeline figures — tried and reverted | Implementation | Closed, reverted | No, removed |
 
 Methodological decisions: D1-D7, D9, D10, D11. Implementation decisions: D8, D12,
 D13, D14.
@@ -707,33 +707,41 @@ is unreadable.
 
 ---
 
-## D14 — Pictograms are drawn in code rather than shipped as image files
+## D14 — Pictograms in pipeline figures: tried and reverted
 
 **Kind:** Implementation.
 
-**Status:** Closed.
+**Status:** Closed by reversal. The pipeline emits text-labelled figures only.
 
-**Built:** Yes.
+**Built:** No, and no longer present. It was built, reviewed on the rendered
+output, and removed.
 
-**Context.** The presentation figure labels the axes with pictograms instead of
-words, which needs a pedestrian, a bicycle, a motorcycle, a car, a bus and two
-markers for the residual and single-party categories.
+**Context.** The aggregate matrix was given a presentation figure whose axes were
+labelled with pictograms — a pedestrian, a bicycle, a motorcycle, a car, a bus,
+and markers for the residual and single-party categories — instead of category
+names. They were drawn with plain geometric shapes in the figure code rather than
+loaded from image files, so nothing had to be shipped, licensed or credited.
 
-**Decision.** The pictograms are drawn with plain geometric shapes in the figure
-code. Nothing is downloaded, nothing is stored as a binary asset, nothing has to
-be credited or licence-checked, and the figure is reproducible from the
-repository alone. Where the icons come from is therefore not a question that
-needs answering: they have no provenance outside the code that draws them.
+**Reverted, and why.** Looking at the rendered figure decided it. Pictograms
+solve a problem the pipeline's figures do not have: they suit a page where the
+reader meets the matrix once and needs to grasp it quickly, and the figures this
+stage emits are working output, read next to their own numbers and alongside the
+tables they come from. There the pictograms compete with five-digit values for
+attention and remove the one thing a working figure must have, which is a label
+you can read out loud and match to a column name in a file.
 
-**Rejected — an icon set from a library.** Better looking, and it introduces a
-licensing question and a binary dependency into a repository that currently has
-neither, for a single figure.
+There is also a boundary worth keeping. The pipeline produces evidence; the
+progress reports, the thesis and any article are where that evidence is
+presented, and they have their own typography, their own icon set and their own
+audience. Pictograms belong there, chosen for the page they sit on, not baked
+into the pipeline where every figure would inherit them whatever it was for.
 
-**Rejected — emoji as text labels.** It looks like the cheapest option and is the
-most fragile: whether they render at all depends on the fonts installed on the
-machine, and the figure would silently degrade to empty boxes somewhere else.
+**Kept from the attempt.** Nothing. The pictogram code shared no logic with the
+heatmaps beyond the colour scale, which already lived in the heatmap function, so
+removing it left no gap to fill and no dead code behind.
 
-**Kept separate from the working heatmaps on purpose.** Those are read next to
-their numbers, with seven categories and five-digit values, where pictograms
-would compete with the figures for attention. Different purpose, different
-function, no shared code path beyond the colour scale.
+**Recorded rather than deleted.** The choice was reasonable when it was made and
+the reason it failed is not obvious from the outside — it comes from having seen
+the output, not from an argument that could have been made in advance. Someone
+proposing pictograms again in six months, quite possibly me, should be able to
+find out that it was tried and what looking at it showed.

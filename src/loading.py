@@ -148,13 +148,18 @@ def assign_territorial_unit(
     return joined
 
 
-def load_casualties(log: RunLog, scale: config.TerritorialScale | None = None) -> gpd.GeoDataFrame:
+def load_casualties(
+    log: RunLog,
+    scale: config.TerritorialScale | None = None,
+    units: gpd.GeoDataFrame | None = None,
+) -> gpd.GeoDataFrame:
     """Load both casualty layers, locate them, and concatenate them.
 
     Returns one row per affected person, carrying its severity origin and its
-    territorial unit.
+    territorial unit. Pass `units` when the caller has already loaded the layer,
+    so a run reads the same shapefile once instead of once per caller.
     """
-    units = load_territorial_units(log, scale)
+    units = load_territorial_units(log, scale) if units is None else units
 
     fatalities = load_casualty_layer(config.FATALITIES_PATH, config.FATALITY_SOURCE, log)
     fatalities = assign_territorial_unit(fatalities, units, log, "assign unit [FATALITY]")

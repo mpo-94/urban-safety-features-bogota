@@ -52,7 +52,10 @@ class RunLog:
     """Per-run output directory, logger and stage accounting."""
 
     run_dir: Path = field(default_factory=config.new_run_directory)
-    dump_intermediates: bool = config.DUMP_INTERMEDIATES
+    # Read through a factory so the switch is read when a run starts, not when
+    # this module is imported. A plain default would freeze the value at import
+    # time and make the flag impossible to flip without editing the file.
+    dump_intermediates: bool = field(default_factory=lambda: config.DUMP_INTERMEDIATES)
     records: list[StageRecord] = field(default_factory=list)
     logger: logging.Logger = field(init=False)
 
