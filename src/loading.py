@@ -1,0 +1,464 @@
+"""Source loading and territorial assignment.
+
+Reads the two casualty layers and the vehicle table, assigns every casualty to a
+territorial unit by spatial join, and concatenates the casualties into a single
+set. Every stage reports how many records went in, how many came out, and the
+named cause of each difference; the run aborts if a balance fails to close.
+
+Run it directly to execute the stage and verify it against the legacy baseline:
+
+    python -m src.loading
+"""
+
+from __future__ import annotations
+
+import logging
+import sys
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Iterable, Sequence
+
+import geopandas as gpd
+import pandas as pd
+
+try:  # regular package import
+    from src import config
+except ImportError:  # executed as a plain script from inside src/
+    import config  # type: ignore[no-redef]
+
+
+LOGGER_NAME = "casualty_matrix"
+
+
+class ProvenanceError(RuntimeError):
+    """Raised when a stage's record count does not balance against its causes."""
+
+
+@dataclass(frozen=True)
+class StageRecord:
+    """What one pipeline stage did to the record count."""
+
+    stage: str
+    rows_in: int
+    rows_out: int
+    # (delta, cause) pairs. Every record gained or lost must carry a name.
+    changes: tuple[tuple[int, str], ...] = ()
+    # Observations that do not move the record count but must not go unnoticed,
+    # such as records kept with a null territorial unit.
+    notes: tuple[str, ...] = ()
+
+    @property
+    def delta(self) -> int:
+        return self.rows_out - self.rows_in
+
+
+@dataclass
+class RunLog:
+    """Per-run output directory, logger and stage accounting.
+
+    This is pipeline-wide infrastructure that currently lives here because
+    loading is the only stage that exists; it belongs in its own module as soon
+    as the next stage lands.
+    """
+
+    run_dir: Path = field(default_factory=config.new_run_directory)
+    dump_intermediates: bool = config.DUMP_INTERMEDIATES
+    records: list[StageRecord] = field(default_factory=list)
+    logger: logging.Logger = field(init=False)
+
+    def __post_init__(self) -> None:
+        logger = logging.getLogger(LOGGER_NAME)
+        logger.setLevel(logging.INFO)
+        # Reconfigure from scratch so re-running in the same interpreter does not
+        # accumulate handlers and duplicate every line.
+        for handler in list(logger.handlers):
+            logger.removeHandler(handler)
+            handler.close()
+        fmt = logging.Formatter("%(asctime)s  %(levelname)-7s  %(message)s", "%Y-%m-%d %H:%M:%S")
+
+        stream = logging.StreamHandler(sys.stdout)
+        stream.setFormatter(fmt)
+        logger.addHandler(stream)
+
+        file_handler = logging.FileHandler(self.run_dir / config.LOG_FILENAME, encoding="utf-8")
+        file_handler.setFormatter(fmt)
+        logger.addHandler(file_handler)
+
+        logger.propagate = False
+        self.logger = logger
+
+    # -- accounting ---------------------------------------------------------
+
+    def record(
+        self,
+        stage: str,
+        rows_in: int,
+        rows_out: int,
+        changes: Sequence[tuple[int, str]] = (),
+        notes: Iterable[str] = (),
+    ) -> StageRecord:
+        """Register a stage and check that its causes account for the difference.
+
+        `changes` holds signed deltas with a named cause each. Their sum must
+        equal rows_out - rows_in, otherwise the run stops: an unexplained gain or
+        loss is exactly what this pipeline exists to make impossible.
+        """
+        changes = tuple(changes)
+        notes = tuple(notes)
+        explained = sum(delta for delta, _ in changes)
+        expected = rows_out - rows_in
+        if explained != expected:
+            raise ProvenanceError(
+                f"stage {stage!r} does not balance: {rows_in} in, {rows_out} out "
+                f"(difference {expected:+d}) but the named causes account for "
+                f"{explained:+d}. Every record gained or lost needs a cause."
+            )
+
+        entry = StageRecord(stage=stage, rows_in=rows_in, rows_out=rows_out, changes=changes, notes=notes)
+        self.records.append(entry)
+
+        self.logger.info("%s: %d in -> %d out (%+d)", stage, rows_in, rows_out, entry.delta)
+        for delta, cause in changes:
+            self.logger.info("    %+d rows: %s", delta, cause)
+        for note in notes:
+            self.logger.info("    note: %s", note)
+        return entry
+
+    def warn(self, message: str, *args: object) -> None:
+        self.logger.warning(message, *args)
+
+    def info(self, message: str, *args: object) -> None:
+        self.logger.info(message, *args)
+
+    # -- artefacts ----------------------------------------------------------
+
+    def dump(self, frame: pd.DataFrame, name: str) -> Path | None:
+        """Write a stage result to the run directory if dumping is enabled."""
+        if not self.dump_intermediates:
+            return None
+        path = self.run_dir / f"{name}.parquet"
+        frame.to_parquet(path)
+        self.logger.info("intermediate written: %s (%d rows)", path.name, len(frame))
+        return path
+
+    def funnel(self) -> str:
+        """The full record funnel of this run, as a table."""
+        width = max([len(r.stage) for r in self.records] + [5])
+        lines = [
+            f"{'stage'.ljust(width)}  {'in':>10}  {'out':>10}  {'delta':>8}",
+            f"{'-' * width}  {'-' * 10}  {'-' * 10}  {'-' * 8}",
+        ]
+        for r in self.records:
+            lines.append(f"{r.stage.ljust(width)}  {r.rows_in:>10,}  {r.rows_out:>10,}  {r.delta:>+8,}")
+            for delta, cause in r.changes:
+                lines.append(f"{'':<{width}}  {delta:>+10,}  {'':>10}  {cause}")
+            for note in r.notes:
+                lines.append(f"{'':<{width}}  {'':>10}  {'':>10}  note: {note}")
+        return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# Loaders
+# ---------------------------------------------------------------------------
+
+
+def load_territorial_units(log: RunLog, scale: config.TerritorialScale | None = None) -> gpd.GeoDataFrame:
+    """Load the polygons of the active scale, harmonised to the source CRS."""
+    scale = scale or config.active_scale()
+    units = gpd.read_file(scale.shapefile)
+
+    missing = [c for c in (scale.code_column, scale.name_column) if c not in units.columns]
+    if missing:
+        raise KeyError(f"{scale.label} shapefile {scale.shapefile.name} lacks column(s) {missing}")
+
+    units = units.rename(columns={scale.code_column: config.AREA_CODE_COL, scale.name_column: config.AREA_NAME_COL})
+    units = units[[config.AREA_CODE_COL, config.AREA_NAME_COL, "geometry"]]
+    units = units.to_crs(epsg=config.SOURCE_CRS)
+
+    notes = [f"scale={scale.label}, source={scale.shapefile.name}, crs harmonised to EPSG:{config.SOURCE_CRS}"]
+    if len(units) != scale.expected_units:
+        # Loud rather than silent: a short unit roster caps the coverage of every
+        # variable built on this scale.
+        log.warn(
+            "%s layer carries %d units but %d are expected; %d unit(s) will never receive data",
+            scale.label,
+            len(units),
+            scale.expected_units,
+            scale.expected_units - len(units),
+        )
+        notes.append(f"{len(units)} units present, {scale.expected_units} expected")
+
+    duplicated = int(units[config.AREA_CODE_COL].duplicated().sum())
+    if duplicated:
+        raise ValueError(f"{scale.label} layer has {duplicated} duplicated unit codes; a join would fan out")
+
+    log.record("load territorial units", rows_in=len(units), rows_out=len(units), notes=notes)
+    return units
+
+
+def load_casualty_layer(path: Path, source_label: str, log: RunLog) -> gpd.GeoDataFrame:
+    """Load one casualty point layer, tagging every row with its origin.
+
+    The origin column is written here and never dropped: the legacy pipeline
+    merged fatalities and injuries under an identical flag, which made the
+    distinction unrecoverable downstream.
+    """
+    layer = gpd.read_file(path)
+    layer = layer.to_crs(epsg=config.SOURCE_CRS)
+    layer[config.CASUALTY_SOURCE_COL] = source_label
+
+    invalid_geometry = int(layer.geometry.isna().sum() + layer.geometry.is_empty.sum())
+    notes = [f"source={path.name}, one row per affected person, origin tagged {source_label}"]
+    if invalid_geometry:
+        log.warn("%s: %d rows have no usable geometry and cannot be located", path.name, invalid_geometry)
+        notes.append(f"{invalid_geometry} rows without usable geometry")
+
+    log.record(f"load casualties [{source_label}]", rows_in=len(layer), rows_out=len(layer), notes=notes)
+    return layer
+
+
+def assign_territorial_unit(
+    points: gpd.GeoDataFrame,
+    units: gpd.GeoDataFrame,
+    log: RunLog,
+    stage: str,
+) -> gpd.GeoDataFrame:
+    """Attach the code and name of the unit that contains each point.
+
+    Points falling outside every unit keep a null code: they are reported, not
+    dropped, and not snapped anywhere unless the nearest fallback is enabled.
+    """
+    rows_in = len(points)
+    joined = gpd.sjoin(points, units, how="left", predicate=config.SPATIAL_JOIN_PREDICATE)
+    joined = joined.drop(columns="index_right", errors="ignore")
+
+    changes: list[tuple[int, str]] = []
+    ambiguous = int(joined.index.duplicated().sum())
+    if ambiguous:
+        # Only possible where unit polygons overlap. Reported and resolved
+        # deterministically rather than left to row order.
+        log.warn("%s: %d point(s) fall inside more than one unit; keeping the lowest unit code", stage, ambiguous)
+        changes.append((ambiguous, "points matching more than one unit (overlapping polygons)"))
+        joined = joined.sort_values(config.AREA_CODE_COL, kind="stable")
+        joined = joined[~joined.index.duplicated(keep="first")].sort_index()
+        changes.append((-ambiguous, "ambiguous matches resolved to the lowest unit code"))
+
+    unassigned = int(joined[config.AREA_CODE_COL].isna().sum())
+
+    if config.USE_NEAREST_FALLBACK and unassigned:
+        # Distance is only meaningful in the projected CRS, so the fallback runs
+        # there and the threshold is genuinely metres.
+        pending = points.loc[joined[config.AREA_CODE_COL].isna()].to_crs(epsg=config.PROJECTED_CRS)
+        nearest = gpd.sjoin_nearest(
+            pending,
+            units.to_crs(epsg=config.PROJECTED_CRS),
+            how="left",
+            max_distance=config.NEAREST_FALLBACK_MAX_DISTANCE_M,
+        ).drop(columns="index_right", errors="ignore")
+        nearest = nearest[~nearest.index.duplicated(keep="first")]
+        for column in (config.AREA_CODE_COL, config.AREA_NAME_COL):
+            joined.loc[nearest.index, column] = nearest[column]
+        recovered = unassigned - int(joined[config.AREA_CODE_COL].isna().sum())
+        log.info(
+            "%s: nearest fallback within %.1f m recovered %d of %d unassigned points",
+            stage,
+            config.NEAREST_FALLBACK_MAX_DISTANCE_M,
+            recovered,
+            unassigned,
+        )
+        unassigned -= recovered
+
+    notes = [
+        f"predicate={config.SPATIAL_JOIN_PREDICATE}, nearest fallback="
+        f"{'on' if config.USE_NEAREST_FALLBACK else 'off'}",
+    ]
+    if unassigned:
+        log.warn("%s: %d point(s) fall outside every unit and stay unassigned", stage, unassigned)
+        notes.append(f"{unassigned} rows kept with a null territorial unit (outside every polygon)")
+
+    log.record(stage, rows_in=rows_in, rows_out=len(joined), changes=changes, notes=notes)
+    return joined
+
+
+def load_casualties(log: RunLog, scale: config.TerritorialScale | None = None) -> gpd.GeoDataFrame:
+    """Load both casualty layers, locate them, and concatenate them.
+
+    Returns one row per affected person, carrying its severity origin and its
+    territorial unit.
+    """
+    units = load_territorial_units(log, scale)
+
+    fatalities = load_casualty_layer(config.FATALITIES_PATH, config.FATALITY_SOURCE, log)
+    fatalities = assign_territorial_unit(fatalities, units, log, "assign unit [FATALITY]")
+    log.dump(fatalities, "01_fatalities_located")
+
+    injuries = load_casualty_layer(config.INJURIES_PATH, config.INJURY_SOURCE, log)
+    injuries = assign_territorial_unit(injuries, units, log, "assign unit [INJURY]")
+    log.dump(injuries, "02_injuries_located")
+
+    # The two layers differ in schema: MUERTE_POS and FECHA_POST only exist for
+    # fatalities, so injury rows get nulls there. ignore_index gives the combined
+    # set a single continuous index instead of two overlapping ones.
+    casualties = pd.concat([fatalities, injuries], ignore_index=True)
+    casualties = gpd.GeoDataFrame(casualties, geometry="geometry", crs=fatalities.crs)
+
+    fatality_only_columns = sorted(set(fatalities.columns) - set(injuries.columns))
+    log.record(
+        "concatenate casualties",
+        rows_in=len(fatalities),
+        rows_out=len(casualties),
+        changes=[(len(injuries), f"injury rows appended to fatality rows [{config.INJURY_SOURCE}]")],
+        notes=[
+            f"columns present only in fatalities, null for injuries: {fatality_only_columns}",
+            f"severity origin preserved in {config.CASUALTY_SOURCE_COL}",
+        ],
+    )
+
+    observed = casualties["ANO_OCURRE"].dropna().astype(int)
+    if len(observed):
+        outside = int(((observed < config.FIRST_YEAR) | (observed > config.LAST_YEAR)).sum())
+        log.info(
+            "casualty years span %d-%d; study period is %d-%d; %d row(s) outside it",
+            observed.min(),
+            observed.max(),
+            config.FIRST_YEAR,
+            config.LAST_YEAR,
+            outside,
+        )
+
+    log.dump(casualties, "03_casualties")
+    return casualties
+
+
+def load_vehicles(log: RunLog) -> pd.DataFrame:
+    """Load the party table: every vehicle of every crash, casualty or not.
+
+    low_memory=False makes pandas infer each column from the whole file instead
+    of chunk by chunk, which avoids the mixed-dtype warning without altering any
+    value.
+    """
+    vehicles = pd.read_csv(config.VEHICLES_PATH, low_memory=False)
+
+    notes = [f"source={config.VEHICLES_PATH.name}, one row per party (including parties without casualties)"]
+
+    duplicated_keys = int(vehicles.duplicated(subset=[config.CRASH_ID_COL, config.PARTY_ID_COL]).sum())
+    if duplicated_keys:
+        log.warn(
+            "vehicle table has %d duplicated (%s, %s) keys; a merge on them would fan out",
+            duplicated_keys,
+            config.CRASH_ID_COL,
+            config.PARTY_ID_COL,
+        )
+        notes.append(f"{duplicated_keys} duplicated join keys")
+
+    # Check the mapping covers the source now, at read time, rather than
+    # discovering an unmapped value after a groupby has already dropped it.
+    # Both sides are compared on normalized text, so a typing variation in the
+    # source does not read as a missing category.
+    raw_types = sorted(vehicles["CLASE"].dropna().unique())
+    unmapped = [raw for raw in raw_types if config.normalize_vehicle_type(raw) not in config.VEHICLE_TYPE_MAP]
+    if unmapped:
+        affected = int(vehicles["CLASE"].isin(unmapped).sum())
+        log.warn(
+            "vehicle types absent from VEHICLE_TYPE_MAP will fall back to %s: %s (%d rows)",
+            config.VEHICLE_TYPE_FALLBACK,
+            unmapped,
+            affected,
+        )
+        notes.append(f"{len(unmapped)} unmapped vehicle type(s) affecting {affected} rows: {unmapped}")
+    else:
+        notes.append(f"all {len(raw_types)} raw vehicle types are covered by VEHICLE_TYPE_MAP")
+
+    # Raw values that only match once normalized are the ones the legacy
+    # character-for-character lookup would have dropped.
+    rescued = [raw for raw in raw_types if raw != config.normalize_vehicle_type(raw)]
+    if rescued:
+        affected = int(vehicles["CLASE"].isin(rescued).sum())
+        log.info(
+            "%d raw vehicle type(s) match only after normalization, covering %d rows: %s",
+            len(rescued),
+            affected,
+            rescued,
+        )
+        notes.append(f"{len(rescued)} raw type(s) matched only after normalization, affecting {affected} rows")
+
+    null_types = int(vehicles["CLASE"].isna().sum())
+    if null_types:
+        notes.append(f"{null_types} rows have a null CLASE in the source")
+
+    log.record("load vehicles", rows_in=len(vehicles), rows_out=len(vehicles), notes=notes)
+    log.dump(vehicles, "04_vehicles")
+    return vehicles
+
+
+# ---------------------------------------------------------------------------
+# Verification
+# ---------------------------------------------------------------------------
+
+
+def verify_against_legacy(casualties: pd.DataFrame, vehicles: pd.DataFrame, log: RunLog) -> tuple[bool, str]:
+    """Compare this stage against the counts measured on the legacy pipeline.
+
+    Loading changes none of the legacy logic, so every count must match exactly.
+    A mismatch is reported as a failure; it is never reconciled by adjusting the
+    computation.
+    """
+    source = casualties[config.CASUALTY_SOURCE_COL]
+    no_area = casualties[config.AREA_CODE_COL].isna()
+
+    observed = {
+        "fatalities": int((source == config.FATALITY_SOURCE).sum()),
+        "injuries": int((source == config.INJURY_SOURCE).sum()),
+        "concatenated": len(casualties),
+        "fatalities_without_area": int((no_area & (source == config.FATALITY_SOURCE)).sum()),
+        "injuries_without_area": int((no_area & (source == config.INJURY_SOURCE)).sum()),
+        "vehicles": len(vehicles),
+    }
+
+    width = max(len(k) for k in config.LEGACY_BASELINE_COUNTS)
+    lines = [
+        f"{'check'.ljust(width)}  {'expected':>12}  {'observed':>12}  result",
+        f"{'-' * width}  {'-' * 12}  {'-' * 12}  ------",
+    ]
+    all_ok = True
+    for key, expected in config.LEGACY_BASELINE_COUNTS.items():
+        got = observed[key]
+        ok = got == expected
+        all_ok &= ok
+        lines.append(f"{key.ljust(width)}  {expected:>12,}  {got:>12,}  {'OK' if ok else 'MISMATCH'}")
+
+    report = "\n".join(lines)
+    for line in report.splitlines():
+        log.info("%s", line)
+
+    if all_ok:
+        log.info("verification passed: all %d counts match the legacy baseline", len(observed))
+    else:
+        log.warn("verification FAILED: the loading stage diverges from the legacy baseline")
+    return all_ok, report
+
+
+def main() -> int:
+    log = RunLog()
+    log.info("run directory: %s", log.run_dir)
+    log.info("scale: %s | source CRS: EPSG:%d | projected CRS: EPSG:%d", config.active_scale().label, config.SOURCE_CRS, config.PROJECTED_CRS)
+    log.info("intermediate dumps: %s", "on" if log.dump_intermediates else "off")
+
+    casualties = load_casualties(log)
+    vehicles = load_vehicles(log)
+
+    log.info("record funnel:")
+    for line in log.funnel().splitlines():
+        log.info("%s", line)
+
+    passed, _ = verify_against_legacy(casualties, vehicles, log)
+    if not passed:
+        # Stop here rather than let a later stage build on numbers that already
+        # disagree with the reference implementation.
+        log.warn("stopping: fix the divergence before running any further stage")
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
