@@ -146,8 +146,35 @@ INJURY_SOURCE = "INJURY"
 # layers spell the second one CODIGO_VEH; the vehicle table spells it
 # CODIGO_VEHICULO.
 CRASH_ID_COL = "FORMULARIO"
-PARTY_ID_COL = "CODIGO_VEHICULO"
-PARTY_ID_COL_IN_CASUALTIES = "CODIGO_VEH"
+VEHICLE_ID_COL = "CODIGO_VEHICULO"
+VEHICLE_ID_COL_IN_CASUALTIES = "CODIGO_VEH"
+PERSON_ID_COL = "CODIGO_ACC"
+ROLE_COL = "CONDICION"  # PEATON, CONDUCTOR, PASAJERO, MOTOCICLISTA, CICLISTA...
+PEDESTRIAN_ROLE = "PEATON"
+CRASH_CLASS_SOURCE_COL = "CLASE_ACC"
+YEAR_SOURCE_COL = "ANO_OCURRE"
+
+# ---------------------------------------------------------------------------
+# Party resolution
+# ---------------------------------------------------------------------------
+# Columns of the one-row-per-affected-party table.
+PARTY_ID_COL = "PARTY_ID"
+PARTY_TYPE_COL = "PARTY_TYPE"
+COUNTERPART_TYPE_COL = "COUNTERPART_TYPE"
+AFFECTED_PARTIES_COL = "AFFECTED_PARTIES"  # always 1; the party is the unit
+PERSONS_INJURED_COL = "PERSONS_INJURED"
+PERSONS_KILLED_COL = "PERSONS_KILLED"
+CRASH_CLASS_COL = "CRASH_CLASS"
+YEAR_COL = "YEAR"
+
+# Counterpart of a party in a crash where no other party was recorded, such as a
+# motorcycle hitting a lamp post. The study being replicated counts these too.
+SELF_COUNTERPART = "SELF"
+
+# Same criterion as the European study being replicated. Counts every recorded
+# party, whether or not it suffered casualties: with three or more parties the
+# counterpart of a given casualty is ambiguous.
+MAX_PARTIES_PER_CRASH = 2
 
 # ---------------------------------------------------------------------------
 # Vehicle type mapping
@@ -297,4 +324,22 @@ LEGACY_BASELINE_COUNTS: dict[str, int] = {
     "fatalities_without_area": 61,
     "injuries_without_area": 1_344,
     "vehicles": 1_465_735,
+}
+
+# ---------------------------------------------------------------------------
+# Legacy reference figures, for divergence reporting only
+# ---------------------------------------------------------------------------
+# From the same measured run. These are NOT targets: the party model deliberately
+# departs from the legacy pipeline, and the figures below carry the orientation
+# bias it is meant to remove. They exist so the size and direction of the
+# departure can be quantified and reported, never to be matched.
+LEGACY_REFERENCE: dict[str, int] = {
+    # One row per crash in the legacy export, not per affected party.
+    "exported_rows": 179_110,
+    "crashes_in_scope": 184_112,
+    # Cells of the legacy matrix that made the orientation bias visible: a
+    # motorcyclist recorded as harmed with a bicycle as counterpart four times
+    # more often than the reverse.
+    "motorcycle_row_bicycle_counterpart": 8_129,
+    "bicycle_row_motorcycle_counterpart": 1_881,
 }
