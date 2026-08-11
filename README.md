@@ -45,6 +45,17 @@ Raw crash and geospatial data are not distributed here. They come from public
 sources published by the Secretaría Distrital de Movilidad de Bogotá and the
 Distrital spatial data infrastructure.
 
+## Installation
+
+Requires Python 3.12; part of the geospatial stack has no wheels for later
+versions. Create a virtual environment and install the pinned dependencies:
+
+```bash
+python3.12 -m venv .venv
+source .venv/bin/activate   # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+```
+
 ## Status
 
 Work in progress.
