@@ -1,0 +1,27 @@
+# Raw data and pipeline outputs. Both are large and reproducible from the
+# pipeline plus the original sources, so they never belong in the repository.
+data/
+results/
+
+# Local environment and editor state
+.venv/
+.vscode/
+.claude/
+
+# Local working instructions, not part of the deliverable
+CLAUDE.md
+
+# Advisor's original notebooks and the audit written about them: internal
+# reference material, kept out of the public history
+legacy/
+docs/auditoria/
+
+# Python
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+
+# OS-generated files
+.DS_Store
+Thumbs.db
+desktop.ini
