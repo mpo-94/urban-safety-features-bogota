@@ -85,6 +85,42 @@ def verify_person_identifier(casualties: pd.DataFrame, log: RunLog) -> str:
     return "__row_position__"
 
 
+def check_cross_layer_duplication(casualties: pd.DataFrame, log: RunLog) -> int:
+    """Count people that appear in both source layers, every run, whatever the count.
+
+    Separate counts of injured and killed only mean anything if the two layers
+    are mutually exclusive. A person present in both is counted twice, once in
+    each category, so this number must stay visible: if a future extract makes it
+    grow, the person counts are inflated and it has to be obvious immediately.
+    """
+    duplicated = casualties.duplicated(subset=[config.CRASH_ID_COL, config.PERSON_ID_COL], keep=False)
+    spanning = 0
+    if duplicated.any():
+        layers = casualties.loc[duplicated].groupby([config.CRASH_ID_COL, config.PERSON_ID_COL])[
+            config.CASUALTY_SOURCE_COL
+        ].nunique()
+        spanning = int((layers > 1).sum())
+
+    log.record(
+        "cross-layer duplication check",
+        rows_in=len(casualties),
+        rows_out=len(casualties),
+        notes=[
+            f"{spanning} person(s) appear in both the fatality and the injury layer, "
+            f"so {2 * spanning} records describe {spanning} people and the person counts "
+            f"are inflated by {spanning}",
+            "the two layers are assumed mutually exclusive; this is the check on that assumption",
+        ],
+    )
+    if spanning:
+        log.warn(
+            "%d person(s) are recorded in both source layers; they are counted twice until "
+            "the interpretation is settled",
+            spanning,
+        )
+    return spanning
+
+
 def build_parties(casualties: pd.DataFrame, vehicles: pd.DataFrame, log: RunLog) -> pd.DataFrame:
     """Build the party universe: every party of every crash in scope, with its
     actor type and its casualty counts."""
@@ -155,17 +191,35 @@ def build_parties(casualties: pd.DataFrame, vehicles: pd.DataFrame, log: RunLog)
     no_reference = standalone & linked[config.VEHICLE_ID_COL_IN_CASUALTIES].isna()
     dangling = standalone & linked[config.VEHICLE_ID_COL_IN_CASUALTIES].notna()
 
-    # A casualty with no vehicle of its own is a party in itself. It is a
-    # pedestrian when the source says so; otherwise its vehicle simply was not
-    # recorded, which is an unknown vehicle rather than a pedestrian. The legacy
-    # pipeline called both cases pedestrians and inflated that row of the matrix.
-    is_pedestrian = linked[config.ROLE_COL].eq(config.PEDESTRIAN_ROLE)
+    # A casualty with no vehicle of its own is a party in itself, and its actor
+    # type comes from the role on the form. The two situations use different
+    # evidence on purpose: where a vehicle is recorded it decides, because it
+    # resolves to a real party of the crash; where none is, the role is all there
+    # is. The legacy pipeline called every one of these cases a pedestrian and
+    # inflated that row of the matrix.
+    role = linked.loc[standalone, config.ROLE_COL]
+    from_role = role.map(config.ROLE_TO_ACTOR_TYPE)
     linked.loc[standalone, _PARTY_KEY] = "P" + linked.loc[standalone, "_person_key"]
-    linked.loc[standalone & is_pedestrian, _PARTY_TYPE] = config.PEDESTRIAN
-    linked.loc[standalone & ~is_pedestrian, _PARTY_TYPE] = config.VEHICLE_TYPE_FALLBACK
+    linked.loc[standalone, _PARTY_TYPE] = from_role.fillna(config.VEHICLE_TYPE_FALLBACK)
 
-    non_pedestrian_standalone = int((standalone & ~is_pedestrian).sum())
-    pedestrian_in_vehicle = int((~standalone & is_pedestrian).sum())
+    recovered = int(role.isin(config.ROLES_RESOLVING_TO_A_MODE).sum())
+    as_pedestrian = int(from_role.eq(config.PEDESTRIAN).sum())
+    residual_by_rule = int(from_role.eq(config.VEHICLE_TYPE_FALLBACK).sum())
+    unlisted = role[~role.isin(config.ROLE_TO_ACTOR_TYPE)]
+    unlisted_values = unlisted.dropna().value_counts().to_dict()
+    no_role = int(unlisted.isna().sum())
+    if unlisted_values or no_role:
+        # Not classified on a guess: an unforeseen role is a question for the
+        # person who owns the methodology, not something to resolve in passing.
+        log.warn(
+            "%d standalone casualties carry a role absent from the role mapping and go to %s: %s%s",
+            len(unlisted),
+            config.VEHICLE_TYPE_FALLBACK,
+            unlisted_values or "{}",
+            f" plus {no_role} with no role recorded" if no_role else "",
+        )
+
+    pedestrian_in_vehicle = int((~standalone & linked[config.ROLE_COL].eq(config.PEDESTRIAN_ROLE)).sum())
     log.record(
         "attach casualties to parties",
         rows_in=len(casualties),
@@ -175,8 +229,9 @@ def build_parties(casualties: pd.DataFrame, vehicles: pd.DataFrame, log: RunLog)
             f"{int(no_reference.sum())} casualties name no vehicle and become a party of their own",
             f"{int(dangling.sum())} casualties name a vehicle absent from the vehicle table, "
             f"also treated as a party of their own",
-            f"of the standalone ones, {non_pedestrian_standalone} are not recorded as pedestrians and "
-            f"are typed {config.VEHICLE_TYPE_FALLBACK} rather than {config.PEDESTRIAN}",
+            f"standalone typing by role: {as_pedestrian} pedestrian, {recovered} placed by a role that "
+            f"implies the mode on its own, {residual_by_rule} sent to {config.VEHICLE_TYPE_FALLBACK} "
+            f"because the role does not imply protection, {len(unlisted)} with an unlisted or absent role",
             f"{pedestrian_in_vehicle} casualties are recorded as pedestrians yet ride a vehicle party; "
             f"the vehicle reference is followed",
         ],
@@ -372,18 +427,28 @@ def threshold_composition(parties: pd.DataFrame, casualties: pd.DataFrame) -> st
     drop_count = per_crash.loc[per_crash["_discarded"], config.CRASH_CLASS_SOURCE_COL].value_counts()
     keep_count = per_crash.loc[~per_crash["_discarded"], config.CRASH_CLASS_SOURCE_COL].value_counts()
 
-    classes = sorted(set(kept_share.index) | set(drop_share.index), key=lambda c: -drop_share.get(c, 0))
+    # Name breaks ties so two runs order the table identically and can be diffed.
+    classes = sorted(
+        set(kept_share.index) | set(drop_share.index),
+        key=lambda c: (-drop_share.get(c, 0.0), -kept_share.get(c, 0.0), str(c)),
+    )
     lines = [
-        f"{'crash type':<20}  {'discarded':>10}  {'%':>7}  {'kept':>10}  {'%':>7}  {'ratio':>7}",
-        f"{'-' * 20}  {'-' * 10}  {'-' * 7}  {'-' * 10}  {'-' * 7}  {'-' * 7}",
+        f"{'crash type':<20}  {'discarded':>10}  {'%':>7}  {'kept':>10}  {'%':>7}  {'ratio':>7}  {'% of type':>10}",
+        f"{'-' * 20}  {'-' * 10}  {'-' * 7}  {'-' * 10}  {'-' * 7}  {'-' * 7}  {'-' * 10}",
     ]
     for crash_class in classes:
         d_pct = 100 * drop_share.get(crash_class, 0.0)
         k_pct = 100 * kept_share.get(crash_class, 0.0)
         ratio = f"{d_pct / k_pct:.2f}x" if k_pct else "n/a"
+        dropped = int(drop_count.get(crash_class, 0))
+        kept = int(keep_count.get(crash_class, 0))
+        # The share of this crash type that the rule removes. The relative
+        # columns say whether the loss is skewed; this one says how much of the
+        # type is actually gone, which is the figure a limitations section needs.
+        of_type = f"{100 * dropped / (dropped + kept):.2f}%" if dropped + kept else "n/a"
         lines.append(
-            f"{str(crash_class):<20}  {int(drop_count.get(crash_class, 0)):>10,}  {d_pct:>6.2f}%  "
-            f"{int(keep_count.get(crash_class, 0)):>10,}  {k_pct:>6.2f}%  {ratio:>7}"
+            f"{str(crash_class):<20}  {dropped:>10,}  {d_pct:>6.2f}%  "
+            f"{kept:>10,}  {k_pct:>6.2f}%  {ratio:>7}  {of_type:>10}"
         )
     lines.append("")
     lines.append(
@@ -441,6 +506,7 @@ def divergence_report(result: pd.DataFrame) -> str:
 
 def resolve(casualties: pd.DataFrame, vehicles: pd.DataFrame, log: RunLog) -> pd.DataFrame:
     """Full stage: one row per affected party, with its counterpart."""
+    check_cross_layer_duplication(casualties, log)
     parties = build_parties(casualties, vehicles, log)
     kept = resolve_pairs(parties, log)
     result = emit_rows(kept, casualties, log)

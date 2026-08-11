@@ -285,6 +285,31 @@ VEHICLE_TYPE_MAP: dict[str, str] = _build_vehicle_type_map(_VEHICLE_TYPE_MAP_SOU
 
 VEHICLE_TYPE_FALLBACK = OTHER
 
+# When a casualty names no vehicle, the role recorded on the form is the only
+# thing left to go on. Under the same principle as the mapping above — the
+# category reflects how protected the occupant is — a role settles the question
+# only when it implies the level of protection by itself:
+#
+#   * A motorcyclist or a cyclist is exposed whatever the particular machine was,
+#     so the role alone places them.
+#   * A driver or a passenger may be protected or not depending on what they were
+#     travelling in, so the role does not place them: the vehicle is still
+#     unknown and the record goes to the residual category.
+#
+# A role absent from this mapping, including no role at all, goes to the residual
+# category and is reported separately rather than classified on a guess.
+ROLE_TO_ACTOR_TYPE: dict[str, str] = {
+    "PEATON": PEDESTRIAN,
+    "MOTOCICLISTA": MOTORCYCLE,
+    "CICLISTA": BICYCLE,
+    "CONDUCTOR": OTHER,
+    "PASAJERO": OTHER,
+}
+
+# Roles that the mapping above resolves to a real mode rather than the residual
+# category; used only to report how much the rule recovers.
+ROLES_RESOLVING_TO_A_MODE = ("MOTOCICLISTA", "CICLISTA")
+
 # ---------------------------------------------------------------------------
 # Run-time switches
 # ---------------------------------------------------------------------------

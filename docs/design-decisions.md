@@ -29,7 +29,7 @@ carried, so the second is larger for the same underlying records.
 | D6 | Spatial join by containment only, no proximity fallback | Closed (crash-level handling open) | Yes |
 | D7 | The UPL layer is three units short of the design | **Open** | Detection only |
 | D8 | Person identity falls back to row position | Closed, forced by the data | Yes |
-| D9 | A casualty with no recorded vehicle is not automatically a pedestrian | Closed | Yes |
+| D9 | The actor type of a casualty with no recorded vehicle comes from its role | Closed | Yes |
 
 ---
 
@@ -134,8 +134,19 @@ recording it now.
 layer.** It is the same information obtained in more steps, and it silently
 breaks if either source layer changes its schema.
 
+**The assumption underneath, and its permanent check.** Counting injured and
+killed separately only means anything if the two layers are mutually exclusive.
+They are not, quite: **4 people appear in both**, once as an injury and once as a
+fatality, so 8 records describe 4 people and the person counts are inflated by 4.
+Every run now reports that number with its cause named, whether it is four or
+zero, because a future extract in which it grows would inflate the counts without
+anything else changing. See D8 for why no identifier is invented to resolve it.
+
 **Open.** Which aggregation the models use. To settle with my advisor once the
-matrix exists and the sparsity of the fatality cells can be inspected.
+matrix exists and the sparsity of the fatality cells can be inspected. The
+duplication above belongs to the same conversation: if someone injured who later
+died should count once as a fatality rather than once in each category, that is
+the same question about what the two layers mean.
 
 ---
 
@@ -226,8 +237,20 @@ party, with no ambiguity at all.
 
 **Decision.** Discard crashes involving more than two parties, and treat the
 resulting restriction as a declared limitation of the study rather than a
-technicality to leave unmentioned. In the inherited run the equivalent filters
-removed 4,208 of 184,112 crashes, about 2.3%.
+technicality to leave unmentioned.
+
+> **What this costs, in absolute terms.** The rule removes **15,014 crashes of
+> 184,112 (8.15%)** and **33,527 people of 269,841 (12.42%)**. Among the
+> discarded crashes there are **4,299 pedestrian-struck crashes, which is 7.76%
+> of every pedestrian-struck crash in the base**.
+>
+> **The research proposal declares the inherited figure of 4,208 crashes (2.3%)
+> and it has to be corrected to the figures above.** The two are not measuring
+> the same thing: the inherited code deduplicated actor *types* before counting,
+> so a crash between two cars counted as a single type and passed a threshold
+> that my version applies to parties, where that crash is correctly two. Counting
+> parties is what the rule was always meant to mean, and the larger number is the
+> honest one.
 
 **Rejected — keep them and split the attribution across the other parties.**
 Fractional attribution invents a causal weighting the sources do not support, and
@@ -238,15 +261,9 @@ every time the matrix is shown.
 problem with a more confident face on it. It would encode a hypothesis about
 which mode causes harm into the very measurement meant to test that hypothesis.
 
-**Measured.** The rule removes **15,014 of 184,112 crashes, 8.15%**, and with them
-33,527 of the 269,841 people who entered. That is far more than the 4,208 the
-inherited pipeline lost to its equivalent filters, and the gap is not a
-discrepancy: the inherited code deduplicated actor *types* before counting, so a
-crash between two cars counted as one type and passed a threshold my version
-applies to parties, where it is correctly two. Counting parties is what the rule
-was always meant to mean.
-
-The composition of what is removed, by crash type, against what survives:
+**Measured — composition.** The absolute cost is stated above. The question that
+remains is whether the loss falls evenly, because a rule that quietly thinned out
+one mode would not be neutral however small it looked in total.
 
 | Crash type | Discarded | % | Kept | % | Ratio |
 |---|---:|---:|---:|---:|---:|
@@ -269,10 +286,16 @@ at 0.95x their share of the survivors, marginally *less* than their weight. Give
 that vulnerable road users are the object of the study, a rule that quietly
 thinned out pedestrian records would have been a serious problem. It does not.
 
-The limitation to declare is therefore narrower than feared, and specific: the
-matrix under-represents collisions involving three or more parties, which are 8%
-of crashes and skew towards multi-vehicle collisions rather than towards any
-vulnerable mode.
+**The two readings both belong in the limitations, and they are not in
+conflict.** In relative terms the exclusion does not discriminate against
+pedestrians: they are removed at 0.95x their share of the survivors, marginally
+less than their weight. In absolute terms it still removes 4,299 pedestrian-struck
+crashes, 7.76% of all of them. A reader whose subject is vulnerable road users
+will want the second number, and giving only the reassuring ratio would be a way
+of not answering. The limitation to declare is: the matrix under-represents
+crashes with three or more parties, 8.15% of the base, which skew towards
+multi-vehicle collisions rather than towards any vulnerable mode, and this costs
+7.76% of the pedestrian-struck crashes.
 
 ---
 
@@ -361,9 +384,9 @@ report downstream is computed against one denominator or the other.
 **Status:** Closed, but forced by the data rather than chosen. Worth revisiting
 if the duplication described below is settled.
 
-**Built:** Yes. The check runs before anything is built, reports its three
-figures on every run whatever they are, and picks the identifier accordingly, so
-the fallback reverses itself automatically if the source is ever cleaned.
+**Built:** Yes. The check runs before anything is built, reports its figures on
+every run whatever they are, and picks the identifier accordingly, so the
+fallback reverses itself automatically if the source is ever cleaned.
 
 **Context.** Pedestrians share a single value in the vehicle field, so that field
 cannot tell two pedestrians of the same crash apart. Each of them has to be its
@@ -389,47 +412,119 @@ duplicated people invisible rather than absent.
 is a decision about double counting disguised as a technical clean-up, and it
 belongs in the open question below, not in a key choice.
 
+**The cost of the fallback: it is not stable across runs.** A key built from row
+position depends on the order the records arrive in. Nothing in the current
+pipeline reorders them, so two runs over the same files produce the same keys —
+but the guarantee comes from the input order, not from the data, and it does not
+survive a re-export, a re-sorted source, or a change in how the two layers are
+concatenated. Party identifiers are therefore safe to use within a run and unsafe
+to compare across runs. Anything that needs to match a party between two
+executions must go through the crash and the vehicle, which are stable, and not
+through the party identifier. The source person code would not have this problem,
+which is one more reason to want the duplication settled.
+
 **Open, and separate from the key.** Those 4 collisions look like the same person
 recorded in both layers — same crash, same person code, same role, same date,
 appearing once as an injury and once as a fatality. That is what someone who was
 injured and later died would look like in two sources built at different times.
-If so, 4 people are counted twice, once in each category. It is four people out
-of 269,841, so it changes nothing numerically, but it is a question about what
-the sources mean rather than about arithmetic. To settle with my advisor.
+If so, 4 people are counted twice, once in each category.
+
+I am not resolving it by identification, and deliberately so. In all 4 cases the
+crash, the code, the role and the date coincide exactly, and that total agreement
+is itself the evidence that they are one person: an identifier built to tell them
+apart would be asserting the opposite of what the data suggests. The question is
+what the two layers mean, not how to key them, and it is my advisor's to answer.
+See D3, where the same question decides how injured and killed are aggregated.
+
+What is built instead is a permanent check: every run reports how many people
+appear in both layers, with the cause named, whether the answer is four or zero.
+Four out of 269,841 changes nothing numerically today; a future extract in which
+that number grows would inflate the person counts, and it has to be visible the
+moment it happens rather than discovered afterwards.
 
 ---
 
-## D9 — A casualty with no recorded vehicle is not automatically a pedestrian
+## D9 — The actor type of a casualty with no recorded vehicle comes from its role
 
 **Status:** Closed.
 
-**Built:** Yes, and the counts below are reported on every run.
+**Built:** Yes. The rule is applied when parties are resolved, and every run
+reports how each group of standalone casualties was typed.
 
 **Context.** 66,037 casualty records name no vehicle. The inherited pipeline
-treated every one of them as a pedestrian. But the role column disagrees: 63,947
-of them are indeed recorded as pedestrians, while 2,090 are recorded as
-passengers, drivers, or with no information at all. A passenger with no vehicle
-recorded is not someone walking; it is someone whose vehicle the form did not
-capture.
+called every one of them a pedestrian. The role column disagrees, and its full
+inventory over that group is short:
+
+| Role recorded | Records |
+|---|---:|
+| PEATON | 63,947 |
+| PASAJERO | 1,908 |
+| CONDUCTOR | 119 |
+| SIN INFORMACION | 63 |
+| *no role recorded* | 0 |
+| **Total** | **66,037** |
+
+A passenger with no vehicle recorded is not someone walking; it is someone whose
+vehicle the form did not capture. Calling them pedestrians inflates one of the
+very rows the study is about.
 
 **Decision.** A casualty with no vehicle of its own becomes a party in itself,
-which is right in every case. Its actor type is pedestrian only when the source
-says the person was a pedestrian; otherwise it is the residual category, because
-the vehicle is unknown rather than absent. This is the same principle already
-settled in D4 for unknown vehicle types, applied to a different symptom of the
-same gap.
+which is right in every case, and its actor type comes from its role — but only
+where the role settles the level of protection by itself. That is the principle
+of D4 applied to a different symptom of the same gap:
+
+| Role | Actor type | Why |
+|---|---|---|
+| PEATON | Pedestrian | No vehicle at all |
+| MOTOCICLISTA | Motorcycle | Exposed whatever the particular machine was |
+| CICLISTA | Bicycle | Same |
+| CONDUCTOR | Residual | May be protected or not depending on what they drove |
+| PASAJERO | Residual | Same |
+| Anything else, or nothing | Residual | Reported separately, never classified on a guess |
+
+**What the rule actually recovers, measured.** Nothing, on these sources. Of the
+2,090 non-pedestrian records above, **0** carry a role of motorcyclist or
+cyclist, so all 2,090 stay in the residual category. Every motorcyclist and every
+cyclist in the data names a vehicle, which is what one would expect: the form
+records the motorcycle or the bicycle as a vehicle in its own right.
+
+The rule is still worth having. It earns two records elsewhere — among the three
+casualties that reference a vehicle absent from the vehicle table, two are
+motorcyclists and are now placed as such instead of falling to the residual
+category. And it means a future extract that does contain unattached
+motorcyclists will classify them correctly rather than burying them.
+
+**Reported separately, not classified.** 63 records carry the role SIN
+INFORMACION, which is not in the mapping. They go to the residual category and
+are named in the run log on every execution. Whether that value should be treated
+as equivalent to no role at all is a question about the source, not something to
+settle in passing.
+
+**The asymmetry is deliberate.** Where a vehicle is recorded, the vehicle decides
+the actor type and the role is ignored — that is why the 464 casualties recorded
+as pedestrians while referencing a vehicle are typed by their vehicle. Where no
+vehicle is recorded, the role decides, because it is the only evidence there is.
+These are different criteria because they answer to different evidence: a vehicle
+reference resolves to a real party of the crash and can be checked against the
+vehicle table, while a role is a field on a form with nothing behind it. Reading
+the two rules side by side they can look contradictory; they are not, they are
+ordered by how much each source of evidence can be trusted.
 
 **Rejected — call them all pedestrians, as the inherited code did.** It inflates
-the pedestrian row of the matrix by around 2,000 records built from people who
-were riding in something. Pedestrians are one of the vulnerable modes the study
-is about, so contaminating that row is precisely the wrong place to be casual.
+the pedestrian row by around 2,000 records built from people who were riding in
+something. Pedestrians are one of the vulnerable modes the study is about, so
+contaminating that row is precisely the wrong place to be casual.
 
 **Rejected — drop them.** They are real casualties of real crashes, and the
 residual category exists exactly so that records with an unknown attribute stay
 in the count instead of disappearing.
 
-**Noted, not decided.** The reverse inconsistency also exists: 464 casualties are
-recorded as pedestrians and yet reference a vehicle, which cannot both be true.
-The pipeline follows the vehicle reference, because it resolves to a real vehicle
-in the crash while the role is free text on a form. The number is small and I
-have not investigated which side is wrong.
+**Rejected — infer the vehicle from the other parties of the crash.** In a
+two-party crash one could guess that the unattached passenger was riding in the
+other recorded vehicle. Sometimes true, unverifiable in general, and it would
+manufacture exactly the kind of counterpart relationship the matrix is supposed
+to measure.
+
+**Noted, not decided.** Which side of the 464 contradictions is wrong. The
+pipeline follows the vehicle for the reason above, but I have not investigated
+whether the role or the reference is the error.
