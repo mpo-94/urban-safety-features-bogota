@@ -8,6 +8,12 @@ why it does it that way.
 I add entries as I go, not at the end. That means most entries are written before
 the code that carries them out, so each one separates two different questions:
 
+- **Kind** — **methodological** if it changes what the matrix measures, what it
+  counts, what it excludes or how the pair is oriented; **implementation** if it
+  only affects how the work is organised: formats, folders, file names, colour
+  scales. The methodological ones belong in the thesis, because a reader has to
+  know them to interpret a number. The implementation ones belong here and
+  nowhere else.
 - **Status** — is the decision itself settled, or still open? Open entries name
   who has to resolve them.
 - **Built** — how much of it exists in the code today. A decision recorded here
@@ -19,21 +25,31 @@ the vehicle table and a count over the frame already crossed with the casualties
 are not interchangeable: the crossing repeats a vehicle once per casualty it
 carried, so the second is larger for the same underlying records.
 
-| # | Decision | Status | Built |
-|---|---|---|---|
-| D1 | One row per affected party, not per crash | Closed | Yes |
-| D2 | The counting unit is the party, with person counts alongside | Closed | Yes |
-| D3 | Casualty severity origin preserved from the first step | Closed (aggregation open) | Yes, for loading |
-| D4 | Vehicle classification by occupant protection | Closed | Yes |
-| D5 | Crashes with more than two parties are discarded | Closed | Yes |
-| D6 | Spatial join by containment only, no proximity fallback | Closed (crash-level handling open) | Yes |
-| D7 | The UPL layer is three units short of the design | **Open** | Detection only |
-| D8 | Person identity falls back to row position | Closed, forced by the data | Yes |
-| D9 | The actor type of a casualty with no recorded vehicle comes from its role | Closed | Yes |
+| # | Decision | Kind | Status | Built |
+|---|---|---|---|---|
+| D1 | One row per affected party, not per crash | Methodological | Closed | Yes |
+| D2 | The counting unit is the party, with person counts alongside | Methodological | Closed | Yes |
+| D3 | Casualty severity origin preserved from the first step | Methodological | Closed (aggregation open) | Yes, for loading |
+| D4 | Vehicle classification by occupant protection | Methodological | Closed | Yes |
+| D5 | Crashes with more than two parties are discarded | Methodological | Closed | Yes |
+| D6 | Spatial join by containment only, no proximity fallback | Methodological | Closed (crash-level handling open) | Yes |
+| D7 | The UPL layer is three units short of the design | Methodological | **Open** | Detection only |
+| D8 | Person identity falls back to row position | Implementation | Closed, forced by the data | Yes |
+| D9 | The actor type of a casualty with no recorded vehicle comes from its role | Methodological | Closed | Yes |
+| D10 | The grid is complete: an unobserved combination is a zero, not an absence | Methodological | Closed | Yes |
+| D11 | Parties with no territorial unit leave the pipeline at aggregation | Methodological | Closed | Yes |
+| D12 | Figures are drawn from the exported tables, on a shared logarithmic scale | Implementation | Closed | Yes |
+| D13 | Output layout separates analysis tables from presentation tables | Implementation | Closed | Yes |
+| D14 | Pictograms are drawn in code rather than shipped as image files | Implementation | Closed | Yes |
+
+Methodological decisions: D1-D7, D9, D10, D11. Implementation decisions: D8, D12,
+D13, D14.
 
 ---
 
 ## D1 — One row per affected party, not per crash
+
+**Kind:** Methodological.
 
 **Status:** Closed.
 
@@ -72,6 +88,8 @@ inter-mode matrix is that it is not symmetric.
 
 ## D2 — The counting unit is the party, with person counts alongside
 
+**Kind:** Methodological.
+
 **Status:** Closed.
 
 **Built:** Yes. Every emitted row carries the party count as one, and beside it
@@ -109,6 +127,8 @@ counts through the pipeline costs two columns and keeps the option open.
 ---
 
 ## D3 — Casualty severity origin preserved from the first step
+
+**Kind:** Methodological.
 
 **Status:** Closed for loading. The aggregation choice is open, pending with my
 advisor.
@@ -151,6 +171,8 @@ the same question about what the two layers mean.
 ---
 
 ## D4 — Vehicle classification by occupant protection
+
+**Kind:** Methodological.
 
 **Status:** Closed.
 
@@ -222,6 +244,8 @@ levels that the stated principle says are the same.
 ---
 
 ## D5 — Crashes with more than two parties are discarded
+
+**Kind:** Methodological.
 
 **Status:** Closed, and measured.
 
@@ -301,6 +325,8 @@ multi-vehicle collisions rather than towards any vulnerable mode, and this costs
 
 ## D6 — Spatial join by containment only, no proximity fallback
 
+**Kind:** Methodological.
+
 **Status:** Closed for the loading stage. What to do with unlocated records at
 crash level is open, pending with my advisor.
 
@@ -349,6 +375,8 @@ assigned by some other means, and at which stage. To settle with my advisor.
 
 ## D7 — The UPL layer is three units short of the design
 
+**Kind:** Methodological.
+
 **Status:** **Open.** Blocking for the panel specification. To settle with my
 advisor.
 
@@ -380,6 +408,8 @@ report downstream is computed against one denominator or the other.
 ---
 
 ## D8 — Person identity falls back to row position
+
+**Kind:** Implementation. The choice of key is a technical one; the duplication it exposes, in the open question below, is not.
 
 **Status:** Closed, but forced by the data rather than chosen. Worth revisiting
 if the duplication described below is settled.
@@ -445,6 +475,8 @@ moment it happens rather than discovered afterwards.
 ---
 
 ## D9 — The actor type of a casualty with no recorded vehicle comes from its role
+
+**Kind:** Methodological.
 
 **Status:** Closed.
 
@@ -528,3 +560,180 @@ to measure.
 **Noted, not decided.** Which side of the 464 contradictions is wrong. The
 pipeline follows the vehicle for the reason above, but I have not investigated
 whether the role or the reference is the error.
+
+---
+
+## D10 — The grid is complete: an unobserved combination is a zero, not an absence
+
+**Kind:** Methodological.
+
+**Status:** Closed.
+
+**Built:** Yes. Every run reports how much of the grid is empty and whether any
+unit or year is empty throughout.
+
+**Context.** The inherited pipeline wrote only the combinations it had actually
+seen. A locality with no cyclist casualties in 2009 simply had no row for that
+combination, which makes a real zero and a missing observation look identical to
+anything reading the file. In a panel that difference is not cosmetic: a zero is
+an observation of no harm and belongs in the estimation, while a gap is an
+absence of information and does not. Silently conflating them biases whatever is
+fitted on top.
+
+**Decision.** The matrix is a complete grid: every unit of the territorial layer,
+every year of the study period, and every ordered pair of actor types, with zero
+where nothing was observed. The unit roster comes from the shapefile rather than
+from the data, so a unit that never appears in a single crash still gets its rows
+of zeros instead of vanishing.
+
+At locality scale that is 19 units x 18 years x 6 actor types x 7 counterparts =
+**14,364 cells, of which 4,281 (29.80%) are zero**. No unit and no year is empty
+throughout. Emptiness concentrates where it should: La Candelaria, the smallest
+locality, is 58.20% empty, while Kennedy is 16.53%.
+
+**Rejected — keep only the observed combinations, as the inherited code did.**
+Every consumer would have to reconstruct the grid to know whether a gap means
+zero, and each would reconstruct it slightly differently.
+
+**Rejected — write zeros only for combinations seen at least once anywhere.** A
+half-complete grid is worse than either alternative, because it looks complete.
+
+**Note for the modelling stage.** Almost 30% of cells being zero is a property of
+the data at this resolution, not a defect, but it does bear on the choice of
+model. The share is worth revisiting per scale: at UPZ, with six times as many
+units, it will be considerably higher.
+
+---
+
+## D11 — Parties with no territorial unit leave the pipeline at aggregation
+
+**Kind:** Methodological.
+
+**Status:** Closed.
+
+**Built:** Yes, with the loss named in the run record.
+
+**Context.** D6 keeps casualties whose crash point falls outside every territorial
+unit, rather than dropping them at load or snapping them somewhere they were not.
+That postpones the question rather than answering it, and aggregation is where it
+has to be answered: a cell is identified by its unit, so a record with no unit has
+no cell to go to.
+
+**Decision.** They leave here, and the loss is stated with its cause: **858
+affected parties, carrying 1,146 injured and 51 killed**. That is 0.43% of the
+198,311 affected parties.
+
+Dropping them at this point rather than at load is deliberate. Everything
+upstream — the party model, the counterpart resolution, the two-party threshold —
+is about crashes, not about places, and those records are perfectly valid there.
+They only become unusable at the moment the analysis becomes spatial. Keeping
+them until then means the funnel shows exactly what geography costs, separately
+from what the crash model costs.
+
+**Rejected — assign them to the nearest unit.** The same objection as in D6: it
+attributes a casualty to a place where it did not happen, and at this stage it
+would do so invisibly, after the record has already survived every other check.
+
+**Rejected — a residual "unknown unit" row in the matrix.** It would keep the
+totals whole, at the cost of a row that is not a place and cannot carry any of
+the urban predictors the matrix exists to be regressed against.
+
+---
+
+## D12 — Figures are drawn from the exported tables, on a shared logarithmic scale
+
+**Kind:** Implementation.
+
+**Status:** Closed.
+
+**Built:** Yes.
+
+**Context.** Three separate decisions about the heatmaps, all with the same
+motive: a figure that disagrees with the table it illustrates is worse than no
+figure, because it is believed.
+
+**Decision.**
+
+*Figures read the exported files back from disk.* No figure recomputes anything
+from the in-memory table. What is seen and what is analysed are the same numbers
+by construction, not by care.
+
+*One colour scale across all years within a count.* Per-year scaling would let
+two heatmaps look comparable while being drawn to different rulers, which is the
+most quietly misleading thing a series of figures can do. The aggregate figure is
+excluded from that shared scale on purpose: it covers eighteen years at once and
+is not comparable to a single year, so pretending otherwise would be the same
+error in reverse.
+
+*Logarithmic colour scale with the values printed on the cells.* The counts span
+from single digits to thirty-five thousand. On a linear ramp everything except
+the dominant cell collapses into one shade. The logarithm restores the structure
+and the printed numbers restore the exact values the logarithm blurs. Zeros
+cannot go on a logarithmic ramp at all, so they are drawn in a flat grey rather
+than at the bottom of the ramp, where they would read as a small value instead of
+none.
+
+**Rejected — a linear scale with a clipped maximum.** It hides the dominant cell
+instead of showing the rest, and the clipping point becomes an arbitrary editorial
+choice buried in the code.
+
+---
+
+## D13 — Output layout separates analysis tables from presentation tables
+
+**Kind:** Implementation.
+
+**Status:** Closed.
+
+**Built:** Yes.
+
+**Context.** The stage emits one table meant to be fed to models and fifty-seven
+meant to be read by people. They are the same numbers in different shapes, and
+the cross-tabulated ones are the easy mistake: a matrix with actor types as
+columns looks like a modelling table and is not one.
+
+**Decision.** The file name says which is which before anyone opens it. The long
+table for models is prefixed `analysis`, every cross-tabulation is prefixed
+`presentation`, and each name carries its count and its year. Cross-tabulations
+by year live in their own subdirectory so that the top level of the data folder
+holds one analysis table and three aggregate views, not sixty files.
+
+Row and column order is fixed in configuration rather than taken from whatever
+the grouping returns, so two runs can be diffed line by line.
+
+**Rejected — one file with everything and a column to filter on.** It is what the
+long table already is. The presentation tables exist precisely because that shape
+is unreadable.
+
+---
+
+## D14 — Pictograms are drawn in code rather than shipped as image files
+
+**Kind:** Implementation.
+
+**Status:** Closed.
+
+**Built:** Yes.
+
+**Context.** The presentation figure labels the axes with pictograms instead of
+words, which needs a pedestrian, a bicycle, a motorcycle, a car, a bus and two
+markers for the residual and single-party categories.
+
+**Decision.** The pictograms are drawn with plain geometric shapes in the figure
+code. Nothing is downloaded, nothing is stored as a binary asset, nothing has to
+be credited or licence-checked, and the figure is reproducible from the
+repository alone. Where the icons come from is therefore not a question that
+needs answering: they have no provenance outside the code that draws them.
+
+**Rejected — an icon set from a library.** Better looking, and it introduces a
+licensing question and a binary dependency into a repository that currently has
+neither, for a single figure.
+
+**Rejected — emoji as text labels.** It looks like the cheapest option and is the
+most fragile: whether they render at all depends on the fonts installed on the
+machine, and the figure would silently degrade to empty boxes somewhere else.
+
+**Kept separate from the working heatmaps on purpose.** Those are read next to
+their numbers, with seven categories and five-digit values, where pictograms
+would compete with the figures for attention. Different purpose, different
+function, no shared code path beyond the colour scale.

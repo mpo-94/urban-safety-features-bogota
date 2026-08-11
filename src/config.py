@@ -311,6 +311,49 @@ ROLE_TO_ACTOR_TYPE: dict[str, str] = {
 ROLES_RESOLVING_TO_A_MODE = ("MOTOCICLISTA", "CICLISTA")
 
 # ---------------------------------------------------------------------------
+# Casualty matrix
+# ---------------------------------------------------------------------------
+# The scale travels with every row: unit codes are not unique across scales (the
+# code "19" is both a UPZ and a locality), so the pair scale plus code is the
+# only safe key for anything downstream.
+SCALE_COL = "SCALE"
+
+# Fixed order for rows and columns, declared here rather than left to whatever
+# the grouping returns, so two runs can be compared line by line. Ordered from
+# the least protected road user to the most, with the residual category last and
+# the single-party marker after it.
+MATRIX_ROW_ORDER = (PEDESTRIAN, BICYCLE, MOTORCYCLE, CAR, PUBLIC_TRANSPORT, OTHER)
+MATRIX_COLUMN_ORDER = MATRIX_ROW_ORDER + (SELF_COUNTERPART,)
+
+# The three counts the matrix carries, all from the same run.
+MATRIX_COUNTS: dict[str, str] = {
+    "parties": AFFECTED_PARTIES_COL,
+    "injured": PERSONS_INJURED_COL,
+    "killed": PERSONS_KILLED_COL,
+}
+
+# Layout inside a run directory.
+DATA_SUBDIR = "data"
+BY_YEAR_SUBDIR = "by_year"
+FIGURES_SUBDIR = "figures"
+INTERMEDIATE_SUBDIR = "intermediate"
+
+# File name prefixes. A table meant for models and a table meant for reading are
+# never interchangeable, so the name says which it is before anyone opens it.
+ANALYSIS_PREFIX = "analysis"
+PRESENTATION_PREFIX = "presentation"
+
+# ---------------------------------------------------------------------------
+# Figures
+# ---------------------------------------------------------------------------
+FIGURE_DPI = 150
+HEATMAP_COLORMAP = "viridis"
+# Cells with no observation at all are drawn in this colour instead of the bottom
+# of the colour ramp, so that a true zero cannot be mistaken for a small value on
+# a logarithmic scale.
+HEATMAP_EMPTY_COLOR = "#eeeeee"
+
+# ---------------------------------------------------------------------------
 # Run-time switches
 # ---------------------------------------------------------------------------
 # When true, every stage writes its output to the run directory. Off by default

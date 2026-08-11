@@ -128,12 +128,28 @@ class RunLog:
     # -- artefacts ----------------------------------------------------------
 
     def dump(self, frame: pd.DataFrame, name: str) -> Path | None:
-        """Write a stage result to the run directory if dumping is enabled."""
+        """Write a stage result to the run's intermediate directory, if enabled.
+
+        Both parquet and CSV: parquet keeps the dtypes for reloading, CSV is what
+        makes an intermediate worth dumping in the first place, since the point
+        is to open it and look.
+        """
         if not self.dump_intermediates:
             return None
-        path = self.run_dir / f"{name}.parquet"
+        directory = self.run_dir / config.INTERMEDIATE_SUBDIR
+        directory.mkdir(parents=True, exist_ok=True)
+        path = directory / f"{name}.parquet"
         frame.to_parquet(path)
-        self.logger.info("intermediate written: %s (%d rows)", path.name, len(frame))
+        # Geometry has no faithful CSV representation, so it is dropped there
+        # rather than written as unusable text.
+        flat = frame.drop(columns=[c for c in frame.columns if c == "geometry"], errors="ignore")
+        flat.to_csv(path.with_suffix(".csv"), index=False, encoding="utf-8")
+        self.logger.info(
+            "intermediate written: %s/%s.{parquet,csv} (%d rows)",
+            config.INTERMEDIATE_SUBDIR,
+            name,
+            len(frame),
+        )
         return path
 
     def funnel(self) -> str:
