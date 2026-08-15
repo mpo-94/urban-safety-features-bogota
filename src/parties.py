@@ -9,9 +9,9 @@ zero. Parties with no casualties never emit a row, but they are what makes the
 counterpart of the other parties knowable, and they count towards the two-party
 threshold.
 
-Run it directly to execute the stage:
+Run this stage on its own:
 
-    python -m src.parties
+    python -m src.run_pipeline parties
 """
 
 from __future__ import annotations
@@ -20,11 +20,10 @@ import numpy as np
 import pandas as pd
 
 try:  # regular package import
-    from src import config, loading
+    from src import config
     from src.provenance import RunLog
 except ImportError:  # executed as a plain script from inside src/
     import config  # type: ignore[no-redef]
-    import loading  # type: ignore[no-redef]
     from provenance import RunLog  # type: ignore[no-redef]
 
 
@@ -516,28 +515,3 @@ def resolve(casualties: pd.DataFrame, vehicles: pd.DataFrame, log: RunLog) -> pd
               threshold_composition(parties, casualties))
     log.dump(result, "05_affected_parties")
     return result
-
-
-def main() -> int:
-    log = RunLog()
-    log.info("run directory: %s", log.run_dir)
-
-    casualties = loading.load_casualties(log)
-    vehicles = loading.load_vehicles(log)
-    passed, _ = loading.verify_against_legacy(casualties, vehicles, log)
-    if not passed:
-        log.warn("stopping: loading diverges from the legacy baseline")
-        return 1
-
-    result = resolve(casualties, vehicles, log)
-
-    log.table("record funnel:", log.funnel())
-    log.table("divergence from the legacy pipeline (reported, not corrected):", divergence_report(result))
-
-    counterparts = pd.crosstab(result[config.PARTY_TYPE_COL], result[config.COUNTERPART_TYPE_COL])
-    log.table("affected parties by actor type and counterpart:", counterparts.to_string())
-    return 0
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())

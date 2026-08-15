@@ -5,9 +5,9 @@ territorial unit by spatial join, and concatenates the casualties into a single
 set. Every stage reports how many records went in, how many came out, and the
 named cause of each difference; the run aborts if a balance fails to close.
 
-Run it directly to execute the stage and verify it against the legacy baseline:
+Run this stage on its own:
 
-    python -m src.loading
+    python -m src.run_pipeline loading
 """
 
 from __future__ import annotations
@@ -45,16 +45,16 @@ def load_territorial_units(log: RunLog, scale: config.TerritorialScale | None = 
 
     notes = [f"scale={scale.label}, source={scale.shapefile.name}, crs harmonised to EPSG:{config.SOURCE_CRS}"]
     if len(units) != scale.expected_units:
-        # Loud rather than silent: a short unit roster caps the coverage of every
-        # variable built on this scale.
-        log.warn(
-            "%s layer carries %d units but %d are expected; %d unit(s) will never receive data",
-            scale.label,
-            len(units),
-            scale.expected_units,
-            scale.expected_units - len(units),
+        # The unit roster is the denominator of every coverage figure the study
+        # reports. A layer that does not carry the declared universe is a
+        # different layer, not a smaller one, so the run stops instead of
+        # silently rebasing every figure on whatever happens to be on disk.
+        raise ValueError(
+            f"{scale.label} layer {scale.shapefile.name} carries {len(units)} units, but the study "
+            f"universe at this scale is declared as {scale.expected_units}. Either the layer changed "
+            f"or expected_units is wrong; both are decisions, not defaults."
         )
-        notes.append(f"{len(units)} units present, {scale.expected_units} expected")
+    notes.append(f"{len(units)} units, matching the declared study universe")
 
     duplicated = int(units[config.AREA_CODE_COL].duplicated().sum())
     if duplicated:
@@ -269,17 +269,11 @@ def load_vehicles(log: RunLog) -> pd.DataFrame:
 # ---------------------------------------------------------------------------
 
 
-def verify_against_legacy(casualties: pd.DataFrame, vehicles: pd.DataFrame, log: RunLog) -> tuple[bool, str]:
-    """Compare this stage against the counts measured on the legacy pipeline.
-
-    Loading changes none of the legacy logic, so every count must match exactly.
-    A mismatch is reported as a failure; it is never reconciled by adjusting the
-    computation.
-    """
+def loading_counts(casualties: pd.DataFrame, vehicles: pd.DataFrame) -> dict[str, int]:
+    """The six figures that characterise the loading stage."""
     source = casualties[config.CASUALTY_SOURCE_COL]
     no_area = casualties[config.AREA_CODE_COL].isna()
-
-    observed = {
+    return {
         "fatalities": int((source == config.FATALITY_SOURCE).sum()),
         "injuries": int((source == config.INJURY_SOURCE).sum()),
         "concatenated": len(casualties),
@@ -288,50 +282,91 @@ def verify_against_legacy(casualties: pd.DataFrame, vehicles: pd.DataFrame, log:
         "vehicles": len(vehicles),
     }
 
-    width = max(len(k) for k in config.LEGACY_BASELINE_COUNTS)
+
+def verify_loading(
+    casualties: pd.DataFrame,
+    vehicles: pd.DataFrame,
+    log: RunLog,
+    scale: config.TerritorialScale | None = None,
+) -> tuple[bool, str]:
+    """Check the loading stage against the baseline that applies to it.
+
+    Two kinds of check, from two different sources, reported side by side:
+
+    * Four of the six counts are properties of the source files and no
+      territorial layer can move them. They are checked against the legacy run at
+      any scale, and reproducing them is what says loading changed none of the
+      inherited logic.
+    * The other two count records falling outside every polygon, so they depend
+      on the footprint of the layer. Layers covering different territory
+      necessarily disagree on them. At locality scale they are the historical
+      contrast against the legacy pipeline; at any other scale they are checked
+      against the baseline measured for that scale, and reported as a first
+      measurement — not a failure — if none is declared yet.
+
+    A mismatch is reported as a failure; it is never reconciled by adjusting the
+    computation.
+    """
+    scale = scale or config.active_scale()
+    observed = loading_counts(casualties, vehicles)
+
+    at_legacy_scale = scale.key == config.LEGACY_BASELINE_SCALE
+    scale_baseline = config.SCALE_BASELINE_COUNTS.get(scale.key, {})
+
+    # (expected, where the expectation comes from) per check. None means nothing
+    # to compare against yet.
+    expectations: dict[str, tuple[int | None, str]] = {}
+    for key in config.SCALE_INDEPENDENT_CHECKS:
+        expectations[key] = (config.LEGACY_BASELINE_COUNTS[key], "legacy, scale-independent")
+    for key in config.SCALE_DEPENDENT_CHECKS:
+        if at_legacy_scale:
+            expectations[key] = (config.LEGACY_BASELINE_COUNTS[key], f"legacy, {scale.label} footprint")
+        elif key in scale_baseline:
+            expectations[key] = (scale_baseline[key], f"{scale.label} baseline")
+        else:
+            expectations[key] = (None, f"no {scale.label} baseline declared")
+
+    # Reported in the order of the baseline table so two runs read alike.
+    ordered = [key for key in config.LEGACY_BASELINE_COUNTS if key in expectations]
+
+    width = max(len(key) for key in ordered)
+    origin_width = max(len(origin) for _, origin in expectations.values())
     lines = [
-        f"{'check'.ljust(width)}  {'expected':>12}  {'observed':>12}  result",
-        f"{'-' * width}  {'-' * 12}  {'-' * 12}  ------",
+        f"{'check'.ljust(width)}  {'expected':>12}  {'observed':>12}  {'baseline'.ljust(origin_width)}  result",
+        f"{'-' * width}  {'-' * 12}  {'-' * 12}  {'-' * origin_width}  ------",
     ]
     all_ok = True
-    for key, expected in config.LEGACY_BASELINE_COUNTS.items():
+    unmeasured: list[str] = []
+    for key in ordered:
+        expected, origin = expectations[key]
         got = observed[key]
-        ok = got == expected
-        all_ok &= ok
-        lines.append(f"{key.ljust(width)}  {expected:>12,}  {got:>12,}  {'OK' if ok else 'MISMATCH'}")
+        if expected is None:
+            unmeasured.append(f"{key}={got:,}")
+            result, shown = "FIRST MEASUREMENT", "-"
+        else:
+            ok = got == expected
+            all_ok &= ok
+            result, shown = ("OK" if ok else "MISMATCH"), f"{expected:,}"
+        lines.append(
+            f"{key.ljust(width)}  {shown:>12}  {got:>12,}  {origin.ljust(origin_width)}  {result}"
+        )
 
     report = "\n".join(lines)
-    for line in report.splitlines():
-        log.info("%s", line)
+    log.table(f"loading verification at {scale.label} scale:", report)
 
+    if unmeasured:
+        log.warn(
+            "no footprint baseline declared for %s; measured %s. Record them in "
+            "SCALE_BASELINE_COUNTS so the next run is checked against them",
+            scale.label,
+            ", ".join(unmeasured),
+        )
     if all_ok:
-        log.info("verification passed: all %d counts match the legacy baseline", len(observed))
+        log.info(
+            "verification passed: %d count(s) match their baseline%s",
+            len(ordered) - len(unmeasured),
+            f", {len(unmeasured)} measured for the first time" if unmeasured else "",
+        )
     else:
-        log.warn("verification FAILED: the loading stage diverges from the legacy baseline")
+        log.warn("verification FAILED: the loading stage diverges from its baseline")
     return all_ok, report
-
-
-def main() -> int:
-    log = RunLog()
-    log.info("run directory: %s", log.run_dir)
-    log.info("scale: %s | source CRS: EPSG:%d | projected CRS: EPSG:%d", config.active_scale().label, config.SOURCE_CRS, config.PROJECTED_CRS)
-    log.info("intermediate dumps: %s", "on" if log.dump_intermediates else "off")
-
-    casualties = load_casualties(log)
-    vehicles = load_vehicles(log)
-
-    log.info("record funnel:")
-    for line in log.funnel().splitlines():
-        log.info("%s", line)
-
-    passed, _ = verify_against_legacy(casualties, vehicles, log)
-    if not passed:
-        # Stop here rather than let a later stage build on numbers that already
-        # disagree with the reference implementation.
-        log.warn("stopping: fix the divergence before running any further stage")
-        return 1
-    return 0
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())

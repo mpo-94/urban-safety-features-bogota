@@ -14,9 +14,9 @@ a great deal in a panel.
 Every figure is labelled with text. Pictograms belong in documents written
 around this output, not in the working figures the pipeline emits.
 
-Run it directly to execute the whole pipeline and produce the matrix:
+Run the whole pipeline up to the matrix:
 
-    python -m src.matrix
+    python -m src.run_pipeline matrix
 """
 
 from __future__ import annotations
@@ -33,12 +33,10 @@ import pandas as pd
 from matplotlib.colors import LogNorm
 
 try:  # regular package import
-    from src import config, loading, parties
+    from src import config
     from src.provenance import RunLog
 except ImportError:  # executed as a plain script from inside src/
     import config  # type: ignore[no-redef]
-    import loading  # type: ignore[no-redef]
-    import parties  # type: ignore[no-redef]
     from provenance import RunLog  # type: ignore[no-redef]
 
 
@@ -449,7 +447,7 @@ def report(long_table: pd.DataFrame, log: RunLog) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Entry point
+# Stage
 # ---------------------------------------------------------------------------
 
 
@@ -457,32 +455,3 @@ def build(affected: pd.DataFrame, units: pd.DataFrame, log: RunLog) -> pd.DataFr
     long_table = build_long_table(affected, units, log)
     log.dump(long_table, "06_matrix_long")
     return long_table
-
-
-def main() -> int:
-    log = RunLog()
-    log.info("run directory: %s", log.run_dir)
-
-    units = loading.load_territorial_units(log)
-    casualties = loading.load_casualties(log, units=units)
-    vehicles = loading.load_vehicles(log)
-    passed, _ = loading.verify_against_legacy(casualties, vehicles, log)
-    if not passed:
-        log.warn("stopping: loading diverges from the legacy baseline")
-        return 1
-
-    affected = parties.resolve(casualties, vehicles, log)
-    long_table = build(affected, units, log)
-
-    paths = export(long_table, log)
-    render_heatmaps(paths, log)
-
-    log.table("record funnel:", log.funnel())
-    if not verify(long_table, affected, units, log):
-        return 1
-    report(long_table, log)
-    return 0
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())

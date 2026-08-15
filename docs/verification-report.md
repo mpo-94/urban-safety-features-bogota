@@ -8,12 +8,19 @@ enabled, so every figure quoted can be traced back to a file that run wrote.
 
 | | |
 |---|---|
-| Scale | Localidad (19 units) |
+| Scale | UPL (30 units, the study universe — see D7) |
 | Study period | 2007–2024 (18 years) |
 | Sources | fatality and injury point layers, vehicle table |
 | Stages | loading → party resolution → matrix aggregation |
-| Result | 14,364 matrix cells, 197,453 affected parties, 227,628 injured, 7,489 killed |
+| Command | `python -m src.run_pipeline matrix --dump-intermediates` |
+| Result | 22,680 matrix cells, 197,610 affected parties, 227,726 injured, 7,499 killed |
 | Outcome | **every check passed** |
+
+Figures measured at locality scale appear throughout as a contrast, always
+labelled as such. They come from the equivalent run on the locality layer, which
+is the footprint the inherited pipeline was measured on. They are a historical
+reference and not a target: the two layers cover different territory, so anything
+that depends on the footprint differs between them by construction.
 
 ---
 
@@ -22,25 +29,35 @@ enabled, so every figure quoted can be traced back to a file that run wrote.
 Every check the pipeline performs, including the ones that pass. A check that
 only speaks up on failure leaves no evidence it ran.
 
-### Loading — reproduction of the inherited figures
+### Loading — the two baselines
 
-This stage changes none of the inherited logic, so its counts must match exactly.
-A mismatch would mean a defect, not a number to reconcile.
+Six counts characterise this stage, and they answer to two different baselines
+(D15). Four are properties of the source files, which no territorial layer can
+move: they are checked against the inherited run at any scale, and reproducing
+them is what says loading changed none of the logic it inherited. The other two
+count records falling outside every polygon, so they depend on the footprint of
+the layer and are checked against the reference measured for the active scale.
 
-| Check | Expected | Observed | Verdict |
-|---|---:|---:|---|
-| Fatality records | 8,548 | 8,548 | **Pass** |
-| Injury records | 261,293 | 261,293 | **Pass** |
-| Concatenated casualties | 269,841 | 269,841 | **Pass** |
-| Fatalities with no territorial unit | 61 | 61 | **Pass** |
-| Injuries with no territorial unit | 1,344 | 1,344 | **Pass** |
-| Vehicle table rows | 1,465,735 | 1,465,735 | **Pass** |
+| Check | Expected | Observed | Baseline | Verdict |
+|---|---:|---:|---|---|
+| Fatality records | 8,548 | 8,548 | legacy, scale-independent | **Pass** |
+| Injury records | 261,293 | 261,293 | legacy, scale-independent | **Pass** |
+| Concatenated casualties | 269,841 | 269,841 | legacy, scale-independent | **Pass** |
+| Vehicle table rows | 1,465,735 | 1,465,735 | legacy, scale-independent | **Pass** |
+| Fatalities with no territorial unit | 50 | 50 | UPL | **Pass** |
+| Injuries with no territorial unit | 1,186 | 1,186 | UPL | **Pass** |
+
+The two footprint counts were 61 and 1,344 at locality scale, matching the
+inherited pipeline exactly, which is the historical contrast this reimplementation
+was checked against. The UPL layer covers different territory and gives 50 and
+1,186; those are now the live reference, and a future run that moves off them
+fails.
 
 ### Loading — structural checks
 
 | Check | Result | Verdict |
 |---|---|---|
-| Unit layer has the expected number of units | 19 of 19 expected | **Pass** |
+| Unit layer carries the declared study universe | 30 of 30 | **Pass** |
 | Unit codes are unique within the layer | no duplicates | **Pass** |
 | Spatial join does not duplicate rows | 8,548 → 8,548 and 261,293 → 261,293 | **Pass** |
 | Casualty years fall inside the study period | span 2007–2024, 0 rows outside | **Pass** |
@@ -62,14 +79,14 @@ A mismatch would mean a defect, not a number to reconcile.
 
 | Check | Expected | Observed | Verdict |
 |---|---|---|---|
-| Affected parties in matrix equal what entered | 197,453 | 197,453 | **Pass** |
-| Injured in matrix equal what entered | 227,628 | 227,628 | **Pass** |
-| Killed in matrix equal what entered | 7,489 | 7,489 | **Pass** |
+| Affected parties in matrix equal what entered | 197,610 | 197,610 | **Pass** |
+| Injured in matrix equal what entered | 227,726 | 227,726 | **Pass** |
+| Killed in matrix equal what entered | 7,499 | 7,499 | **Pass** |
 | No negative cell | 0 | 0 | **Pass** |
 | No cell with fewer people than parties | 0 | 0 | **Pass** |
-| Every unit of the layer is in the grid | 19 | 19 | **Pass** |
+| Every unit of the layer is in the grid | 30 | 30 | **Pass** |
 | Every year of the period is in the grid | 18 | 18 | **Pass** |
-| Grid has the declared number of cells | 14,364 | 14,364 | **Pass** |
+| Grid has the declared number of cells | 22,680 | 22,680 | **Pass** |
 
 ### Balance accounting
 
@@ -85,11 +102,11 @@ From the raw files to the matrix, with the cause of every change.
 
 | Stage | In | Out | Change | Cause |
 |---|---:|---:|---:|---|
-| Load territorial units | 19 | 19 | 0 | — |
-| Load fatalities | 8,548 | 8,548 | 0 | 61 kept with no unit |
-| Locate fatalities | 8,548 | 8,548 | 0 | containment only, no snapping |
-| Load injuries | 261,293 | 261,293 | 0 | 1,344 kept with no unit |
-| Locate injuries | 261,293 | 261,293 | 0 | containment only, no snapping |
+| Load territorial units | 30 | 30 | 0 | — |
+| Load fatalities | 8,548 | 8,548 | 0 | — |
+| Locate fatalities | 8,548 | 8,548 | 0 | containment only, no snapping; 50 kept with no unit |
+| Load injuries | 261,293 | 261,293 | 0 | — |
+| Locate injuries | 261,293 | 261,293 | 0 | containment only, no snapping; 1,186 kept with no unit |
 | Concatenate casualties | 8,548 | 269,841 | +261,293 | injury rows appended |
 | Load vehicle table | 1,465,735 | 1,465,735 | 0 | — |
 | Cross-layer duplication check | 269,841 | 269,841 | 0 | 4 people counted twice, reported |
@@ -98,14 +115,22 @@ From the raw files to the matrix, with the cause of every change.
 | Assemble party universe | 293,924 | 359,964 | +66,040 | casualties with no vehicle, each its own party |
 | Two-party threshold | 359,964 | 311,441 | −48,523 | parties of the 15,014 crashes with more than two |
 | Keep parties with casualties | 311,441 | 198,311 | −113,130 | parties that took part unharmed |
-| Restrict to located parties | 198,311 | 197,453 | −858 | crash point outside every unit |
-| Aggregate onto the grid | 197,453 | 14,364 | −183,089 | −187,370 collapsed into shared cells; +4,281 empty cells materialised as zero |
+| Restrict to located parties | 198,311 | 197,610 | −701 | crash point outside every unit |
+| Aggregate onto the grid | 197,610 | 22,680 | −174,930 | −182,680 collapsed into shared cells; +7,750 empty cells materialised as zero |
 
 **People, separately.** 269,841 people entered. 33,527 were in crashes the
-two-party threshold discarded; 1,197 more were in crashes that could not be
-located. 227,628 injured and 7,489 killed reach the matrix, 235,117 in total.
+two-party threshold discarded; 1,089 more were in crashes that could not be
+located. 227,726 injured and 7,499 killed reach the matrix, 235,225 in total.
 
 Nothing is lost without a name anywhere in the chain.
+
+**What the scale touches, and what it does not.** Every stage above the spatial
+join is identical to the locality-scale run, which is the expected result: the
+party model, the two-party threshold and the counterpart resolution do not know
+what a polygon is. The whole difference between the two runs is the four rows
+that involve geography — 50 and 1,186 unlocated casualties instead of 61 and
+1,344, 701 parties leaving instead of 858, and a grid of 22,680 cells instead of
+14,364.
 
 ---
 
@@ -118,10 +143,14 @@ choice.
 
 ### Stage by stage
 
+The inherited pipeline ran at locality scale, so the only like-for-like comparison
+of anything geographic is against the locality-scale run of this implementation.
+That is how the two rows below that depend on the footprint are read.
+
 | Stage | Inherited | This pipeline | Same? |
 |---|---|---|---|
 | Read fatalities and injuries | 8,548 + 261,293 | 8,548 + 261,293 | Identical |
-| Locate against the unit layer | 61 + 1,344 unlocated | 61 + 1,344 unlocated | Identical |
+| Locate against the unit layer | 61 + 1,344 unlocated | 61 + 1,344 at locality, 50 + 1,186 at UPL | Identical where comparable |
 | Concatenate | 269,841 | 269,841 | Identical |
 | Read vehicle table | 1,465,735 | 1,465,735 | Identical |
 | Severity origin after concatenation | lost — both layers flagged alike | preserved on every row | Different, defect corrected |
@@ -130,7 +159,7 @@ choice.
 | Multi-party rule | 4,208 crashes removed | 15,014 crashes removed | Different, defect corrected |
 | Unmapped vehicle types | became null, then silently dropped | routed to the residual category, reported | Different, defect corrected |
 | Casualties with no vehicle | all called pedestrians | typed by role | Different, methodology |
-| Grid coverage | only observed combinations | complete grid, 14,364 cells | Different, methodology |
+| Grid coverage | only observed combinations | complete grid, 22,680 cells | Different, methodology |
 | Distinguishes injured from killed | no | yes, three counts side by side | Different, defect corrected |
 
 ### Differences that correct a defect
@@ -183,7 +212,7 @@ person counts sit beside it in their own columns.
 
 **A complete grid.** The inherited output contained only combinations it had
 observed, making a true zero indistinguishable from a missing observation. The
-matrix here is a full grid of 14,364 cells, 4,281 of them zero.
+matrix here is a full grid of 22,680 cells, 7,750 of them zero.
 
 **Casualties with no recorded vehicle are typed by role.** The inherited code
 called all 66,037 of them pedestrians. 2,090 are recorded as passengers or
@@ -194,14 +223,14 @@ drivers, whose vehicle simply was not captured.
 This is where the inherited bias was most visible, and it inverts.
 
 The inherited figures were measured before its own geographic restriction, so the
-like-for-like comparison is against all affected parties, before the 858
-unlocated ones leave. The matrix itself is shown too; the relationship is the
-same on either basis.
+like-for-like comparison is against all affected parties, before the 701
+unlocated ones leave. That column does not depend on the unit layer at all. The
+matrix itself is shown too; the relationship is the same on either basis.
 
 | | Inherited | All affected parties | In the matrix |
 |---|---:|---:|---:|
-| Motorcyclist harmed, bicycle as counterpart | 8,129 | 3,902 | 3,877 |
-| Cyclist harmed, motorcycle as counterpart | 1,881 | 5,560 | 5,522 |
+| Motorcyclist harmed, bicycle as counterpart | 8,129 | 3,902 | 3,888 |
+| Cyclist harmed, motorcycle as counterpart | 1,881 | 5,560 | 5,541 |
 | Ratio | **4.32x** | **0.70x** | **0.70x** |
 
 The inherited matrix records a motorcyclist as the harmed party four times more
@@ -224,13 +253,13 @@ lethal risk on others.
 
 | Counterpart | Affected parties | Share |
 |---|---:|---:|
-| CAR | 76,827 | 38.91% |
-| MOTORCYCLE | 42,339 | 21.44% |
-| SELF | 26,621 | 13.48% |
-| PUBLIC_TRANSPORT | 21,532 | 10.90% |
-| OTHER | 13,073 | 6.62% |
-| PEDESTRIAN | 10,143 | 5.14% |
-| BICYCLE | 6,918 | 3.50% |
+| CAR | 76,857 | 38.89% |
+| MOTORCYCLE | 42,380 | 21.45% |
+| SELF | 26,611 | 13.47% |
+| PUBLIC_TRANSPORT | 21,572 | 10.92% |
+| OTHER | 13,111 | 6.63% |
+| PEDESTRIAN | 10,144 | 5.13% |
+| BICYCLE | 6,935 | 3.51% |
 
 Pedestrian and bicycle together are 8.64% of the matrix, the two smallest
 columns. That is what a correctly oriented matrix looks like. The check is part
@@ -245,15 +274,15 @@ the counterpart.
 
 | | PEDESTRIAN | BICYCLE | MOTORCYCLE | CAR | PUBLIC_TRANSPORT | OTHER | SELF |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| **PEDESTRIAN** | 0 | 1,149 | 19,474 | 19,187 | 6,934 | 4,750 | 12 |
-| **BICYCLE** | 188 | 712 | 5,522 | 9,306 | 4,110 | 1,921 | 622 |
-| **MOTORCYCLE** | 8,688 | 3,877 | 10,779 | 34,919 | 5,908 | 4,308 | 10,340 |
-| **CAR** | 963 | 930 | 5,725 | 11,630 | 2,042 | 1,163 | 3,450 |
-| **PUBLIC_TRANSPORT** | 242 | 190 | 479 | 1,270 | 1,967 | 427 | 11,358 |
-| **OTHER** | 62 | 60 | 360 | 515 | 571 | 504 | 839 |
+| **PEDESTRIAN** | 0 | 1,152 | 19,488 | 19,205 | 6,946 | 4,757 | 12 |
+| **BICYCLE** | 188 | 712 | 5,541 | 9,320 | 4,124 | 1,938 | 619 |
+| **MOTORCYCLE** | 8,690 | 3,888 | 10,786 | 34,912 | 5,917 | 4,315 | 10,326 |
+| **CAR** | 963 | 932 | 5,726 | 11,630 | 2,044 | 1,168 | 3,450 |
+| **PUBLIC_TRANSPORT** | 241 | 191 | 479 | 1,273 | 1,967 | 428 | 11,366 |
+| **OTHER** | 62 | 60 | 360 | 517 | 574 | 505 | 838 |
 
-Largest cells: motorcyclist harmed by a car (34,919), pedestrian by a motorcycle
-(19,474), pedestrian by a car (19,187). Smallest: residual harmed by a bicycle
+Largest cells: motorcyclist harmed by a car (34,912), pedestrian by a motorcycle
+(19,488), pedestrian by a car (19,205). Smallest: residual harmed by a bicycle
 (60), pedestrian alone (12), pedestrian by a pedestrian (0).
 
 The zero is structural rather than surprising: two pedestrians struck in one
@@ -266,30 +295,35 @@ For checking against published figures.
 
 | Year | Parties | Injured | Killed | | Year | Parties | Injured | Killed |
 |---:|---:|---:|---:|---|---:|---:|---:|---:|
-| 2007 | 10,476 | 11,269 | 370 | | 2016 | 10,323 | 11,620 | 509 |
-| 2008 | 7,659 | 8,542 | 280 | | 2017 | 10,321 | 11,854 | 484 |
-| 2009 | 6,825 | 7,826 | 317 | | 2018 | 12,695 | 14,772 | 450 |
-| 2010 | 9,658 | 11,086 | 374 | | 2019 | 12,983 | 15,148 | 440 |
-| 2011 | 9,524 | 10,906 | 396 | | 2020 | 9,792 | 11,181 | 336 |
-| 2012 | 10,424 | 11,757 | 399 | | 2021 | 13,625 | 16,160 | 400 |
-| 2013 | 9,800 | 11,288 | 372 | | 2022 | 15,785 | 18,665 | 470 |
-| 2014 | 9,416 | 10,823 | 427 | | 2023 | 16,703 | 20,053 | 502 |
-| 2015 | 10,214 | 11,470 | 466 | | 2024 | 11,230 | 13,208 | 497 |
-| | | | | | **Total** | **197,453** | **227,628** | **7,489** |
+| 2007 | 10,474 | 11,266 | 370 | | 2016 | 10,344 | 11,644 | 511 |
+| 2008 | 7,654 | 8,537 | 279 | | 2017 | 10,335 | 11,867 | 483 |
+| 2009 | 6,823 | 7,823 | 317 | | 2018 | 12,702 | 14,777 | 449 |
+| 2010 | 9,663 | 11,093 | 375 | | 2019 | 12,996 | 15,162 | 439 |
+| 2011 | 9,538 | 10,922 | 395 | | 2020 | 9,800 | 11,179 | 337 |
+| 2012 | 10,434 | 11,774 | 399 | | 2021 | 13,637 | 16,167 | 402 |
+| 2013 | 9,817 | 11,309 | 372 | | 2022 | 15,808 | 18,648 | 471 |
+| 2014 | 9,420 | 10,820 | 428 | | 2023 | 16,715 | 20,073 | 503 |
+| 2015 | 10,229 | 11,486 | 468 | | 2024 | 11,221 | 13,179 | 501 |
+| | | | | | **Total** | **197,610** | **227,726** | **7,499** |
 
 The 2020 dip and the 2023 peak are the expected shape. The low 2008–2009 figures
 match a known weakness of the source in its early years.
 
 ### Grid coverage
 
-4,281 of 14,364 cells are zero (29.80%). No unit and no year is empty
-throughout. Emptiness tracks size: La Candelaria, the smallest locality, is
-58.20% empty; Kennedy is 16.53%. 2007 is the emptiest year at 49%, after which
-the series settles between 21% and 35%.
+7,750 of 22,680 cells are zero (34.17%). No unit and no year is empty throughout.
+Emptiness tracks size and centrality: Torca, on the northern edge, is 55.42%
+empty, followed by Tibabuyes at 49.07% and Porvenir at 46.83%; the fullest are
+Centro Histórico at 23.81%, Tabora at 24.07% and Kennedy at 25.66%. 2007 is the
+emptiest year at 52%, after which the series settles between 25% and 39%.
 
-Nearly a third of cells being zero is a property of the data at this resolution,
-not a defect, but it bears on the choice of model and will be considerably higher
-at finer scales.
+**This is the figure that moved most with the scale, and it bears on the model.**
+The same casualties cut into 30 units instead of 19 take the share of empty cells
+from 29.80% to 34.17%, +4.37 points for 58% more units. A third of the grid at
+zero is a property of the data at this resolution rather than a defect, but it is
+enough that the choice of count distribution for the panel has to be made
+deliberately, and made on this grid. At UPZ, with 111 units, it would be far
+higher again.
 
 ---
 
@@ -306,12 +340,15 @@ Against the recorded decisions.
 | D3 severity origin preserved | injured and killed reported separately at every stage |
 | D4 vehicle classification by occupant protection | all 28 source types mapped; 5,658 unrecognised parties reported, none dropped |
 | D5 two-party threshold, measured | 15,014 crashes and 33,527 people removed, composition reported |
-| D6 containment only, no snapping | 1,405 casualties kept unlocated and reported |
+| D6 containment only, no snapping | 1,236 casualties kept unlocated and reported |
+| D7 the universe is the 30 UPL of the layer | 30 of 30 units present, all 30 in the grid |
 | D9 actor type from role | 63,947 pedestrians, 2,028 to residual, 63 unlisted reported |
-| D10 complete grid | 14,364 cells, 4,281 zeros materialised |
-| D11 unlocated parties leave at aggregation | 858 parties, cause named |
+| D10 complete grid | 22,680 cells, 7,750 zeros materialised |
+| D11 unlocated parties leave at aggregation | 701 parties, cause named |
 | D12 figures from exported tables, shared log scale | 57 heatmaps, each read back from its own CSV |
 | D13 analysis and presentation tables separated | file names carry the distinction |
+| D15 UPL scale, legacy figures as historical contrast | four source counts checked against the legacy run, two footprint counts against the UPL reference |
+| D16 one entry point with routes | this run is `run_pipeline matrix`; `loading` and `parties` run the same stages up to their own end |
 
 ### Not fulfilled, or only partly
 
@@ -320,10 +357,12 @@ killed are carried separately, which is what the decision required. How the
 models should aggregate them — combined, separately, or both — is not settled and
 is for my advisor.
 
-**D7, the UPL layer, is unresolved and blocking for the panel.** The layer has 30
-of the 33 units the design assumes. Nothing in this run depends on it, because
-this run is at locality scale, but the panel specification does. The pipeline
-detects and reports the shortfall; it cannot decide it.
+**D7 is settled and this run is the first on the decided universe.** The study
+universe is the 30 UPL of the layer; Decreto 555 defines 33, and the three absent
+ones are the rural units, where the urban predictors are undefined anyway. Thirty
+is the denominator of every coverage figure in this report. The loader no longer
+warns about a shortfall — there is none — and instead stops the run if the layer
+does not carry exactly the declared universe.
 
 **D8 has a known limitation.** Party identifiers come from row position, because
 the source person code is not unique. They are stable within a run and must not
@@ -351,12 +390,14 @@ is complete and documented, and the reimplementation has not begun.
 ## 6. Outputs
 
 One directory per run, named by timestamp, so runs accumulate instead of
-overwriting one another.
+overwriting one another. Every route produces one, whether it goes all the way to
+the matrix or stops at loading; a partial run leaves the same audit trail as a
+complete one.
 
 | Location | Contents | Purpose |
 |---|---|---|
 | `provenance.log` | full log with the funnel and every check | the audit trail of the run |
-| `data/analysis__matrix_long.{csv,parquet}` | 14,364 rows, the complete grid | **the table the models consume** |
+| `data/analysis__matrix_long.{csv,parquet}` | 22,680 rows, the complete grid | **the table the models consume** |
 | `data/presentation__crosstab_{count}__all_years.csv` | 3 files, aggregate matrices | reading and reporting |
 | `data/by_year/presentation__crosstab_{count}__{year}.csv` | 54 files | per-year matrices |
 | `figures/parties/`, `figures/injured/`, `figures/killed/` | 19 heatmaps each | one per year plus an aggregate, shared colour scale within each count |

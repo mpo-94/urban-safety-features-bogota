@@ -52,7 +52,10 @@ class TerritorialScale:
     shapefile: Path
     code_column: str  # column holding the unit code in the source shapefile
     name_column: str  # column holding the unit name in the source shapefile
-    expected_units: int  # official number of units, used as a loud sanity check
+    # Number of units the study universe is declared on at this scale. It is the
+    # denominator of every coverage figure, so the loader checks the layer against
+    # it and stops if they disagree.
+    expected_units: int
 
 
 SCALES: dict[str, TerritorialScale] = {
@@ -78,15 +81,18 @@ SCALES: dict[str, TerritorialScale] = {
         shapefile=GEO_DATA_DIR / "unidadplaneamientolocal" / "UnidadPlaneamientoLocal.shp",
         code_column="CODIGO_UPL",
         name_column="NOMBRE",
-        # Decreto 555 de 2021 defines 33 UPL. The shapefile on disk only carries
-        # 30 (UPL01, UPL02 and UPL06 are absent) — see step2_auditoria_04_escalas.
-        # The mismatch is reported at load time instead of passing unnoticed.
-        expected_units=33,
+        # The study universe is the 30 UPL this layer carries. Decreto 555 de 2021
+        # defines 33; the three absent ones (UPL01, UPL02 and UPL06) are the rural
+        # units, where the urban predictors are undefined anyway. See D7. Thirty is
+        # the denominator of every coverage figure, so a layer that does not carry
+        # exactly thirty units is a different layer and the loader stops.
+        expected_units=30,
     ),
 }
 
-# Switching the whole pipeline to another scale means changing this one value.
-ACTIVE_SCALE = "locality"
+# The scale of the study. Everything downstream — the grid, the predictors, the
+# panel — is built on it, and switching it means changing this one value.
+ACTIVE_SCALE = "upl"
 
 
 def active_scale() -> TerritorialScale:
@@ -357,7 +363,8 @@ HEATMAP_EMPTY_COLOR = "#eeeeee"
 # Run-time switches
 # ---------------------------------------------------------------------------
 # When true, every stage writes its output to the run directory. Off by default
-# because the intermediates are large and only useful when debugging.
+# because the intermediates are large and only useful when debugging; the entry
+# point can turn them on for a single run without this file being edited.
 DUMP_INTERMEDIATES = False
 
 RUN_DIR_PREFIX = "run_"
@@ -379,12 +386,20 @@ def new_run_directory(now: dt.datetime | None = None, base: Path | None = None) 
 
 
 # ---------------------------------------------------------------------------
-# Verification baseline
+# Verification baselines
 # ---------------------------------------------------------------------------
-# Measured on the real execution of the legacy notebook and documented in
-# docs/auditoria/auditoria_02_balance.md. Loading changes none of the legacy
-# logic, so these counts must be reproduced exactly. A mismatch means a bug, not
-# a number to be adjusted.
+# Two different things live in this section and must not be read as one.
+#
+# LEGACY_BASELINE_COUNTS is a *historical contrast*. These counts were measured
+# on the real execution of the legacy notebook, documented in
+# docs/auditoria/auditoria_02_balance.md, and that execution ran at LOCALITY
+# scale. They are the evidence that the reimplementation reproduced the pipeline
+# it replaces, and they are kept for that reason alone, not as a target for the
+# current scale.
+#
+# SCALE_BASELINE_COUNTS is the *live reference*: the same measures taken on the
+# scale the study actually runs on, so that a future run which shifts is caught
+# immediately. It is what a run is verified against from now on.
 LEGACY_BASELINE_COUNTS: dict[str, int] = {
     "fatalities": 8_548,
     "injuries": 261_293,
@@ -394,6 +409,38 @@ LEGACY_BASELINE_COUNTS: dict[str, int] = {
     "vehicles": 1_465_735,
 }
 
+# The scale the legacy figures above were measured on. Outside it, the two
+# footprint-dependent counts are not comparable to them.
+LEGACY_BASELINE_SCALE = "locality"
+
+# Counts that no territorial layer can change: they are properties of the source
+# files themselves, so they must reproduce the legacy figures exactly whatever
+# scale is active. A mismatch here means a bug, not a number to be adjusted.
+SCALE_INDEPENDENT_CHECKS = ("fatalities", "injuries", "concatenated", "vehicles")
+
+# Counts that depend on the footprint of the unit layer, because they count the
+# records that fall outside every polygon. Two layers covering different
+# territory necessarily disagree on them, so they are checked against the
+# baseline of the active scale — never across scales.
+SCALE_DEPENDENT_CHECKS = ("fatalities_without_area", "injuries_without_area")
+
+# Footprint-dependent counts per scale, measured on this implementation. A scale
+# with no entry here has no baseline yet: the run reports its figures as a first
+# measurement instead of failing, and they belong in this table afterwards.
+#
+# Locality is deliberately absent: on that scale the legacy figures above are the
+# baseline, and repeating them here would be one number in two places, free to
+# drift apart without anything noticing.
+SCALE_BASELINE_COUNTS: dict[str, dict[str, int]] = {
+    # The live reference of the study. Measured on the UPL layer, whose footprint
+    # is not the union of the localities, so these are lower than the legacy
+    # figures rather than a correction of them.
+    "upl": {
+        "fatalities_without_area": 50,
+        "injuries_without_area": 1_186,
+    },
+}
+
 # ---------------------------------------------------------------------------
 # Legacy reference figures, for divergence reporting only
 # ---------------------------------------------------------------------------
@@ -401,6 +448,10 @@ LEGACY_BASELINE_COUNTS: dict[str, int] = {
 # departs from the legacy pipeline, and the figures below carry the orientation
 # bias it is meant to remove. They exist so the size and direction of the
 # departure can be quantified and reported, never to be matched.
+#
+# They were taken before the legacy pipeline restricted itself geographically, so
+# unlike the footprint counts above they do not depend on the unit layer and stay
+# comparable whatever scale is active.
 LEGACY_REFERENCE: dict[str, int] = {
     # One row per crash in the legacy export, not per affected party.
     "exported_rows": 179_110,

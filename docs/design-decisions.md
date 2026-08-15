@@ -33,7 +33,7 @@ carried, so the second is larger for the same underlying records.
 | D4 | Vehicle classification by occupant protection | Methodological | Closed | Yes |
 | D5 | Crashes with more than two parties are discarded | Methodological | Closed | Yes |
 | D6 | Spatial join by containment only, no proximity fallback | Methodological | Closed (crash-level handling open) | Yes |
-| D7 | The UPL layer is three units short of the design | Methodological | **Open** | Detection only |
+| D7 | The study universe is the 30 UPL of the layer | Methodological | Closed | Yes |
 | D8 | Person identity falls back to row position | Implementation | Closed, forced by the data | Yes |
 | D9 | The actor type of a casualty with no recorded vehicle comes from its role | Methodological | Closed | Yes |
 | D10 | The grid is complete: an unobserved combination is a zero, not an absence | Methodological | Closed | Yes |
@@ -41,9 +41,11 @@ carried, so the second is larger for the same underlying records.
 | D12 | Figures are drawn from the exported tables, on a shared logarithmic scale | Implementation | Closed | Yes |
 | D13 | Output layout separates analysis tables from presentation tables | Implementation | Closed | Yes |
 | D14 | Pictograms in pipeline figures — tried and reverted | Implementation | Closed, reverted | No, removed |
+| D15 | The pipeline runs at UPL; the legacy figures become a historical contrast | Methodological | Closed | Yes |
+| D16 | One entry point, one route per way of running the pipeline | Implementation | Closed | Yes |
 
-Methodological decisions: D1-D7, D9, D10, D11. Implementation decisions: D8, D12,
-D13, D14.
+Methodological decisions: D1-D7, D9, D10, D11, D15. Implementation decisions: D8,
+D12, D13, D14, D16.
 
 ---
 
@@ -355,10 +357,13 @@ default, with its threshold expressed in metres and applied in the projected
 coordinate system so the unit is genuinely metres.
 
 The reasoning is that snapping a point to a polygon it is not inside assigns a
-casualty to a place where it did not happen. At locality scale this concerns 61
-of 8,548 fatalities and 1,344 of 261,293 injuries, about half a percent; with a
-real 5 m threshold the fallback would recover 3 of those 61. Fabricating
-locations for half a percent of records to gain a handful is a bad trade.
+casualty to a place where it did not happen. At UPL scale, the scale of the study,
+this concerns **50 of 8,548 fatalities and 1,186 of 261,293 injuries**, 1,236
+records in all, 0.46%. At locality scale, where the legacy pipeline was measured,
+it was 61 and 1,344; the two footprints are not the same territory, so the counts
+differ by construction and neither corrects the other. With a real 5 m threshold
+the fallback recovered 3 of the 61 at locality scale. Fabricating locations for
+half a percent of records to gain a handful is a bad trade.
 
 **Rejected — enable the fallback by default to maximise coverage.** It recovers
 almost nothing at an honest threshold, and at a generous one it relocates records
@@ -373,37 +378,55 @@ assigned by some other means, and at which stage. To settle with my advisor.
 
 ---
 
-## D7 — The UPL layer is three units short of the design
+## D7 — The study universe is the 30 UPL of the layer
 
 **Kind:** Methodological.
 
-**Status:** **Open.** Blocking for the panel specification. To settle with my
-advisor.
+**Status:** Closed.
 
-**Built:** Detection only. The expected number of units is declared alongside
-each scale and a run on the UPL scale reports the shortfall. Nothing acts on it.
+**Built:** Yes. The universe is declared as 30 units alongside the UPL scale, and
+the loader stops the run if the layer does not carry exactly that many. Every
+grid, every coverage figure and every panel is built on those 30.
 
-**Context.** The panel is specified as UPL by year, over the 33 units defined by
-Decreto 555 de 2021. The shapefile I have carries 30 of them: UPL01, UPL02 and
-UPL06 are absent, and its total area is consistent with an urban and urban-rural
-extract that leaves out the rural units. Whatever else is true, no variable built
-on this layer can exceed 90.9% coverage of the intended panel, and the three
-missing units will never receive a value from any source.
+**Context.** Decreto 555 de 2021 defines 33 UPL. The layer I have carries 30:
+UPL01, UPL02 and UPL06 are absent, and the total area is consistent with an urban
+and urban-rural extract that leaves out the rural units. Those three are exactly
+where the urban predictors — road infrastructure, modal share, built environment
+— are largely undefined, so they would enter the panel as rows of missing values
+rather than as observations.
 
-**Decision.** Not taken. All I have done meanwhile is make the shortfall
-impossible to miss, so that no coverage figure gets reported without it being
-obvious that the denominator is in question.
+**Decision.** **The study universe is the 30 UPL present in the layer.** Thirty is
+the denominator of every coverage figure the study reports. A unit of that
+universe that receives no casualty in a given year is a zero, by D10; there is no
+partial coverage of a larger set to report, because the larger set is not the
+universe.
 
-**Options on the table.**
+This is a declaration of scope, not a shortfall, and it is written that way
+everywhere: a figure phrased as "90.9% of the 33 units" describes a study that was
+never specified, and invites a reader to look for the missing 9.1% as if it were
+data lost in processing.
 
-- Obtain the complete layer from the Secretaría Distrital de Planeación and keep
-  the panel at 33 units. Preferable if the layer exists, but the missing units
-  appear to be rural, where the urban predictors are largely undefined anyway.
-- Declare the study universe to be the 30 urban UPL and state the restriction
-  explicitly. Honest and immediately actionable, at the cost of a narrower claim.
+**Rejected — hold the panel at 33 and carry the three units as missing.** They
+would be structurally empty rows in every variable, which is not the same as an
+observed zero and would have to be excluded from every estimation anyway. The
+result is the same 30 units with an extra explanation attached.
 
-Deciding this early matters more than deciding it well: every coverage figure I
-report downstream is computed against one denominator or the other.
+**Rejected — wait for the complete layer from the Secretaría Distrital de
+Planeación.** It would only add rural units where the predictors do not exist,
+and it blocked work that has no other reason to be blocked.
+
+**What is built, and why it changed.** Until this was settled the loader warned
+that the layer was short of the design. That warning is gone: nothing is short.
+The check itself stays, now against 30, and it is stricter than it was — a
+mismatch raises rather than warns. The reason is that the roster is the
+denominator of every coverage figure, so a layer that does not carry the declared
+universe is a different layer, not a smaller one, and continuing would silently
+rebase every figure of the run on whatever happens to be on disk.
+
+**Consequence for the panel.** The panel is 30 units by 18 years = 540 unit-years,
+and every rate reported per unit is over those 30. See D15 for the run that made
+UPL the scale of the pipeline, and D10 for what 30 units do to the sparsity of the
+grid.
 
 ---
 
@@ -586,10 +609,12 @@ where nothing was observed. The unit roster comes from the shapefile rather than
 from the data, so a unit that never appears in a single crash still gets its rows
 of zeros instead of vanishing.
 
-At locality scale that is 19 units x 18 years x 6 actor types x 7 counterparts =
-**14,364 cells, of which 4,281 (29.80%) are zero**. No unit and no year is empty
-throughout. Emptiness concentrates where it should: La Candelaria, the smallest
-locality, is 58.20% empty, while Kennedy is 16.53%.
+At UPL scale that is 30 units x 18 years x 6 actor types x 7 counterparts =
+**22,680 cells, of which 7,750 (34.17%) are zero**. No unit and no year is empty
+throughout. Emptiness concentrates where it should: Torca, on the northern edge,
+is 55.42% empty, while Kennedy is 25.66% and Centro Histórico 23.81%. Measured at
+locality scale the same grid was 14,364 cells and 29.80% zero, which is the
+comparison that matters for the modelling note below.
 
 **Rejected — keep only the observed combinations, as the inherited code did.**
 Every consumer would have to reconstruct the grid to know whether a gap means
@@ -598,10 +623,15 @@ zero, and each would reconstruct it slightly differently.
 **Rejected — write zeros only for combinations seen at least once anywhere.** A
 half-complete grid is worse than either alternative, because it looks complete.
 
-**Note for the modelling stage.** Almost 30% of cells being zero is a property of
+**Note for the modelling stage.** A third of the cells being zero is a property of
 the data at this resolution, not a defect, but it does bear on the choice of
-model. The share is worth revisiting per scale: at UPZ, with six times as many
-units, it will be considerably higher.
+model. The share moves with the number of units, and predictably: cutting the
+same casualties into 30 units instead of 19 took it from 29.80% to 34.17%, +4.37
+points for 58% more units. At UPZ, with 111 units, it would be far higher again.
+A third of the grid at zero is enough that which count distribution the panel is
+fitted with is a decision to take deliberately rather than by default. It belongs
+to the modelling stage and to my advisor, and it is now to be taken on this grid,
+not on the locality one.
 
 ---
 
@@ -619,9 +649,11 @@ That postpones the question rather than answering it, and aggregation is where i
 has to be answered: a cell is identified by its unit, so a record with no unit has
 no cell to go to.
 
-**Decision.** They leave here, and the loss is stated with its cause: **858
-affected parties, carrying 1,146 injured and 51 killed**. That is 0.43% of the
-198,311 affected parties.
+**Decision.** They leave here, and the loss is stated with its cause: at UPL scale,
+**701 affected parties, carrying 1,048 injured and 41 killed**. That is 0.35% of
+the 198,311 affected parties. At locality scale it was 858 parties, 1,146 injured
+and 51 killed; the party model is identical in both runs, and the whole of the
+difference is that the two layers cover different territory.
 
 Dropping them at this point rather than at load is deliberate. Everything
 upstream — the party model, the counterpart resolution, the two-party threshold —
@@ -745,3 +777,113 @@ the reason it failed is not obvious from the outside — it comes from having se
 the output, not from an argument that could have been made in advance. Someone
 proposing pictograms again in six months, quite possibly me, should be able to
 find out that it was tried and what looking at it showed.
+
+---
+
+## D15 — The pipeline runs at UPL; the legacy figures become a historical contrast
+
+**Kind:** Methodological.
+
+**Status:** Closed.
+
+**Built:** Yes. The active scale is UPL, and the loading stage is verified against
+two different baselines depending on what each count actually measures.
+
+**Context.** The study is specified at UPL by year (D7). The pipeline ran at
+locality scale until now for one reason: that is the scale the legacy notebook ran
+on, and reproducing its counts exactly was the evidence that the reimplementation
+had not changed the logic it inherited. That evidence has been obtained, and it
+does not need to be obtained again on every run.
+
+Six counts characterise the loading stage, and moving scale splits them in two:
+
+- **Four are properties of the source files** — 8,548 fatalities, 261,293
+  injuries, 269,841 concatenated, 1,465,735 vehicle rows. No territorial layer can
+  move them.
+- **Two count the records that fall outside every polygon** — 61 fatalities and
+  1,344 injuries at locality scale. These are properties of the *footprint* of the
+  layer. The UPL layer covers different territory, so they necessarily differ, and
+  they do: **50 and 1,186**.
+
+**Decision.** Keep both, and label them for what each one is.
+
+The legacy figures stay in the code as a **historical contrast**, explicitly
+recorded as measured at locality scale. The four source counts are still checked
+against them on every run at any scale, because reproducing them is what says
+loading changed none of the inherited logic. The two footprint counts are only
+compared to them when the run is at locality scale.
+
+Alongside them there is now a **live reference**: the footprint counts measured on
+this implementation for each scale. UPL is declared at 50 and 1,186, and from now
+on that is what a run is checked against. A scale with no entry yet reports its
+figures as a first measurement instead of failing, and they are recorded
+afterwards.
+
+**Rejected — delete the legacy baseline now that the scale has moved.** It is the
+evidence that the reimplementation reproduced the pipeline it replaces. That
+result was obtained once and does not stop being true because the study moved
+scale; deleting it would leave the claim in the documentation with nothing behind
+it.
+
+**Rejected — keep a single baseline and update its two footprint numbers to the
+UPL ones.** It would silently turn a comparison against the legacy pipeline into a
+comparison against myself, under the same name. The two say different things and
+must not share a label.
+
+**Rejected — drop the footprint counts from verification entirely, as
+scale-dependent noise.** They are the only automatic check that the unit layer is
+the one the run thinks it is. A layer swapped for another with a different
+footprint would otherwise pass every check in the pipeline.
+
+**What moved with the scale, measured.** Everything upstream of the spatial join
+is unchanged, which is the expected result and worth stating as one: the party
+model, the two-party threshold and the counterpart resolution do not know what a
+polygon is. 198,311 affected parties, 15,014 discarded crashes and 169,098
+surviving crashes are identical at both scales. What changes is only what
+geography touches: 701 parties leave for lack of a unit instead of 858 (D11), the
+matrix carries 197,610 parties instead of 197,453, and the grid grows from 14,364
+cells to 22,680 with a third of them at zero instead of under 30% (D10).
+
+---
+
+## D16 — One entry point, one route per way of running the pipeline
+
+**Kind:** Implementation.
+
+**Status:** Closed.
+
+**Built:** Yes. `src/run_pipeline.py` is the only way the pipeline is started.
+
+**Context.** Each stage module carried its own `main()`, so `python -m src.matrix`
+ran everything and `python -m src.loading` ran the first stage. Three entry points
+that had to be kept in agreement, and no way to ask for anything other than what
+each of them happened to do. The pipeline is about to grow two more things to run
+— ρ(t) and the static predictors with their figures — and that pattern does not
+survive them.
+
+**Decision.** One module, one command, and a route for each way of running the
+pipeline. A route is a name, a one-line summary and a function taking the run log;
+adding one means writing that function and adding one entry to the registry, after
+which the command line, the help text and the run directory follow with nothing
+else to touch. The stage modules keep their stage functions and no longer have a
+`main()`, so there is exactly one place where stages are chained.
+
+Three properties are deliberate:
+
+- **Every route gets its own run directory**, as before. A partial run is a run and
+  leaves the same audit trail as a complete one.
+- **The intermediate dump switch is a command-line flag**, `--dump-intermediates` /
+  `--no-dump-intermediates`, overriding the configured default for that run only.
+  Turning on a debugging aid should not be a source edit that can be committed by
+  accident, which is exactly what had just happened to that switch.
+- **Running with no arguments runs the full pipeline and says so**, listing the
+  routes available. A pipeline that answers a bare invocation with a usage error
+  is being pedantic about something it can perfectly well decide.
+
+**Rejected — a route flag on each stage module.** Same duplication, spread thinner,
+and it leaves no single place that shows what can be run.
+
+**Rejected — one route per stage, composed on the command line.** It reads well
+until a stage needs the output of two others, and then the composition has to know
+the dependency graph. Routes are named paths through the pipeline precisely so the
+dependencies stay in Python where they can be typed.
