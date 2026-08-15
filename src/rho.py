@@ -434,23 +434,29 @@ def _style_panel(axis, title: str) -> None:
     axis.tick_params(labelsize=7)
 
 
-def _draw_series(axis, years, values, denominators, color: str, label: str | None = None) -> None:
-    """One rho series, with the thin points marked hollow rather than removed."""
+def _draw_series(axis, years, values, color: str, label: str | None = None) -> None:
+    """One rho series, every point drawn the same way.
+
+    No mark distinguishes a value by how many crashes are behind it. A rho of one
+    over two crashes is as much the measurement as a rho of one over two thousand,
+    and singling it out in the figure is a cut applied by eye. The only gap in the
+    line is where the denominator is zero: there rho does not exist, the value is
+    missing rather than small, and matplotlib leaves the break by itself.
+
+    The denominator is still reported everywhere it belongs — beside rho in every
+    row of the exported table, in the panel titles, and as a figure of its own.
+    """
     axis.plot(years, values, color=color, linewidth=1.6, zorder=3, label=label)
-    thin = denominators < config.RHO_SPARSE_DENOMINATOR
-    for mask, face in ((~thin, color), (thin, config.RHO_SPARSE_MARKER_FACE)):
-        if mask.any():
-            axis.plot(
-                np.asarray(years)[mask],
-                np.asarray(values, dtype=float)[mask],
-                linestyle="none",
-                marker="o",
-                markersize=3.4,
-                markerfacecolor=face,
-                markeredgecolor=color,
-                markeredgewidth=0.9,
-                zorder=4,
-            )
+    axis.plot(
+        years,
+        np.asarray(values, dtype=float),
+        linestyle="none",
+        marker="o",
+        markersize=3.4,
+        markerfacecolor=color,
+        markeredgecolor=color,
+        zorder=4,
+    )
 
 
 def _city_series(long_table: pd.DataFrame, pair: str) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -475,8 +481,8 @@ def _render_city(long_table: pd.DataFrame, out_path: Path) -> None:
     """
     fig, axes = plt.subplots(3, 3, figsize=(12, 9), sharex=True, sharey=True)
     for axis, pair in zip(axes.ravel(), config.RHO_PAIR_LABELS):
-        years, values, denominators = _city_series(long_table, pair)
-        _draw_series(axis, years, values, denominators, config.RHO_SERIES_COLOR)
+        years, values, _ = _city_series(long_table, pair)
+        _draw_series(axis, years, values, config.RHO_SERIES_COLOR)
         _style_panel(axis, _short_pair(pair))
 
     for axis in axes[-1]:
@@ -486,7 +492,7 @@ def _render_city(long_table: pd.DataFrame, out_path: Path) -> None:
 
     fig.suptitle(
         f"rho(t) — both parties with casualties, whole city ({config.active_scale().label} scale)\n"
-        f"hollow points: fewer than {config.RHO_SPARSE_DENOMINATOR} crashes behind the value",
+        "a gap in a line is a year with no crash of that pair, where rho does not exist",
         fontsize=11,
     )
     fig.tight_layout(rect=(0, 0, 1, 0.94))
@@ -504,7 +510,6 @@ def _render_city_denominators(long_table: pd.DataFrame, out_path: Path) -> None:
     for axis, pair in zip(axes.ravel(), config.RHO_PAIR_LABELS):
         years, _, denominators = _city_series(long_table, pair)
         axis.plot(years, denominators, color=config.RHO_SERIES_COLOR, linewidth=1.6)
-        axis.axhline(config.RHO_SPARSE_DENOMINATOR, color=config.RHO_REFERENCE_COLOR, linewidth=0.9, linestyle="--")
         axis.set_yscale("log")
         axis.set_title(_short_pair(pair), fontsize=9)
         axis.grid(True, color=config.RHO_GRID_COLOR, linewidth=0.6)
@@ -520,7 +525,7 @@ def _render_city_denominators(long_table: pd.DataFrame, out_path: Path) -> None:
 
     fig.suptitle(
         "crashes behind each rho, whole city (logarithmic)\n"
-        f"dashed line: the {config.RHO_SPARSE_DENOMINATOR}-crash mark below which rho is noise",
+        "the denominator of the figure beside it, on the same layout",
         fontsize=11,
     )
     fig.tight_layout(rect=(0, 0, 1, 0.94))
@@ -556,7 +561,6 @@ def _render_units_for_pair(long_table: pd.DataFrame, pair: str, units: pd.DataFr
             axis,
             unit[config.YEAR_COL].to_numpy(dtype=int),
             unit[config.RHO_COL].astype(float).to_numpy(),
-            unit[config.RHO_DENOMINATOR_COL].to_numpy(dtype=int),
             config.RHO_SERIES_COLOR,
             label=str(code),
         )
@@ -576,8 +580,7 @@ def _render_units_for_pair(long_table: pd.DataFrame, pair: str, units: pd.DataFr
                fontsize=9, frameon=False)
     fig.suptitle(
         f"rho(t) for {_short_pair(pair)} by unit — {pair}\n"
-        f"panel title carries the crashes behind the whole series; hollow points have fewer than "
-        f"{config.RHO_SPARSE_DENOMINATOR} crashes in that year",
+        "panel title carries the crashes behind the whole series; a gap is a year with no crash",
         fontsize=11,
         x=0.4,
     )

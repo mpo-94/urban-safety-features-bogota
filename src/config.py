@@ -34,9 +34,53 @@ GEO_DATA_DIR = DATA_DIR / "geo"
 # affected person. The vehicle table lists every party of every crash, including
 # the ones that suffered no casualty — which is what makes it possible to find a
 # counterpart for each casualty.
-FATALITIES_PATH = CRASH_DATA_DIR / "MUERTO" / "MUERTO.shp"
-INJURIES_PATH = CRASH_DATA_DIR / "LESIONADO" / "LESIONADO.shp"
+#
+# The RAW_ paths are the extract this work started from and are never written to
+# by anything here.
+RAW_FATALITIES_PATH = CRASH_DATA_DIR / "MUERTO" / "MUERTO.shp"
+RAW_INJURIES_PATH = CRASH_DATA_DIR / "LESIONADO" / "LESIONADO.shp"
 VEHICLES_PATH = CRASH_DATA_DIR / "vehiculo.csv"
+
+# ---------------------------------------------------------------------------
+# Updated 2024 extract
+# ---------------------------------------------------------------------------
+# A later extract of 2024 arrived covering the whole year, where the injury layer
+# of the original one stops in mid-September. The integration route rebuilds both
+# casualty layers with every 2024 row replaced by that extract, writing the
+# result beside the sources rather than over them.
+#
+# The general criterion, which will apply again the next time an update arrives:
+# where two extracts describe the same record, the more recent one prevails. See
+# D19.
+INCOMING_2024_PATH = DATA_DIR / "incoming" / "afectados_2024.csv"
+INTEGRATED_DIR = DATA_DIR / "integrated"
+INTEGRATED_FATALITIES_PATH = INTEGRATED_DIR / "fatalities__2024_updated_extract.parquet"
+INTEGRATED_INJURIES_PATH = INTEGRATED_DIR / "injuries__2024_updated_extract.parquet"
+
+# The incoming file holds both severities in one table. This column tells them
+# apart: present means the person died. Verified against the previous extract —
+# all 543 people already known to be fatalities carry it, and no person known to
+# be an injury does, apart from six who died after that extract was taken.
+# It is a rule about this file, not about the format: in the original fatality
+# layer the same column is null on 35% of the rows.
+INCOMING_FATALITY_MARKER_COL = "MUERTE_POS"
+
+# The year the updated extract replaces, whole.
+REPLACED_YEAR = 2024
+
+# Geometry in the incoming file is WKT with no CRS declared anywhere. This is the
+# one the points actually agree with: 95% of the people present in both extracts
+# land on exactly the same coordinates under it.
+INCOMING_GEOMETRY_COL = "geometry"
+INCOMING_CRS = 4686
+
+# The single line to revert the integration. False sends every stage back to the
+# original extract; nothing else in the code has to change, because the paths
+# below are what the whole pipeline reads.
+USE_UPDATED_2024 = True
+
+FATALITIES_PATH = INTEGRATED_FATALITIES_PATH if USE_UPDATED_2024 else RAW_FATALITIES_PATH
+INJURIES_PATH = INTEGRATED_INJURIES_PATH if USE_UPDATED_2024 else RAW_INJURIES_PATH
 
 # ---------------------------------------------------------------------------
 # Territorial scale
@@ -159,6 +203,16 @@ ROLE_COL = "CONDICION"  # PEATON, CONDUCTOR, PASAJERO, MOTOCICLISTA, CICLISTA...
 PEDESTRIAN_ROLE = "PEATON"
 CRASH_CLASS_SOURCE_COL = "CLASE_ACC"
 YEAR_SOURCE_COL = "ANO_OCURRE"
+DATE_SOURCE_COL = "FECHA_OCUR"
+
+# ---------------------------------------------------------------------------
+# Source completeness
+# ---------------------------------------------------------------------------
+# A month holding less than this share of the median month of its own year is
+# reported. Judged against the year itself because the layers grow over eighteen
+# years, so any fixed count would either excuse the recent years or condemn the
+# early ones. It is a reporting threshold: nothing is ever filtered on it.
+COMPLETENESS_THIN_SHARE = 0.5
 
 # ---------------------------------------------------------------------------
 # Party resolution
@@ -424,9 +478,10 @@ RHO_NUMERATOR_COL = "CRASHES_BOTH_AFFECTED"
 RHO_DENOMINATOR_COL = "CRASHES_TOTAL"
 RHO_COL = "RHO"
 
-# Below this many crashes in the denominator, rho is noise. Nothing is filtered
-# on it — the denominator travels next to rho in every row and every figure, and
-# the reader decides — but the run reports how much of the grid is that thin.
+# Used to report how much of the grid rests on few crashes, and for nothing else.
+# It is not a filter and not a mark on any figure: no value is hidden, dropped or
+# drawn differently for being thin. The denominator travels beside rho in every
+# row of the exported table and in the panel titles, and the reader decides.
 RHO_SPARSE_DENOMINATOR = 10
 
 # A year-on-year change in rho above this is called out by name in the report. It
@@ -448,11 +503,11 @@ HEATMAP_EMPTY_COLOR = "#eeeeee"
 # unit for a given pair. Each panel therefore draws one series and, where it
 # helps, one reference — so identity never rests on telling nine hues apart,
 # which is not something a reader should be asked to do.
+#
+# Every point of a series is drawn identically. The only gap in a line is a year
+# with no crash of that pair, where rho does not exist.
 RHO_SERIES_COLOR = "#1b6ca8"
 RHO_REFERENCE_COLOR = "#9e9e9e"
-# Points whose denominator is below RHO_SPARSE_DENOMINATOR are drawn hollow. The
-# value is not hidden or dropped; it is marked as thin where it is read.
-RHO_SPARSE_MARKER_FACE = "#ffffff"
 RHO_GRID_COLOR = "#e3e3e3"
 
 # ---------------------------------------------------------------------------
@@ -484,18 +539,32 @@ def new_run_directory(now: dt.datetime | None = None, base: Path | None = None) 
 # ---------------------------------------------------------------------------
 # Verification baselines
 # ---------------------------------------------------------------------------
-# Two different things live in this section and must not be read as one.
+# A loading count depends on two things, and the baselines are indexed by both.
 #
-# LEGACY_BASELINE_COUNTS is a *historical contrast*. These counts were measured
-# on the real execution of the legacy notebook, documented in
-# docs/auditoria/auditoria_02_balance.md, and that execution ran at LOCALITY
-# scale. They are the evidence that the reimplementation reproduced the pipeline
-# it replaces, and they are kept for that reason alone, not as a target for the
-# current scale.
+#   * Which EXTRACT of the sources the run reads. Replacing 2024 with the updated
+#     extract moves five of the six counts; only the vehicle table is untouched.
+#   * Which SCALE it runs on, for the two counts that measure how many records
+#     fall outside every polygon, since two layers covering different territory
+#     disagree on them by construction.
 #
-# SCALE_BASELINE_COUNTS is the *live reference*: the same measures taken on the
-# scale the study actually runs on, so that a future run which shifts is caught
-# immediately. It is what a run is verified against from now on.
+# Three sets of numbers therefore live here, and they say different things:
+#
+#   LEGACY_BASELINE_COUNTS is a *historical contrast*, measured on the real
+#   execution of the legacy notebook (docs/auditoria/auditoria_02_balance.md),
+#   which ran at LOCALITY scale on the ORIGINAL extract. It is the evidence that
+#   the reimplementation reproduced the pipeline it replaces. It is kept for that
+#   reason alone and is never a target for any other extract or scale.
+#
+#   SOURCE_BASELINE_COUNTS holds the counts that come from the source files
+#   themselves, per extract. No territorial layer can move them.
+#
+#   SCALE_BASELINE_COUNTS holds the counts that depend on the footprint of the
+#   unit layer, per extract and scale.
+#
+# The last two are the *live reference*: what a run is actually verified against.
+# The original extract has no entry in either, on purpose — there its numbers are
+# the legacy ones, and repeating them would be one value in two places, free to
+# drift apart with nothing to notice.
 LEGACY_BASELINE_COUNTS: dict[str, int] = {
     "fatalities": 8_548,
     "injuries": 261_293,
@@ -505,9 +574,17 @@ LEGACY_BASELINE_COUNTS: dict[str, int] = {
     "vehicles": 1_465_735,
 }
 
-# The scale the legacy figures above were measured on. Outside it, the two
-# footprint-dependent counts are not comparable to them.
+# The scale and the extract the legacy figures above were measured on. Outside
+# either, they are not comparable and are not used.
 LEGACY_BASELINE_SCALE = "locality"
+
+# Which extract a run reads. Follows the switch above, so the baselines cannot be
+# checked against the wrong extract by forgetting to change a second setting.
+ORIGINAL_EXTRACT = "original extract"
+UPDATED_2024_EXTRACT = f"{REPLACED_YEAR} updated extract"
+LEGACY_BASELINE_EXTRACT = ORIGINAL_EXTRACT
+
+ACTIVE_EXTRACT = UPDATED_2024_EXTRACT if USE_UPDATED_2024 else ORIGINAL_EXTRACT
 
 # Counts that no territorial layer can change: they are properties of the source
 # files themselves, so they must reproduce the legacy figures exactly whatever
@@ -520,20 +597,47 @@ SCALE_INDEPENDENT_CHECKS = ("fatalities", "injuries", "concatenated", "vehicles"
 # baseline of the active scale — never across scales.
 SCALE_DEPENDENT_CHECKS = ("fatalities_without_area", "injuries_without_area")
 
-# Footprint-dependent counts per scale, measured on this implementation. A scale
-# with no entry here has no baseline yet: the run reports its figures as a first
-# measurement instead of failing, and they belong in this table afterwards.
-#
-# Locality is deliberately absent: on that scale the legacy figures above are the
-# baseline, and repeating them here would be one number in two places, free to
-# drift apart without anything noticing.
-SCALE_BASELINE_COUNTS: dict[str, dict[str, int]] = {
-    # The live reference of the study. Measured on the UPL layer, whose footprint
-    # is not the union of the localities, so these are lower than the legacy
-    # figures rather than a correction of them.
-    "upl": {
-        "fatalities_without_area": 50,
-        "injuries_without_area": 1_186,
+# Counts that come from the source files, per extract. Measured on this
+# implementation. The original extract is absent because there they are the
+# legacy figures above.
+SOURCE_BASELINE_COUNTS: dict[str, dict[str, int]] = {
+    UPDATED_2024_EXTRACT: {
+        # 8,548 - 555 + 599: the 2024 rows of the original extract leave, the
+        # 2024 rows of the updated one enter.
+        "fatalities": 8_592,
+        # 261,293 - 15,039 + 22,667. The big move: the original injury layer
+        # stops in mid-September 2024.
+        "injuries": 268_921,
+        "concatenated": 277_513,
+        # Untouched. The update carries no vehicle table of its own, and the one
+        # on disk already covers 99.5% of its crashes.
+        "vehicles": 1_465_735,
+    },
+}
+
+# Footprint-dependent counts per extract and scale, measured on this
+# implementation. A combination with no entry here has no baseline yet: the run
+# reports its figures as a first measurement instead of failing, and they belong
+# in this table afterwards.
+SCALE_BASELINE_COUNTS: dict[str, dict[str, dict[str, int]]] = {
+    ORIGINAL_EXTRACT: {
+        # Measured on the UPL layer, whose footprint is not the union of the
+        # localities, so these are lower than the legacy figures rather than a
+        # correction of them. Kept as the reference of the extract they belong
+        # to, so reverting the integration reverts to a checked baseline too.
+        "upl": {
+            "fatalities_without_area": 50,
+            "injuries_without_area": 1_186,
+        },
+    },
+    UPDATED_2024_EXTRACT: {
+        # The live reference of the study. Up from 50 and 1,186 on the original
+        # extract: the updated 2024 carries four more months of records, and five
+        # of its rows moved outside every unit when their geometry changed.
+        "upl": {
+            "fatalities_without_area": 51,
+            "injuries_without_area": 1_224,
+        },
     },
 }
 

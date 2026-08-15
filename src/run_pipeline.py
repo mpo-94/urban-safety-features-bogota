@@ -10,6 +10,8 @@ resolution should not have to rebuild fifty-seven figures first.
     python -m src.run_pipeline parties         # stop after party resolution
     python -m src.run_pipeline loading         # sources only
     python -m src.run_pipeline rho             # the rho(t) diagnostic
+    python -m src.run_pipeline completeness    # do the sources cover every month?
+    python -m src.run_pipeline integrate       # rebuild the layers from the updated extract
     python -m src.run_pipeline loading --dump-intermediates
 
 Adding a route means writing one function that takes a RunLog and adding one
@@ -25,7 +27,7 @@ from typing import Callable
 
 import pandas as pd
 
-from src import config, loading, matrix, parties, rho
+from src import completeness, config, integration, loading, matrix, parties, rho
 from src.provenance import RunLog
 
 
@@ -86,6 +88,25 @@ def run_parties(log: RunLog) -> None:
     log.table("affected parties by actor type and counterpart:", counterparts.to_string())
 
 
+def run_integrate(log: RunLog) -> None:
+    """Rebuild the casualty layers with the replaced year from the updated extract.
+
+    A build step, not an analysis: it reads the original sources, writes the
+    integrated layers to data/, and touches nothing else. Every other route reads
+    whichever of the two the configuration points at.
+    """
+    integration.integrate(log)
+    log.table("record funnel:", log.funnel())
+
+
+def run_completeness(log: RunLog) -> None:
+    """Month-by-month coverage of the casualty layers, as they are configured."""
+    table = completeness.flag_thin_months(completeness.monthly_counts(log))
+    completeness.export(table, log)
+    log.table("record funnel:", log.funnel())
+    completeness.report(table, log)
+
+
 def run_rho(log: RunLog) -> None:
     """The rho(t) diagnostic, which sits beside the pipeline rather than in it.
 
@@ -135,13 +156,15 @@ class Route:
 
 
 # The pipeline routes first, longest to shortest, then the analyses that sit
-# beside it. The static predictors and their figures join this list as they are
-# written.
+# beside it, then the build step. The static predictors and their figures join
+# this list as they are written.
 ROUTES: tuple[Route, ...] = (
     Route("matrix", "full pipeline up to the casualty matrix, with tables and figures", run_matrix),
     Route("parties", "up to party resolution: one row per affected party", run_parties),
     Route("loading", "sources only: read them, locate them, verify the counts", run_loading),
     Route("rho", "rho(t): share of two-party crashes where both parties were hurt", run_rho),
+    Route("completeness", "month-by-month coverage of the casualty layers", run_completeness),
+    Route("integrate", f"rebuild the layers with {config.REPLACED_YEAR} from the updated extract", run_integrate),
 )
 
 # Running with no arguments does the whole thing rather than complaining, since
@@ -204,6 +227,11 @@ def main(argv: list[str] | None = None) -> int:
     scale = config.active_scale()
     log.info("route: %s (%s)", route.name, route.summary)
     log.info("run directory: %s", log.run_dir)
+    log.info(
+        "sources: %s (%s)",
+        config.ACTIVE_EXTRACT,
+        "USE_UPDATED_2024 = True" if config.USE_UPDATED_2024 else "USE_UPDATED_2024 = False",
+    )
     log.info(
         "scale: %s (%d units) | period: %d-%d | source CRS: EPSG:%d | projected CRS: EPSG:%d",
         scale.label,

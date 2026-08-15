@@ -64,6 +64,18 @@ def load_territorial_units(log: RunLog, scale: config.TerritorialScale | None = 
     return units
 
 
+def read_point_layer(path: Path) -> gpd.GeoDataFrame:
+    """Read a point layer whatever container it is stored in.
+
+    The original extract is a shapefile; the layers rebuilt with the updated 2024
+    extract are written as parquet, which round-trips dtypes exactly instead of
+    passing them through a driver's idea of what a column should be.
+    """
+    if path.suffix == ".parquet":
+        return gpd.read_parquet(path)
+    return gpd.read_file(path)
+
+
 def load_casualty_layer(path: Path, source_label: str, log: RunLog) -> gpd.GeoDataFrame:
     """Load one casualty point layer, tagging every row with its origin.
 
@@ -71,7 +83,7 @@ def load_casualty_layer(path: Path, source_label: str, log: RunLog) -> gpd.GeoDa
     merged fatalities and injuries under an identical flag, which made the
     distinction unrecoverable downstream.
     """
-    layer = gpd.read_file(path)
+    layer = read_point_layer(path)
     layer = layer.to_crs(epsg=config.SOURCE_CRS)
     layer[config.CASUALTY_SOURCE_COL] = source_label
 
@@ -291,40 +303,48 @@ def verify_loading(
 ) -> tuple[bool, str]:
     """Check the loading stage against the baseline that applies to it.
 
-    Two kinds of check, from two different sources, reported side by side:
+    Every count answers to the extract the run reads, and two of them answer to
+    the scale as well:
 
-    * Four of the six counts are properties of the source files and no
-      territorial layer can move them. They are checked against the legacy run at
-      any scale, and reproducing them is what says loading changed none of the
-      inherited logic.
+    * Four of the six come from the source files, and no territorial layer can
+      move them. On the original extract they are the legacy figures, and
+      reproducing them is what says loading changed none of the inherited logic.
+      On any other extract they are checked against the baseline measured for it.
     * The other two count records falling outside every polygon, so they depend
-      on the footprint of the layer. Layers covering different territory
-      necessarily disagree on them. At locality scale they are the historical
-      contrast against the legacy pipeline; at any other scale they are checked
-      against the baseline measured for that scale, and reported as a first
-      measurement — not a failure — if none is declared yet.
+      on the footprint of the layer too. On the original extract at locality
+      scale they are the historical contrast against the legacy pipeline;
+      otherwise they are checked against the baseline for that extract and scale.
 
-    A mismatch is reported as a failure; it is never reconciled by adjusting the
-    computation.
+    A combination with no baseline declared is reported as a first measurement,
+    not a failure, and belongs in the configuration afterwards. A mismatch is a
+    failure; it is never reconciled by adjusting the computation.
     """
     scale = scale or config.active_scale()
     observed = loading_counts(casualties, vehicles)
 
+    extract = config.ACTIVE_EXTRACT
+    on_legacy_extract = extract == config.LEGACY_BASELINE_EXTRACT
     at_legacy_scale = scale.key == config.LEGACY_BASELINE_SCALE
-    scale_baseline = config.SCALE_BASELINE_COUNTS.get(scale.key, {})
+    source_baseline = config.SOURCE_BASELINE_COUNTS.get(extract, {})
+    scale_baseline = config.SCALE_BASELINE_COUNTS.get(extract, {}).get(scale.key, {})
 
     # (expected, where the expectation comes from) per check. None means nothing
     # to compare against yet.
     expectations: dict[str, tuple[int | None, str]] = {}
     for key in config.SCALE_INDEPENDENT_CHECKS:
-        expectations[key] = (config.LEGACY_BASELINE_COUNTS[key], "legacy, scale-independent")
+        if on_legacy_extract:
+            expectations[key] = (config.LEGACY_BASELINE_COUNTS[key], "legacy, any scale")
+        elif key in source_baseline:
+            expectations[key] = (source_baseline[key], f"{extract}, any scale")
+        else:
+            expectations[key] = (None, f"no {extract} baseline")
     for key in config.SCALE_DEPENDENT_CHECKS:
-        if at_legacy_scale:
+        if on_legacy_extract and at_legacy_scale:
             expectations[key] = (config.LEGACY_BASELINE_COUNTS[key], f"legacy, {scale.label} footprint")
         elif key in scale_baseline:
-            expectations[key] = (scale_baseline[key], f"{scale.label} baseline")
+            expectations[key] = (scale_baseline[key], f"{extract}, {scale.label}")
         else:
-            expectations[key] = (None, f"no {scale.label} baseline declared")
+            expectations[key] = (None, f"no {extract} baseline at {scale.label}")
 
     # Reported in the order of the baseline table so two runs read alike.
     ordered = [key for key in config.LEGACY_BASELINE_COUNTS if key in expectations]
@@ -352,12 +372,13 @@ def verify_loading(
         )
 
     report = "\n".join(lines)
-    log.table(f"loading verification at {scale.label} scale:", report)
+    log.table(f"loading verification [{extract}, {scale.label} scale]:", report)
 
     if unmeasured:
         log.warn(
-            "no footprint baseline declared for %s; measured %s. Record them in "
-            "SCALE_BASELINE_COUNTS so the next run is checked against them",
+            "no baseline declared for [%s, %s]; measured %s. Record them in the "
+            "configuration so the next run is checked against them",
+            extract,
             scale.label,
             ", ".join(unmeasured),
         )

@@ -34,7 +34,7 @@ carried, so the second is larger for the same underlying records.
 | D5 | Crashes with more than two parties are discarded | Methodological | Closed | Yes |
 | D6 | Spatial join by containment only, no proximity fallback | Methodological | Closed (crash-level handling open) | Yes |
 | D7 | The study universe is the 30 UPL of the layer | Methodological | Closed | Yes |
-| D8 | Person identity falls back to row position | Implementation | Closed, forced by the data | Yes |
+| D8 | Person identity falls back to row position | Implementation | Closed; fallback no longer in effect | Yes |
 | D9 | The actor type of a casualty with no recorded vehicle comes from its role | Methodological | Closed | Yes |
 | D10 | The grid is complete: an unobserved combination is a zero, not an absence | Methodological | Closed | Yes |
 | D11 | Parties with no territorial unit leave the pipeline at aggregation | Methodological | Closed | Yes |
@@ -45,9 +45,11 @@ carried, so the second is larger for the same underlying records.
 | D16 | One entry point, one route per way of running the pipeline | Implementation | Closed | Yes |
 | D17 | ρ(t) is computed from the party universe, on unordered pairs, with the denominator always beside it | Methodological | Closed | Yes |
 | D18 | The 2007 vehicle table does not distinguish the two parties of a vehicle–vehicle crash | Methodological | **Open** | Detection only |
+| D19 | The most recent extract prevails, whole year at a time | Methodological | Closed | Yes |
+| D20 | The sources are checked for coverage, not only for arithmetic | Implementation | Closed | Yes |
 
-Methodological decisions: D1-D7, D9, D10, D11, D15, D17, D18. Implementation
-decisions: D8, D12, D13, D14, D16.
+Methodological decisions: D1-D7, D9, D10, D11, D15, D17, D18, D19.
+Implementation decisions: D8, D12, D13, D14, D16, D20.
 
 ---
 
@@ -160,11 +162,14 @@ breaks if either source layer changes its schema.
 
 **The assumption underneath, and its permanent check.** Counting injured and
 killed separately only means anything if the two layers are mutually exclusive.
-They are not, quite: **4 people appear in both**, once as an injury and once as a
-fatality, so 8 records describe 4 people and the person counts are inflated by 4.
-Every run now reports that number with its cause named, whether it is four or
-zero, because a future extract in which it grows would inflate the counts without
-anything else changing. See D8 for why no identifier is invented to resolve it.
+Every run reports how many people appear in both, with the cause named, whatever
+the answer is.
+
+On the original extract it was **4 people**, counted once as an injury and once as
+a fatality, so 8 records described 4 people. **On the updated 2024 extract it is
+zero**: all four were 2024 records, and the updated extract carries each of them
+once (D19). The check is what makes that visible, and it is the reason it is
+reported on every run rather than only when it fails.
 
 **Open.** Which aggregation the models use. To settle with my advisor once the
 matrix exists and the sparsity of the fatality cells can be inspected. The
@@ -360,10 +365,11 @@ coordinate system so the unit is genuinely metres.
 
 The reasoning is that snapping a point to a polygon it is not inside assigns a
 casualty to a place where it did not happen. At UPL scale, the scale of the study,
-this concerns **50 of 8,548 fatalities and 1,186 of 261,293 injuries**, 1,236
-records in all, 0.46%. At locality scale, where the legacy pipeline was measured,
-it was 61 and 1,344; the two footprints are not the same territory, so the counts
-differ by construction and neither corrects the other. With a real 5 m threshold
+this concerns **51 of 8,592 fatalities and 1,224 of 268,921 injuries**, 1,275
+records in all, 0.46%. On the original extract, before 2024 was replaced, it was
+50 and 1,186 on the same footprint. At locality scale, where the legacy pipeline
+was measured, it was 61 and 1,344; the two footprints are not the same territory,
+so the counts differ by construction and neither corrects the other. With a real 5 m threshold
 the fallback recovered 3 of the 61 at locality scale. Fabricating locations for
 half a percent of records to gain a handful is a bad trade.
 
@@ -436,12 +442,28 @@ grid.
 
 **Kind:** Implementation. The choice of key is a technical one; the duplication it exposes, in the open question below, is not.
 
-**Status:** Closed, but forced by the data rather than chosen. Worth revisiting
-if the duplication described below is settled.
+**Status:** Closed. The fallback was forced by the data and **is no longer in
+effect**: on the updated 2024 extract the source person code is unique within a
+crash, and the pipeline uses it. The entry is kept because the fallback is still
+in the code, still runs on every execution, and comes back the moment a source
+stops being unique.
 
 **Built:** Yes. The check runs before anything is built, reports its figures on
 every run whatever they are, and picks the identifier accordingly, so the
 fallback reverses itself automatically if the source is ever cleaned.
+
+**It did reverse itself.** The four colliding pairs were all 2024 records, and the
+updated extract carries each of those people once (D19). The check now measures
+**0 colliding (crash, person) pairs and 0 null person codes over 277,513 records**,
+and reports that it is using the source code. Nothing was edited to make that
+happen, which is the property the check was built for: the decision follows the
+data on every run instead of being frozen the day it was taken.
+
+**What that means for the limitation below.** Party identifiers now derive from a
+key the source owns rather than from row position, so they no longer depend on the
+order the records arrive in and are comparable across runs. If a future extract
+reintroduces a collision, the fallback returns and so does the limitation, which is
+why the paragraph stays.
 
 **Context.** Pedestrians share a single value in the vehicle field, so that field
 cannot tell two pedestrians of the same crash apart. Each of them has to be its
@@ -545,11 +567,13 @@ cyclist, so all 2,090 stay in the residual category. Every motorcyclist and ever
 cyclist in the data names a vehicle, which is what one would expect: the form
 records the motorcycle or the bicycle as a vehicle in its own right.
 
-The rule is still worth having. It earns two records elsewhere — among the three
-casualties that reference a vehicle absent from the vehicle table, two are
-motorcyclists and are now placed as such instead of falling to the residual
-category. And it means a future extract that does contain unattached
-motorcyclists will classify them correctly rather than burying them.
+The rule is still worth having, and the updated 2024 extract is where it started
+to pay. Of the casualties that reference a vehicle absent from the vehicle table —
+3 on the original extract, 101 now, because 69 crashes of the updated extract have
+no rows in the vehicle table — **61 are motorcyclists or cyclists and are placed as
+such instead of falling to the residual category**. The measurement above stands
+for the records that name no vehicle at all; this is the other group, and it is no
+longer negligible.
 
 **Reported separately, not classified.** 63 records carry the role SIN
 INFORMACION, which is not in the mapping. They go to the residual category and
@@ -612,11 +636,13 @@ from the data, so a unit that never appears in a single crash still gets its row
 of zeros instead of vanishing.
 
 At UPL scale that is 30 units x 18 years x 6 actor types x 7 counterparts =
-**22,680 cells, of which 7,750 (34.17%) are zero**. No unit and no year is empty
+**22,680 cells, of which 7,673 (33.83%) are zero**. No unit and no year is empty
 throughout. Emptiness concentrates where it should: Torca, on the northern edge,
-is 55.42% empty, while Kennedy is 25.66% and Centro Histórico 23.81%. Measured at
+is 55.16% empty, while Kennedy is 25.13% and Centro Histórico 23.54%. Measured at
 locality scale the same grid was 14,364 cells and 29.80% zero, which is the
-comparison that matters for the modelling note below.
+comparison that matters for the modelling note below. Completing 2024 (D19) moved
+the share by a third of a point, from 34.17%: a fuller year fills cells that were
+empty only because the records were missing.
 
 **Rejected — keep only the observed combinations, as the inherited code did.**
 Every consumer would have to reconstruct the grid to know whether a gap means
@@ -628,7 +654,7 @@ half-complete grid is worse than either alternative, because it looks complete.
 **Note for the modelling stage.** A third of the cells being zero is a property of
 the data at this resolution, not a defect, but it does bear on the choice of
 model. The share moves with the number of units, and predictably: cutting the
-same casualties into 30 units instead of 19 took it from 29.80% to 34.17%, +4.37
+same casualties into 30 units instead of 19 took it from 29.80% to 33.83%, +4.03
 points for 58% more units. At UPZ, with 111 units, it would be far higher again.
 A third of the grid at zero is enough that which count distribution the panel is
 fitted with is a decision to take deliberately rather than by default. It belongs
@@ -652,10 +678,12 @@ has to be answered: a cell is identified by its unit, so a record with no unit h
 no cell to go to.
 
 **Decision.** They leave here, and the loss is stated with its cause: at UPL scale,
-**701 affected parties, carrying 1,048 injured and 41 killed**. That is 0.35% of
-the 198,311 affected parties. At locality scale it was 858 parties, 1,146 injured
-and 51 killed; the party model is identical in both runs, and the whole of the
-difference is that the two layers cover different territory.
+**731 affected parties, carrying 1,083 injured and 43 killed**. That is 0.36% of
+the 203,808 affected parties. Five of those 731 are there because their position
+changed with the extract (D19), and the integration counts them separately for
+that reason. At locality scale, on the original extract, it was 858 parties, 1,146
+injured and 51 killed; the party model is identical in every one of those runs, and
+the whole of the difference is that the layers cover different territory.
 
 Dropping them at this point rather than at load is deliberate. Everything
 upstream — the party model, the counterpart resolution, the two-party threshold —
@@ -840,11 +868,14 @@ footprint would otherwise pass every check in the pipeline.
 **What moved with the scale, measured.** Everything upstream of the spatial join
 is unchanged, which is the expected result and worth stating as one: the party
 model, the two-party threshold and the counterpart resolution do not know what a
-polygon is. 198,311 affected parties, 15,014 discarded crashes and 169,098
-surviving crashes are identical at both scales. What changes is only what
-geography touches: 701 parties leave for lack of a unit instead of 858 (D11), the
-matrix carries 197,610 parties instead of 197,453, and the grid grows from 14,364
-cells to 22,680 with a third of them at zero instead of under 30% (D10).
+polygon is. On the extract those figures were measured on, 198,311 affected
+parties, 15,014 discarded crashes and 169,098 surviving crashes were identical at
+both scales. What changes with the scale is only what geography touches: 701
+parties left for lack of a unit instead of 858 (D11), the matrix carried 197,610
+parties instead of 197,453, and the grid grew from 14,364 cells to 22,680 with a
+third of them at zero instead of under 30% (D10). Those counts have since moved
+again, for a different reason: 2024 was replaced (D19), and the current figures
+are in the verification report.
 
 ---
 
@@ -962,21 +993,29 @@ that pair there is nothing to take a share of, and a zero would read as "both
 parties were never hurt", which is a measurement rather than the absence of one.
 The grid is complete in the sense of D10 — 31 × 18 × 9 = 5,022 rows, every unit,
 year and pair present — but the cells with no crash carry a zero denominator and an
-empty ρ. **277 of the 5,022 cells are in that state.**
+empty ρ. **275 of the 5,022 cells are in that state.**
 
 This one is worth flagging because it is easy to reintroduce. Reshaping the city
 table with an aggregating pivot sums an all-empty cell into a confident 0.000; the
 export uses a plain pivot, which cannot, and which also raises if the one-row
 assumption behind it ever breaks.
 
-**Decision — nothing is filtered by how thin a cell is.** With 30 units, 18 years
-and nine pairs, **1,988 of the 4,860 unit-year cells (40.91%) rest on fewer than
-ten crashes** and the median cell has thirteen. A ρ of 1.000 built on two crashes
-is not a finding. The answer is not to hide those cells, which would silently
-change what the table covers, but to make the denominator impossible to miss: it
-travels beside ρ in every row of every export, in the panel titles of the figures,
-and as its own figure for the city, and points resting on fewer than ten crashes
-are drawn hollow so the thinness is visible where the value is read.
+**Decision — nothing is filtered by how thin a cell is, and nothing is marked for
+it either.** With 30 units, 18 years and nine pairs, **1,958 of the 4,860 unit-year
+cells (40.29%) rest on fewer than ten crashes** and the median cell has thirteen. A
+ρ of 1.000 built on two crashes is not a finding. The answer is not to hide those
+cells, which would silently change what the table covers, but to make the
+denominator impossible to miss: it travels beside ρ in every row of every export,
+in the panel titles of the figures, and as its own figure for the city.
+
+**Revised, at my advisor's instruction.** The figures used to draw points with
+fewer than ten crashes behind them as hollow markers. That is gone. No cut by
+number of events of any kind, not in the data and not by eye: a value resting on
+two crashes is as much the measurement as one resting on two thousand, and marking
+it differently is an editorial judgement applied inside the figure. **The only gap
+in a line is a year where the denominator is zero**, because there ρ does not
+exist. The ten-crash figure survives as a reporting statistic in the run log and
+nowhere else.
 
 **Rejected — a minimum denominator, below which the cell is dropped or blanked.**
 It buries the sparsity instead of showing it, and the threshold would become an
@@ -1044,3 +1083,139 @@ eighteen, and it is the first of the panel.
 I am not choosing. What is built is that the run reports it: the year-pair
 combinations with no crash in the whole city are named one by one, so this cannot
 be scrolled past.
+
+---
+
+## D19 — The most recent extract prevails, whole year at a time
+
+**Kind:** Methodological.
+
+**Status:** Closed, and general. It is the rule for every future update, not a
+decision about one file.
+
+**Built:** Yes, as the `integrate` route. It rebuilds both casualty layers with
+the replaced year taken from the updated extract, writes them to `data/integrated/`
+and leaves the sources on disk untouched.
+
+**Context.** A later extract of 2024 arrived, covering the whole year. The injury
+layer of the original extract stops on 19 September 2024: September holds 178
+records against a monthly median of 1,760 for that year, and October, November and
+December hold none at all. The 2024 the pipeline had was two thirds of a year
+presented as a whole one, and it looked like a 33% fall in casualties — a
+plausible-looking number that nobody had reason to question.
+
+The two extracts do not merely differ in length. Over the 15,566 people present in
+both, they disagree on the crash type of one, the role of six, the vehicle
+reference of three, the age of 59, and the position of 766, of which 142 move more
+than 100 m and four more than 10 km. 28 people present in the original extract are
+absent from the updated one, and six people it recorded as injured are recorded as
+dead, with a date of death after the original extract was taken.
+
+**Decision, with my advisor.** **Where two extracts describe the same record, the
+more recent one prevails, and the replacement is done a whole year at a time.**
+Concretely, for 2024:
+
+- Every 2024 row of both layers is replaced. Not merged, not completed: replaced.
+  The alternative — adding only what is missing — would have duplicated 15,566
+  people, and picking field by field which extract to believe would mean inventing
+  a record that neither source contains.
+- **The 28 people who disappear are accepted.** They are not recovered, not carried
+  forward, and not treated as an error to correct. If the updated extract does not
+  have them, the study does not have them.
+- **The geometry of the updated extract prevails**, including the 142 points that
+  move more than 100 m. Five records that were inside a unit fall outside every
+  unit under the new positions; they join the unlocated set that D6 and D11 already
+  handle, and the integration counts them separately so that the increase is
+  visibly a consequence of the change of extract and not a regression.
+- **Severity comes from `MUERTE_POS`**: present means the person died. Verified
+  against the previous extract — all 543 people already known to be fatalities
+  carry it, and no person known to be injured does, apart from the six who died
+  afterwards. It is a rule about this file rather than about the format, since the
+  same column is null on 35% of the rows of the original fatality layer.
+- **`CONDICION` remains the role column**, not `CONDICION_`. The latter reclassifies
+  2,567 passengers as motorcyclists and 151 as cyclists, which is real information
+  about the gap D9 describes, but it is a derived column whose provenance is not
+  documented and it changes vocabulary between extracts (`ACOMPAÑANTE` became
+  `PASAJERO`). Noted, not adopted.
+
+**How it is built, and why that way.** The originals are never written to. The
+route produces new layers beside them and one switch, `USE_UPDATED_2024`, decides
+what every stage reads. Reverting is that one line, which matters because an
+integration is exactly the kind of change that has to be undoable while the reason
+for undoing it is still being argued about.
+
+Three details of the incoming file are each a way to lose records in silence, so
+each is converted explicitly and then checked:
+
+- The geometry is WKT with no CRS declared anywhere. It is read as EPSG:4686,
+  which is the frame under which 95% of the people present in both extracts land
+  on exactly the same coordinates.
+- The identifiers are typed differently from the shapefiles — the person code
+  arrives as an integer where the layer holds text. A merge on mismatched types
+  does not raise, it matches nothing, and it did exactly that once while the file
+  was being inspected. Every column is now cast to the type of the layer it joins,
+  the run stops if any of them still differs, and it stops again if the converted
+  person codes stop finding their counterparts in the previous extract.
+- The actor type of a casualty comes from the vehicle it rode. A vehicle reference
+  that stopped resolving would lose no rows at all: it would quietly retype every
+  2024 casualty as a party of its own. The rate is measured against the year before
+  — 99.51% against 100.00% — and a collapse stops the run.
+
+**The balance, with the causes kept apart.** The fatality layer goes from 8,548 to
+8,592 rows and the injury layer from 261,293 to 268,921, and the record names the
+2024 rows leaving and the 2024 rows entering separately rather than as a net. The
+28 accepted losses, the six people who changed severity, and the newly unlocated
+records are declared as their own notes, because a net of +7,628 rows would hide
+every one of them.
+
+**What it changed beyond 2024.** Nothing in any other year, by construction, and
+two things that were not expected:
+
+- **The four people who appeared in both layers are gone.** They were all 2024
+  records, and the updated extract has each of them once. The cross-layer
+  duplication check now reports zero.
+- **Because of that, the person identifier reverted on its own.** The source person
+  code is now unique within a crash across the whole set, so the fallback described
+  in D8 no longer applies and the pipeline uses the source code. That was built to
+  reverse itself if the source was ever cleaned, and it did, without anyone editing
+  it.
+
+---
+
+## D20 — The sources are checked for coverage, not only for arithmetic
+
+**Kind:** Implementation.
+
+**Status:** Closed.
+
+**Built:** Yes, as the `completeness` route.
+
+**Context.** The pipeline verifies its own arithmetic in detail: every stage
+balances, every record lost carries a named cause, and a run that does not add up
+stops. None of that noticed that a third of 2024 was missing, because nothing was
+lost — the records were never there. The checks covered what the pipeline does to
+the data and nothing about whether the data covers the period it claims to.
+
+**Decision.** Measure it. For every layer, year and month, count the records and
+report the months that are empty or that hold less than half of the median month
+of their own year. Judged against each year rather than against a fixed count,
+because the layers grow by a factor of two over eighteen years and any absolute
+threshold would either excuse the recent years or condemn the early ones.
+
+It reports and never filters. What a thin month means — a real drop, a change of
+system, an extract taken mid-month — is a question about the sources.
+
+**What it finds on the integrated sources.** One month: **April 2020, at 38.5% of
+that year's median**, which is the strict quarantine and is a real drop rather
+than a gap. No year has an empty final month.
+
+Run against the original extract, it names the defect it was built for:
+**September 2024 at 10.1% of the median, and October, November and December
+empty.**
+
+**Its blind spot, stated rather than discovered later.** A year that is uniformly
+under-reported passes, because every month is thin in the same way and the median
+moves with them. 2008 and 2009 are exactly that shape — 10,241 and 9,116 records
+against 14,148 in 2007 — and no month of either is flagged. The year-on-year
+column is what makes those visible, and it is printed beside the monthly table for
+that reason.

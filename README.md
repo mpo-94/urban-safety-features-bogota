@@ -69,6 +69,8 @@ python -m src.run_pipeline matrix     # the same, named explicitly
 python -m src.run_pipeline parties    # stop after party resolution
 python -m src.run_pipeline loading    # sources only: read, locate, verify
 python -m src.run_pipeline rho        # the ρ(t) diagnostic, beside the pipeline
+python -m src.run_pipeline completeness   # does every month of every year have data?
+python -m src.run_pipeline integrate  # rebuild the layers from the updated extract
 python -m src.run_pipeline --help     # the routes available, with a line each
 ```
 
@@ -77,6 +79,17 @@ types, the share of two-party crashes in which both parties suffered casualties,
 which is a diagnostic of how casualties were recorded over the years. It reads
 the party universe before the parties without casualties are dropped, so it
 computes its own run from the sources and never reuses another one's output.
+
+`completeness` counts the records of every layer, year and month and reports the
+months that are empty or far below the rest of their year. It exists because a
+source can be missing a third of a year without any arithmetic check noticing.
+
+`integrate` is a build step rather than an analysis. A later extract of 2024
+arrived covering the whole year, where the original injury layer stops in
+mid-September; the route rebuilds both casualty layers with that year replaced,
+writes them to `data/integrated/`, and leaves the original files untouched. Which
+of the two every other route reads is decided by `USE_UPDATED_2024` in
+`src/config.py`, so reverting the integration is one line.
 
 Every stage writes its own output to `intermediate/` when dumps are on. They are
 off by default because they are large; turn them on for a single run without
