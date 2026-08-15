@@ -43,9 +43,11 @@ carried, so the second is larger for the same underlying records.
 | D14 | Pictograms in pipeline figures — tried and reverted | Implementation | Closed, reverted | No, removed |
 | D15 | The pipeline runs at UPL; the legacy figures become a historical contrast | Methodological | Closed | Yes |
 | D16 | One entry point, one route per way of running the pipeline | Implementation | Closed | Yes |
+| D17 | ρ(t) is computed from the party universe, on unordered pairs, with the denominator always beside it | Methodological | Closed | Yes |
+| D18 | The 2007 vehicle table does not distinguish the two parties of a vehicle–vehicle crash | Methodological | **Open** | Detection only |
 
-Methodological decisions: D1-D7, D9, D10, D11, D15. Implementation decisions: D8,
-D12, D13, D14, D16.
+Methodological decisions: D1-D7, D9, D10, D11, D15, D17, D18. Implementation
+decisions: D8, D12, D13, D14, D16.
 
 ---
 
@@ -887,3 +889,158 @@ and it leaves no single place that shows what can be run.
 until a stage needs the output of two others, and then the composition has to know
 the dependency graph. Routes are named paths through the pipeline precisely so the
 dependencies stay in Python where they can be typed.
+
+---
+
+## D17 — ρ(t) is computed from the party universe, on unordered pairs, with the denominator always beside it
+
+**Kind:** Methodological.
+
+**Status:** Closed.
+
+**Built:** Yes, as its own route. It produces one long table, two city views and
+eleven figures, and it verifies itself before reporting anything.
+
+**Context.** ρ is a diagnostic of the sources, not a result of the study. For a
+pair of actor types it is the share of two-party crashes in which *both* parties
+suffered casualties. Whether both sides of a collision come out of it hurt is
+close to physical, so a sharp change between two consecutive years is evidence
+about recording practice rather than about crashes. That is worth having because
+the panel runs over eighteen years of a source that was not built to be a time
+series.
+
+Five choices had to be made, and they are all in the same direction: keep the
+thing measurable and keep the reader able to see how much is behind each number.
+
+**Decision — it reads the party universe, not the matrix.** The denominator counts
+crashes in which only one party was affected, and the matrix cannot see those: once
+a party without casualties has been dropped, a crash where one side was hurt is
+indistinguishable from one where both were. ρ is therefore computed before that
+filter, from the same party universe the matrix is built on, and it is not
+derivable from any exported matrix. This is also why it is only measurable at all
+here: the inherited pipeline collapsed each crash to a single row and destroyed the
+information ρ needs.
+
+Worth stating plainly, because it changes how the number reads: every crash in the
+sources has at least one casualty, since that is what put it in the sources. One of
+the two parties is therefore always affected, and ρ is really asking how often the
+*other* one was too.
+
+**Decision — the pair is unordered, and the nine pairs are derived from a rule.**
+A motorcycle struck by a car and a car struck by a motorcycle are the same crash,
+and "were both parties hurt" is a property of the event with no direction in it. So
+each pair has exactly one representation, ordered canonically from the least
+protected mode to the most, and there is no orientation to get wrong — the same
+reason D6 gives for the matrix pair. The nine come from two rules rather than a
+hand-written list: at least one side must be a motorcycle, a car or public
+transport, and the other side is any of the five modes, with a mode against itself
+excluded. Deriving them means the rules are the only thing to maintain, and a tenth
+pair appearing in the output raises instead of being exported.
+
+The residual category is excluded. It is a bag of unlike vehicles — heavy cabs,
+rail, animal traction, unidentified — and a rate over it would average things that
+have nothing in common. A mode against itself is excluded because the question is
+about the interaction between two modes and there is only one mode there.
+
+**Decision — both levels of aggregation in one table, distinguished by a column.**
+Per unit and year, and for the whole city by year, in the same long table with an
+explicit level column. The city value is the sum of numerators over the sum of
+denominators — pooled, not the average of the unit values. The two are different
+quantities: pooling weights every crash equally, while averaging the cells weights
+every cell equally and so lets a cell of three crashes count as much as one of
+three thousand. Measured over these sources the gap is **city 0.194 against 0.179
+for the mean of the unit-year cells**, and up to **0.094 for a single pair**
+(bicycle–motorcycle), which is why they cannot be used interchangeably.
+
+City rows carry a code of their own rather than an empty unit column, so the key is
+never null and a join against the matrix cannot match them by accident. Which level
+a row belongs to is read from the level column, not inferred from what the unit
+code looks like.
+
+**Decision — an empty denominator makes ρ undefined, never zero.** With no crash of
+that pair there is nothing to take a share of, and a zero would read as "both
+parties were never hurt", which is a measurement rather than the absence of one.
+The grid is complete in the sense of D10 — 31 × 18 × 9 = 5,022 rows, every unit,
+year and pair present — but the cells with no crash carry a zero denominator and an
+empty ρ. **277 of the 5,022 cells are in that state.**
+
+This one is worth flagging because it is easy to reintroduce. Reshaping the city
+table with an aggregating pivot sums an all-empty cell into a confident 0.000; the
+export uses a plain pivot, which cannot, and which also raises if the one-row
+assumption behind it ever breaks.
+
+**Decision — nothing is filtered by how thin a cell is.** With 30 units, 18 years
+and nine pairs, **1,988 of the 4,860 unit-year cells (40.91%) rest on fewer than
+ten crashes** and the median cell has thirteen. A ρ of 1.000 built on two crashes
+is not a finding. The answer is not to hide those cells, which would silently
+change what the table covers, but to make the denominator impossible to miss: it
+travels beside ρ in every row of every export, in the panel titles of the figures,
+and as its own figure for the city, and points resting on fewer than ten crashes
+are drawn hollow so the thinness is visible where the value is read.
+
+**Rejected — a minimum denominator, below which the cell is dropped or blanked.**
+It buries the sparsity instead of showing it, and the threshold would become an
+editorial choice hidden in the code that every downstream consumer inherits without
+knowing.
+
+**Decision — crashes with no territorial unit leave, as in D11.** The city total is
+the sum over the units, so a crash the units cannot hold cannot be in the city total
+either. It costs 320 crashes of 109,101.
+
+**Figures — small multiples rather than nine lines.** Nine simultaneous series
+cannot be told apart by colour, and the question the figure is asked is whether a
+given pair moves between two years, which is about one series at a time. So the
+city figure is nine panels on one grid with a common vertical scale, its
+denominators are a second figure on the same layout rather than a second axis on
+the first, and the unit figures are one per pair with thirty panels each, every
+panel carrying the city curve behind it as a common reference. That is eleven
+figures instead of two hundred and seventy series.
+
+---
+
+## D18 — The 2007 vehicle table does not distinguish the two parties of a vehicle–vehicle crash
+
+**Kind:** Methodological. It decides what the first year of the panel can be used
+for.
+
+**Status:** **Open.** To settle with my advisor.
+
+**Built:** Detection only. ρ makes it visible and the run names the year-pair
+combinations that have no crash at all; nothing acts on it.
+
+**Context.** ρ found it on its first run. **In 2007, six of the nine pairs have a
+denominator of exactly zero for the whole city** — every pair between two vehicles.
+Only the three pedestrian pairs have any crashes at all. That cannot be a property
+of traffic.
+
+Measured on the sources, in 2007 **4,040 of the 4,098 crashes with two vehicle rows
+carry a single vehicle class between them (98.6%)**, against 19.9% in 2008 and
+13.4% in 2015. Among two-party crashes with no pedestrian, **87.9% have both
+parties of the same type in 2007**, against 13% to 22% in every other year of the
+series.
+
+The reading that fits is that the 2007 extract repeats the class of one vehicle on
+the other party, so a motorcycle–car crash is recorded as car–car or
+motorcycle–motorcycle. It is consistent with what the matrix already showed without
+anyone noticing: the 2007 matrix has zeros in every cell between two different
+motorised modes, and inflated diagonals — 1,516 car-by-car, 910
+motorcycle-by-motorcycle, 377 bicycle-by-bicycle against 7 the following year.
+
+**What this affects.** Only the counterpart of vehicle–vehicle crashes in 2007.
+Pedestrian pairs are unaffected, since the pedestrian is a party in its own right
+and does not come from the vehicle table. The casualty counts and the totals are
+unaffected: nothing is lost, the counterpart is mislabelled. It is one year of
+eighteen, and it is the first of the panel.
+
+**Options on the table.**
+
+- Drop 2007 from the panel, or from any analysis that uses the counterpart of a
+  vehicle–vehicle crash, and say so.
+- Keep 2007 for pedestrian pairs and for totals, and treat the vehicle–vehicle
+  counterpart as missing for that year.
+- Check the 2007 extract against another source before deciding whether it is the
+  extract or the original that is wrong.
+
+I am not choosing. What is built is that the run reports it: the year-pair
+combinations with no crash in the whole city are named one by one, so this cannot
+be scrolled past.

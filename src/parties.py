@@ -308,6 +308,63 @@ def resolve_pairs(parties: pd.DataFrame, log: RunLog) -> pd.DataFrame:
     return kept
 
 
+def crash_attributes(casualties: pd.DataFrame) -> pd.DataFrame:
+    """Year, crash type and territorial unit, once per crash.
+
+    They were verified to agree across a crash's victims, except where one victim
+    could not be located, so sorting the null unit last and taking the first
+    non-null gives the crash a unit whenever any of its victims has one.
+
+    Shared by everything that needs to place a crash in space and time, so that
+    the matrix and rho put the same crash in the same cell by construction rather
+    than by two implementations agreeing.
+    """
+    return (
+        casualties.sort_values(config.AREA_CODE_COL, na_position="last")
+        .groupby(config.CRASH_ID_COL, as_index=False)
+        .agg(
+            **{
+                config.YEAR_COL: (config.YEAR_SOURCE_COL, "first"),
+                config.CRASH_CLASS_COL: (config.CRASH_CLASS_SOURCE_COL, "first"),
+                config.AREA_CODE_COL: (config.AREA_CODE_COL, "first"),
+                config.AREA_NAME_COL: (config.AREA_NAME_COL, "first"),
+            }
+        )
+    )
+
+
+def party_universe(casualties: pd.DataFrame, vehicles: pd.DataFrame, log: RunLog) -> pd.DataFrame:
+    """Every party of every crash that survives the two-party threshold, hurt or not.
+
+    This is the frame the matrix is built from minus its last step, and it is what
+    rho needs: once the parties without casualties are dropped, a crash where only
+    one party was affected becomes indistinguishable from one where both were, and
+    that distinction is the whole of rho.
+
+    Column names are the public ones, so callers outside this module never touch
+    the internal working columns.
+    """
+    parties = build_parties(casualties, vehicles, log)
+    kept = resolve_pairs(parties, log)
+    return kept.rename(
+        columns={
+            _PARTY_KEY: config.PARTY_ID_COL,
+            _PARTY_TYPE: config.PARTY_TYPE_COL,
+            "_injured": config.PERSONS_INJURED_COL,
+            "_killed": config.PERSONS_KILLED_COL,
+        }
+    )[
+        [
+            config.CRASH_ID_COL,
+            config.PARTY_ID_COL,
+            config.PARTY_TYPE_COL,
+            config.COUNTERPART_TYPE_COL,
+            config.PERSONS_INJURED_COL,
+            config.PERSONS_KILLED_COL,
+        ]
+    ].reset_index(drop=True)
+
+
 def emit_rows(kept: pd.DataFrame, casualties: pd.DataFrame, log: RunLog) -> pd.DataFrame:
     """Keep the parties that suffered casualties and attach the crash attributes."""
     affected = kept[kept[["_injured", "_killed"]].sum(axis=1) > 0].copy()
@@ -337,21 +394,7 @@ def emit_rows(kept: pd.DataFrame, casualties: pd.DataFrame, log: RunLog) -> pd.D
         changes=[(-(len(kept) - len(affected)), "parties that took part without casualties")],
     )
 
-    # Crash attributes are taken once per crash. They were verified to agree
-    # across a crash's victims, except where one victim could not be located, so
-    # the first non-null wins.
-    attrs = (
-        casualties.sort_values(config.AREA_CODE_COL, na_position="last")
-        .groupby(config.CRASH_ID_COL, as_index=False)
-        .agg(
-            **{
-                config.YEAR_COL: (config.YEAR_SOURCE_COL, "first"),
-                config.CRASH_CLASS_COL: (config.CRASH_CLASS_SOURCE_COL, "first"),
-                config.AREA_CODE_COL: (config.AREA_CODE_COL, "first"),
-                config.AREA_NAME_COL: (config.AREA_NAME_COL, "first"),
-            }
-        )
-    )
+    attrs = crash_attributes(casualties)
     rows_before = len(affected)
     affected = affected.merge(attrs, on=config.CRASH_ID_COL, how="left")
     if len(affected) != rows_before:

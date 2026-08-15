@@ -9,6 +9,7 @@ resolution should not have to rebuild fifty-seven figures first.
     python -m src.run_pipeline matrix          # the same, named explicitly
     python -m src.run_pipeline parties         # stop after party resolution
     python -m src.run_pipeline loading         # sources only
+    python -m src.run_pipeline rho             # the rho(t) diagnostic
     python -m src.run_pipeline loading --dump-intermediates
 
 Adding a route means writing one function that takes a RunLog and adding one
@@ -24,7 +25,7 @@ from typing import Callable
 
 import pandas as pd
 
-from src import config, loading, matrix, parties
+from src import config, loading, matrix, parties, rho
 from src.provenance import RunLog
 
 
@@ -85,6 +86,25 @@ def run_parties(log: RunLog) -> None:
     log.table("affected parties by actor type and counterpart:", counterparts.to_string())
 
 
+def run_rho(log: RunLog) -> None:
+    """The rho(t) diagnostic, which sits beside the pipeline rather than in it.
+
+    It reads the party universe before the parties without casualties are dropped,
+    so it is not built on the matrix and never reuses another run's output.
+    """
+    units, casualties, vehicles = load_sources(log)
+    universe = parties.party_universe(casualties, vehicles, log)
+    long_table, crashes = rho.compute(universe, parties.crash_attributes(casualties), units, log)
+
+    rho.export(long_table, log)
+    rho.render_figures(long_table, units, log)
+
+    log.table("record funnel:", log.funnel())
+    if not rho.verify(long_table, crashes, units, log):
+        raise RouteFailed("the rho table does not agree with what entered it")
+    rho.report(long_table, log)
+
+
 def run_matrix(log: RunLog) -> None:
     """The full pipeline: sources, parties, matrix, tables and figures."""
     units, casualties, vehicles = load_sources(log)
@@ -114,12 +134,14 @@ class Route:
     run: Callable[[RunLog], None]
 
 
-# Longest route first, so the help reads from the whole pipeline down to its
-# parts. ρ(t) and the static predictors join this list as they are written.
+# The pipeline routes first, longest to shortest, then the analyses that sit
+# beside it. The static predictors and their figures join this list as they are
+# written.
 ROUTES: tuple[Route, ...] = (
     Route("matrix", "full pipeline up to the casualty matrix, with tables and figures", run_matrix),
     Route("parties", "up to party resolution: one row per affected party", run_parties),
     Route("loading", "sources only: read them, locate them, verify the counts", run_loading),
+    Route("rho", "rho(t): share of two-party crashes where both parties were hurt", run_rho),
 )
 
 # Running with no arguments does the whole thing rather than complaining, since

@@ -350,6 +350,91 @@ ANALYSIS_PREFIX = "analysis"
 PRESENTATION_PREFIX = "presentation"
 
 # ---------------------------------------------------------------------------
+# rho(t): share of two-party crashes in which both parties suffered casualties
+# ---------------------------------------------------------------------------
+# A diagnostic, not a product of the matrix. Whether both parties come out of a
+# crash with casualties is close to physical, so an abrupt change between two
+# consecutive years points at how casualties were recorded rather than at the
+# crashes themselves.
+#
+# It is computed from the party universe before the parties without casualties
+# are dropped: the denominator counts crashes where only one party was affected,
+# and the matrix cannot tell those from crashes where both were.
+
+# The nine pairs. At least one side must be a motorcycle, a car or public
+# transport — the modes that impose the risk — and the other side is any of the
+# five modes. A mode with itself is excluded, because the question "were both
+# parties affected" says nothing about the interaction between two modes when
+# there is only one mode involved. The residual category is out: it is a bag of
+# unlike vehicles, and a rate over it would average things that have nothing in
+# common.
+RHO_PRIMARY_TYPES = (MOTORCYCLE, CAR, PUBLIC_TRANSPORT)
+RHO_SECONDARY_TYPES = (PEDESTRIAN, BICYCLE, MOTORCYCLE, CAR, PUBLIC_TRANSPORT)
+
+# Canonical order inside a pair, from the least protected road user to the most.
+# The pair is unordered — a motorcycle hit by a car and a car hit by a motorcycle
+# are the same crash and the same question — so each pair gets exactly one
+# representation and there is no orientation to get wrong.
+RHO_PAIR_ORDER = (PEDESTRIAN, BICYCLE, MOTORCYCLE, CAR, PUBLIC_TRANSPORT)
+RHO_PAIR_SEPARATOR = "-"
+
+
+def _build_rho_pairs() -> tuple[tuple[str, str], ...]:
+    """The nine unordered pairs, in a fixed order, derived rather than listed.
+
+    Written out by hand this would be a list that has to be kept in agreement
+    with the two rules above; derived, the rules are the only thing to maintain.
+    """
+    rank = {actor: position for position, actor in enumerate(RHO_PAIR_ORDER)}
+    pairs = set()
+    for primary in RHO_PRIMARY_TYPES:
+        for secondary in RHO_SECONDARY_TYPES:
+            if primary == secondary:
+                continue
+            pairs.add(tuple(sorted((primary, secondary), key=rank.__getitem__)))
+    return tuple(sorted(pairs, key=lambda pair: (rank[pair[0]], rank[pair[1]])))
+
+
+RHO_PAIRS: tuple[tuple[str, str], ...] = _build_rho_pairs()
+
+
+def rho_pair_label(first: str, second: str) -> str:
+    """The single text representation of an unordered pair."""
+    return f"{first}{RHO_PAIR_SEPARATOR}{second}"
+
+
+RHO_PAIR_LABELS: tuple[str, ...] = tuple(rho_pair_label(*pair) for pair in RHO_PAIRS)
+
+# Columns of the rho table. Scale, unit and year deliberately reuse the names and
+# the values of the matrix table, because the dashboard joins the two.
+AGGREGATION_LEVEL_COL = "AGGREGATION_LEVEL"
+UNIT_LEVEL = "UNIT"
+CITY_LEVEL = "CITY"
+
+# City rows carry a code of their own rather than a null, so the unit column is
+# never empty and a join against the matrix cannot match them by accident. The
+# level column is what a reader filters on; this is what keeps the key honest.
+CITY_AREA_CODE = "BOGOTA"
+CITY_AREA_NAME = "Bogotá D.C."
+
+PAIR_COL = "PAIR"
+PAIR_FIRST_COL = "PAIR_TYPE_A"  # the two sides, in canonical order, so the pair
+PAIR_SECOND_COL = "PAIR_TYPE_B"  # can be joined to the matrix without splitting text
+RHO_NUMERATOR_COL = "CRASHES_BOTH_AFFECTED"
+RHO_DENOMINATOR_COL = "CRASHES_TOTAL"
+RHO_COL = "RHO"
+
+# Below this many crashes in the denominator, rho is noise. Nothing is filtered
+# on it — the denominator travels next to rho in every row and every figure, and
+# the reader decides — but the run reports how much of the grid is that thin.
+RHO_SPARSE_DENOMINATOR = 10
+
+# A year-on-year change in rho above this is called out by name in the report. It
+# is a reporting threshold, not a test: rho is a diagnostic to be looked at, and
+# this only decides what gets pointed at first.
+RHO_JUMP_THRESHOLD = 0.10
+
+# ---------------------------------------------------------------------------
 # Figures
 # ---------------------------------------------------------------------------
 FIGURE_DPI = 150
@@ -358,6 +443,17 @@ HEATMAP_COLORMAP = "viridis"
 # of the colour ramp, so that a true zero cannot be mistaken for a small value on
 # a logarithmic scale.
 HEATMAP_EMPTY_COLOR = "#eeeeee"
+
+# rho figures are small multiples: one panel per pair for the city, one panel per
+# unit for a given pair. Each panel therefore draws one series and, where it
+# helps, one reference — so identity never rests on telling nine hues apart,
+# which is not something a reader should be asked to do.
+RHO_SERIES_COLOR = "#1b6ca8"
+RHO_REFERENCE_COLOR = "#9e9e9e"
+# Points whose denominator is below RHO_SPARSE_DENOMINATOR are drawn hollow. The
+# value is not hidden or dropped; it is marked as thin where it is read.
+RHO_SPARSE_MARKER_FACE = "#ffffff"
+RHO_GRID_COLOR = "#e3e3e3"
 
 # ---------------------------------------------------------------------------
 # Run-time switches

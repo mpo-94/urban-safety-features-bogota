@@ -68,8 +68,15 @@ python -m src.run_pipeline            # full pipeline; announces the route it pi
 python -m src.run_pipeline matrix     # the same, named explicitly
 python -m src.run_pipeline parties    # stop after party resolution
 python -m src.run_pipeline loading    # sources only: read, locate, verify
+python -m src.run_pipeline rho        # the ρ(t) diagnostic, beside the pipeline
 python -m src.run_pipeline --help     # the routes available, with a line each
 ```
+
+`rho` is not a stage of the pipeline: it measures, for each pair of road user
+types, the share of two-party crashes in which both parties suffered casualties,
+which is a diagnostic of how casualties were recorded over the years. It reads
+the party universe before the parties without casualties are dropped, so it
+computes its own run from the sources and never reuses another one's output.
 
 Every stage writes its own output to `intermediate/` when dumps are on. They are
 off by default because they are large; turn them on for a single run without

@@ -3,8 +3,10 @@
 What the pipeline produces, whether every check it makes passes, where each
 record goes, and how the result differs from the pipeline it replaces.
 
-Everything here comes from a single end-to-end run with intermediate dumps
-enabled, so every figure quoted can be traced back to a file that run wrote.
+Sections 1 to 6 come from a single end-to-end run of the pipeline with
+intermediate dumps enabled, so every figure quoted can be traced back to a file
+that run wrote. Section 7 covers ρ(t), which is a separate route with a run of
+its own.
 
 | | |
 |---|---|
@@ -348,7 +350,8 @@ Against the recorded decisions.
 | D12 figures from exported tables, shared log scale | 57 heatmaps, each read back from its own CSV |
 | D13 analysis and presentation tables separated | file names carry the distinction |
 | D15 UPL scale, legacy figures as historical contrast | four source counts checked against the legacy run, two footprint counts against the UPL reference |
-| D16 one entry point with routes | this run is `run_pipeline matrix`; `loading` and `parties` run the same stages up to their own end |
+| D16 one entry point with routes | this run is `run_pipeline matrix`; `loading`, `parties` and `rho` are routes of their own |
+| D17 ρ(t) from the party universe, denominator always beside it | 5,022 cells, 277 undefined rather than zero, nothing filtered by size — see §7 |
 
 ### Not fulfilled, or only partly
 
@@ -363,6 +366,12 @@ ones are the rural units, where the urban predictors are undefined anyway. Thirt
 is the denominator of every coverage figure in this report. The loader no longer
 warns about a shortfall — there is none — and instead stops the run if the layer
 does not carry exactly the declared universe.
+
+**D18 is open, and ρ is what found it.** The 2007 vehicle table does not
+distinguish the two parties of a vehicle–vehicle crash: 98.6% of that year's
+two-vehicle crashes carry a single vehicle class between them, against 13–20% in
+every other year. It costs the counterpart of vehicle–vehicle crashes in 2007,
+not the casualty counts. What to do with that year is for my advisor.
 
 **D8 has a known limitation.** Party identifiers come from row position, because
 the source person code is not unique. They are stable within a run and must not
@@ -414,3 +423,76 @@ observation are drawn in flat grey rather than at the bottom of the ramp, so a
 true zero cannot be read as a small value. Within each count the per-year figures
 share one colour scale; the aggregate figure has its own, since eighteen years
 and one year are not on the same ruler.
+
+---
+
+## 7. The ρ(t) diagnostic
+
+A separate route (`python -m src.run_pipeline rho`) with its own run directory.
+It is not a stage of the pipeline: nothing downstream consumes it, and it reads
+the party universe before the parties without casualties are dropped, so it is
+computed from the sources rather than from the matrix. The design is D17.
+
+| | |
+|---|---|
+| What it measures | share of two-party crashes of a pair in which **both** parties suffered casualties |
+| Pairs | 9 unordered pairs; at least one side motorcycle, car or public transport |
+| Levels | per UPL and year, and the whole city by year, in one table |
+| Result | 5,022 cells, 108,781 crashes, 4,745 values defined and 277 undefined |
+| Outcome | **every check passed** |
+
+### Funnel
+
+| Stage | In | Out | Change | Cause |
+|---|---:|---:|---:|---|
+| Collapse parties into two-party crashes | 311,441 | 142,343 | −169,098 | −26,755 parties of single-party crashes; −142,343 second party folded into its crash |
+| Restrict to the nine pairs | 142,343 | 109,101 | −33,242 | −14,051 residual category; −18,038 same type on both sides; −1,153 no motorcycle, car or public transport |
+| Restrict to located crashes | 109,101 | 108,781 | −320 | point outside every territorial unit |
+| Aggregate onto the unit grid | 108,781 | 4,860 | −103,921 | −104,192 collapsed into cells; +271 empty cells kept with ρ undefined |
+| Aggregate for the whole city | 108,781 | 162 | −108,619 | −108,625 collapsed by year and pair; +6 combinations with no crash |
+| Assemble the table | 4,860 | 5,022 | +162 | city rows, marked `CITY` |
+
+### Checks
+
+| Check | Result | Verdict |
+|---|---|---|
+| Numerator never exceeds denominator | 0 rows above | **Pass** |
+| ρ within [0, 1] where defined | 4,745 defined, 0 outside | **Pass** |
+| ρ defined exactly where the denominator is not zero | 277 empty cells, 0 disagreements | **Pass** |
+| Units sum to the city total, year by year | 18 years, 0 disagreeing | **Pass** |
+| Every crash counted once, in one pair only | 108,781 in, 108,781 counted | **Pass** |
+| Grid has the declared number of cells | 5,022 of 5,022 | **Pass** |
+
+### What it found
+
+**ρ rises across the whole series, on every pair.** Pedestrian–motorcycle goes
+from 0.218 in 2007 to 0.837 in 2023, bicycle–motorcycle from 0.468 in 2008 to
+0.871, motorcycle–car from 0.057 to 0.403. A near-fourfold rise in the
+probability that both parties of a collision are recorded as casualties is not a
+change in the physics of collisions. The break is around 2017–2018 and the
+climb continues to 2023. This is what the diagnostic exists to show, and it bears
+directly on whether a count model can treat 2007 and 2023 as the same measurement.
+
+**2007 does not distinguish the two parties of a vehicle–vehicle crash.** Six of
+the nine pairs have no crash at all that year. See D18: it is open, and it is
+reported by name on every run.
+
+**The unit grid is thin.** 1,988 of 4,860 unit-year cells (40.91%) rest on fewer
+than ten crashes, and 271 on none at all. Nothing is filtered on it; the
+denominator travels beside ρ everywhere it is shown.
+
+**The city value is not the average of the units.** Pooled, the city is 0.194
+against 0.179 for the mean of the unit-year cells, and the gap reaches 0.094 on
+bicycle–motorcycle. They are different quantities and the table says which is
+which in its own column.
+
+### Outputs
+
+| Location | Contents |
+|---|---|
+| `data/analysis__rho_long.{csv,parquet}` | 5,022 rows, both levels, ρ with its numerator and denominator |
+| `data/presentation__rho_city_rho__by_year.csv` | city ρ, years by pairs |
+| `data/presentation__rho_city_denominators__by_year.csv` | the crashes behind each of those values |
+| `figures/rho/rho_city__by_pair.png` | the nine pairs for the city, one panel each |
+| `figures/rho/rho_city__denominators.png` | their denominators, same layout, logarithmic |
+| `figures/rho/by_unit/rho_units__{pair}.png` | 9 figures, 30 panels each, city curve behind every panel |
