@@ -47,9 +47,12 @@ carried, so the second is larger for the same underlying records.
 | D18 | The 2007 vehicle table does not distinguish the two parties of a vehicle–vehicle crash | Methodological | **Open** | Detection only |
 | D19 | The most recent extract prevails, whole year at a time | Methodological | Closed | Yes |
 | D20 | The sources are checked for coverage, not only for arithmetic | Implementation | Closed | Yes |
+| D21 | The desire lines are out until it is settled what they measure | Methodological | **Open** | No, excluded |
+| D22 | A predictor is measured against every unit, and a zero is an observation | Methodological | Closed | Yes, for the ten static ones |
+| D23 | The histogram bins and the correlation scale are declared, not inferred | Implementation | Closed | Yes |
 
-Methodological decisions: D1-D7, D9, D10, D11, D15, D17, D18, D19.
-Implementation decisions: D8, D12, D13, D14, D16, D20.
+Methodological decisions: D1-D7, D9, D10, D11, D15, D17, D18, D19, D21, D22.
+Implementation decisions: D8, D12, D13, D14, D16, D20, D23.
 
 ---
 
@@ -1219,3 +1222,218 @@ moves with them. 2008 and 2009 are exactly that shape — 10,241 and 9,116 recor
 against 14,148 in 2007 — and no month of either is flagged. The year-on-year
 column is what makes those visible, and it is printed beside the monthly table for
 that reason.
+
+---
+
+## D21 — The desire lines are out until it is settled what they measure
+
+**Kind:** Methodological. It decides whether a variable enters the study at all.
+
+**Status:** **Open.** To settle with my advisor.
+
+**Built:** No. The layer is not read, and it is absent from the predictor list
+rather than present and filtered out later, so nothing downstream can pick it up
+by accident.
+
+**Context.** The origin-destination desire lines are one of the eleven single
+snapshots, and on the face of it they are the most interesting of them: they are
+the only variable in the set that describes how the city is *used* rather than how
+it is built. Every other predictor is infrastructure.
+
+The column they arrive in is not what its name says. The legacy code takes the
+length of each line inside the unit, multiplies it by `f_exp` — the expansion
+factor of the origin-destination survey, carried on each record — and writes the
+product back over the kilometres under the same column name:
+
+```python
+inter["len_km_fexp"] = inter["len_km"] * inter["_fexp"]
+grp["len_km"] = grp["len_km_metric"]      # the real kilometres are gone
+```
+
+Because `f_exp` varies from record to record — mean 625.8, range 323.8 to 1988.3 —
+this is not a change of scale but a transformation. The result is neither
+kilometres nor trips: it is a sum of kilometre-trips, and the raw kilometres and
+the aggregate expansion factor are both computed and then dropped, so nothing
+downstream can recover either. Verified numerically: the layer is 1,219.26 km long
+and the exported column sums to 674,158.05.
+
+**Why that makes it unusable here specifically.** A correlation matrix is a table
+of relationships between quantities. A row for a quantity that has no unit is not
+a weak result, it is an uninterpretable one: a reader cannot say what "desire lines
+correlate at 0.6 with roadway share" would mean, because the left-hand side is not
+a thing that has been measured. The same objection applies with more force once it
+enters a model, where its coefficient would be reported in units that do not exist.
+
+**Decision.** It stays out of this module and out of the correlation matrix. It is
+excluded because of the ambiguity, not because it is unimportant, and the
+distinction matters: the other four exclusions from this module — cycleways and
+the three signage layers — are postponements, and this one is a question.
+
+**Three defensible variables are hiding in that column, and the code produces a
+fourth thing while labelling it the first.**
+
+- **Kilometres of line inside the unit**, which is what the column name says and
+  what the other three line layers actually hold. Comparable with them.
+- **Number of trips crossing the unit**, the sum of `f_exp`, which is the survey's
+  own estimate of volume and is probably what "intensity of bicycle travel" was
+  meant to mean.
+- **Kilometre-trips**, the sum of km times `f_exp`, which is exposure — distance
+  travelled by bicycle inside the unit — and is a perfectly reasonable thing to
+  want, but is not what the column is called and is not comparable to the other
+  line layers.
+
+All three are defensible; they answer different questions. What is not defensible
+is producing the third and labelling it the first.
+
+**Open.** Which of the three is the variable of interest. Once that is answered the
+layer takes about as much code as any of the other line variables, and it joins the
+module with the annual series.
+
+---
+
+## D22 — A predictor is measured against every unit, and a zero is an observation
+
+**Kind:** Methodological.
+
+**Status:** Closed.
+
+**Built:** Yes, as the `predictors` route, for the ten static variables. The four
+with an annual series are not written yet; the tables already carry the year column
+they will fill.
+
+**Context.** The predictor half of the study is a different kind of measurement
+from the casualty half — no funnel of records, no counterparts, no severity — but
+it has the same failure mode, and the inherited pipeline had it in three places at
+once. All three make a unit disappear without saying so.
+
+**Decision — one row per unit and variable, always.** Thirty units by ten variables
+is 300 cells, and every one of them is written. In the legacy tables a unit the
+layer never reaches has no row at all: `camaras_salvavidas` produces 24 rows and
+`estacion_localidad` 23, so a histogram drawn from them has 24 and 23 bars' worth
+of units and looks entirely normal. This is D10 applied to the other half of the
+study, and it costs 14 cells here — 1 unit with no signalised intersection, 6 with
+no speed camera, 7 with no TransMilenio station.
+
+**Decision — "measured and found nothing" and "could not be measured" are
+different, and they carry different values.** A zero means the measurement ran over
+that unit and the feature is not there. A unit that could not be measured at all
+carries a null and the status `NOT_MEASURED`, never a zero. The legacy output
+expresses both as an absent row, which is exactly the confusion that makes an
+absent row dangerous: Torca genuinely has no traffic lights, and that is a finding
+about the northern edge of the city, not a gap.
+
+On these layers every one of the 300 cells is measured, so the distinction costs
+nothing today and exists for the day a layer arrives that does not cover the whole
+city.
+
+**Decision — a zero that could not be true is reported loudly.** Four variables are
+declared as ones where a zero would mean the measurement failed rather than that
+the feature is absent: sidewalk, arterial road, roadway and pedestrian crossings.
+An urban planning unit with no carriageway is not a fact about Bogotá. The run
+names any such zero and warns; it does not correct anything, because the answer is
+to find out what went wrong and not to substitute a number. None fires on the
+current layers, which is the intended state.
+
+The other six are left out of that list deliberately. A unit with no park, no
+bridge, no speed camera, no TransMilenio station, no bus stop or no traffic light
+is unusual and perfectly possible, and flagging those would train me to dismiss the
+warning.
+
+**Decision — the normalisation is the area of the unit, for both families.**
+Surfaces become a share of the unit, dimensionless and bounded by 1; point layers
+become a density per square kilometre, bounded below and not above. Both come from
+the geometry of the unit in EPSG:3116, not from the `AREA_HA` attribute the
+shapefile carries, so numerator and denominator are measured in the same
+projection. The two agree to within 0.08% where both exist; mixing them would make
+a share of a unit slightly incoherent with itself for no gain.
+
+Normalising is not optional here. UPL areas run from 6.52 km² to 53.82 km², a
+factor of eight, so an unnormalised count would rank units by size before it ranked
+them by anything else.
+
+**Decision — what the measurement drops is counted, per layer.** The legacy point
+join is an inner join, so points outside every unit vanish with no record; the audit
+had to reconstruct the losses afterwards to find out they existed. Here every layer
+reports what fell outside the units at the moment it is measured: 1,248 of 68,447
+crossings (1.82%), 94 of 7,694 bus stops, 1 of 1,462 signalised intersections, and
+for the surfaces the captured area against the layer total — 99.91% of sidewalk,
+99.43% of roadway, 98.87% of parks, 99.93% of bridges.
+
+**One of those numbers is not like the others.** Only **90.75% of the arterial road
+surface** falls inside a UPL, against 98.9% or better for the other four. It is not
+an error: the layer includes stretches of avenue beyond the perimeter of the units,
+and the study universe is the 30 UPL of the layer (D7), so those stretches have
+nowhere to go. It is worth stating because the arterial variable is therefore
+measuring a slightly different territory from the other four, and because a reader
+comparing city totals against an official figure will find 9% missing and deserve
+to know why.
+
+**Rejected — writing only the units a layer reaches, as the legacy does.** Every
+consumer would have to know the unit roster to tell a zero from a gap, and each
+would reconstruct it slightly differently. The histogram is where this bites: it
+would silently be a histogram of a different number of units per variable.
+
+**Rejected — filling the unreached units with zero and saying nothing.** That is
+the right value with the wrong provenance. It is right here because these layers do
+cover the city, and it would be wrong for a layer that does not, with nothing in
+the output to tell the two situations apart.
+
+---
+
+## D23 — The histogram bins and the correlation scale are declared, not inferred
+
+**Kind:** Implementation.
+
+**Status:** Closed.
+
+**Built:** Yes. Both are settings in the configuration, and both figures are drawn
+from the exported tables read back from disk, as D12 requires.
+
+**Context.** With thirty observations the choice of bins decides a good part of
+what a histogram looks like, and the plotting library's default is a choice made by
+someone who never saw this data. Leaving it to the default means the figure has a
+parameter nobody picked and nobody can defend.
+
+**Decision — Sturges' rule, evaluated once on the size of the study universe.**
+`ceil(log2(30)) + 1 = 6` equal-width bins spanning the observed range of each
+variable, with explicit edges rather than a bin count handed to the library.
+
+Two properties made it the choice, and the second is the one that decided it:
+
+- Six bins over thirty observations averages five units per bin. Finer binning at
+  this n produces a comb of ones and zeros that reads as structure where there is
+  only sampling.
+- **n is the same for every variable**, because the universe is fixed at thirty
+  units (D7). A rule depending only on n therefore gives *one* bin count for all
+  ten figures, so ten histograms are drawn to the same structure and can be read
+  against each other.
+
+**Rejected — Freedman-Diaconis, or any data-dependent rule.** It would give each
+variable its own resolution according to its own spread. Ten figures drawn to ten
+different rulers that look like one series is the defect D12 rejects for the heatmap
+colour scales, and it is worse here because a histogram carries no colour bar to
+give the ruler away.
+
+**Rejected — the library default.** It is a data-dependent rule with no name on it,
+which is the same objection plus the inability to state in the thesis what was done.
+
+**Rejected — unequal-width bins, quantile or logarithmic.** Several of these
+variables are strongly right-skewed — bridge surface has fifteen of thirty units in
+its first bin — and variable-width bins would flatten exactly that. The skew is a
+property of the city worth seeing, not a rendering problem to fix.
+
+**Decision — the correlation heatmap is diverging and centred on zero.** Fixed at
+−1 to +1 rather than scaled to the observed range, so that the colour of a cell
+means the same thing in this figure as in any other drawn the same way, and so that
+two variables moving together and two moving against each other cannot land on
+similar colours. The value is printed on every cell, for the same reason D12 prints
+them on the casualty heatmaps: a colour ramp shows the pattern well and the number
+badly.
+
+**Decision — high pairs are reported, never dropped.** Pairs above 0.7 in absolute
+value are named in the run log and exported as their own small table, because two
+variables that correlate that strongly measure close to the same thing and putting
+both into one model buys nothing and destabilises the coefficients of each. It is a
+reporting threshold in the sense of D17's sparse denominator: nothing is removed
+from any table because of it, and which pair to drop is a modelling decision, not a
+plotting one.

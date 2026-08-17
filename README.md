@@ -68,11 +68,20 @@ python -m src.run_pipeline            # full pipeline; announces the route it pi
 python -m src.run_pipeline matrix     # the same, named explicitly
 python -m src.run_pipeline parties    # stop after party resolution
 python -m src.run_pipeline loading    # sources only: read, locate, verify
+python -m src.run_pipeline predictors # the static urban predictors and their figures
 python -m src.run_pipeline rho        # the ρ(t) diagnostic, beside the pipeline
 python -m src.run_pipeline completeness   # does every month of every year have data?
 python -m src.run_pipeline integrate  # rebuild the layers from the updated extract
 python -m src.run_pipeline --help     # the routes available, with a line each
 ```
+
+`predictors` is the other half of the study: the features of a unit that the
+casualty rates are to be regressed against. It measures ten static layers — five
+surfaces as a share of the unit, five point layers as a density over it — against
+every unit, and emits the wide table the figures are drawn from, the long table
+the dashboard joins, ten histograms and the Pearson correlation matrix among the
+ten. The four layers that carry an annual series join this route later; the
+tables already carry the year column they will fill.
 
 `rho` is not a stage of the pipeline: it measures, for each pair of road user
 types, the share of two-party crashes in which both parties suffered casualties,

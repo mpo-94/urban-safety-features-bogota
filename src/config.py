@@ -10,6 +10,7 @@ explicitly.
 from __future__ import annotations
 
 import datetime as dt
+import math
 import re
 import unicodedata
 from dataclasses import dataclass
@@ -396,6 +397,7 @@ MATRIX_COUNTS: dict[str, str] = {
 DATA_SUBDIR = "data"
 BY_YEAR_SUBDIR = "by_year"
 FIGURES_SUBDIR = "figures"
+PREDICTORS_FIGURES_SUBDIR = "predictors"
 INTERMEDIATE_SUBDIR = "intermediate"
 
 # File name prefixes. A table meant for models and a table meant for reading are
@@ -490,6 +492,190 @@ RHO_SPARSE_DENOMINATOR = 10
 RHO_JUMP_THRESHOLD = 0.10
 
 # ---------------------------------------------------------------------------
+# Urban predictors
+# ---------------------------------------------------------------------------
+# The other half of the study: the features of a unit that the casualty rates are
+# to be regressed against. Fifteen layers exist; eleven are a single snapshot with
+# no year and four carry an annual series.
+#
+# What is implemented here are the ten static ones. The four with a series
+# (cycleways and the three signage layers) come later, and the long table below is
+# shaped so they slot into it without a schema change: every row already carries a
+# YEAR column, null for a snapshot and filled for a series.
+#
+# The eleventh snapshot, the origin-destination desire lines, is deliberately out.
+# Its length column is not in kilometres: the legacy code multiplies the length of
+# each line by the survey expansion factor of its own record and writes the result
+# back over the kilometres under the same name. Because the factor varies from
+# record to record that is a transformation and not a rescaling, so the variable
+# is neither kilometres nor trips, and its row of the correlation matrix could not
+# be interpreted. It stays out until my advisor says what it was meant to measure.
+# See D21.
+PREDICTORS_DIR = DATA_DIR / "shp_properties_sorted"
+
+# How a layer is measured against a unit. The family decides the whole treatment:
+# what the raw magnitude is, how it is normalised, and what the result means.
+AREA_FAMILY = "AREA"
+POINT_FAMILY = "POINT"
+
+# (raw magnitude, normalised value) per family, as they are labelled in the
+# exported tables. Areas normalise to a share of the unit, which is dimensionless
+# and bounded; points normalise to a density, which is not bounded above.
+FAMILY_UNITS: dict[str, tuple[str, str]] = {
+    AREA_FAMILY: ("km2", "share of unit area"),
+    POINT_FAMILY: ("count", "points per km2"),
+}
+
+
+@dataclass(frozen=True)
+class StaticPredictor:
+    """One urban feature layer, measured once against every unit."""
+
+    name: str  # canonical name: the value in the long table, the column in the wide one
+    family: str
+    path: Path
+    label: str  # short form, for figure axes where the canonical name is too long
+    measures: str  # one line: what the number is, for the run log and the docs
+    # True where a unit of zero would mean the measurement failed rather than that
+    # the feature is absent. An urban planning unit with no roadway is not a fact
+    # about Bogotá. Reported loudly; never corrected automatically.
+    zero_is_implausible: bool
+
+
+def _areas(folder: str, shapefile: str) -> Path:
+    return PREDICTORS_DIR / "areas" / folder / shapefile
+
+
+def _points(folder: str, shapefile: str) -> Path:
+    return PREDICTORS_DIR / "points" / folder / shapefile
+
+
+# Order is fixed here rather than taken from a directory listing, so the wide
+# table, the correlation matrix and the figures come out in the same order on
+# every run and two runs can be diffed line by line. Areas first, then points.
+STATIC_PREDICTORS: tuple[StaticPredictor, ...] = (
+    StaticPredictor(
+        name="SIDEWALK_AREA_SHARE",
+        family=AREA_FAMILY,
+        path=_areas("andenes_x_localidad", "andenes_x_localidad.shp"),
+        label="Sidewalk",
+        measures="share of the unit covered by sidewalk surface",
+        # A unit with no sidewalk at all would mean the layer did not reach it.
+        zero_is_implausible=True,
+    ),
+    StaticPredictor(
+        name="ARTERIAL_ROAD_AREA_SHARE",
+        family=AREA_FAMILY,
+        path=_areas("avenidas_corregidas", "avenidas_corregidas.shp"),
+        label="Arterial road",
+        measures="share of the unit covered by arterial road surface",
+        # Every UPL is crossed by at least one arterial; none is small enough to
+        # sit between them.
+        zero_is_implausible=True,
+    ),
+    StaticPredictor(
+        name="ROADWAY_AREA_SHARE",
+        family=AREA_FAMILY,
+        path=_areas("calzada_x_localidad", "calzada_x_localidad.shp"),
+        label="Roadway",
+        measures="share of the unit covered by carriageway surface",
+        # The clearest case of the three: a unit with no carriageway is not a
+        # place, it is a failed intersection.
+        zero_is_implausible=True,
+    ),
+    StaticPredictor(
+        name="URBAN_PARK_AREA_SHARE",
+        family=AREA_FAMILY,
+        path=_areas("parques_urb", "parques_urb.shp"),
+        label="Urban park",
+        measures="share of the unit covered by urban park",
+        # A unit with no park is unusual but perfectly possible.
+        zero_is_implausible=False,
+    ),
+    StaticPredictor(
+        name="BRIDGE_AREA_SHARE",
+        family=AREA_FAMILY,
+        path=_areas("puentes", "puentes.shp"),
+        label="Bridge",
+        measures="share of the unit covered by bridge deck",
+        zero_is_implausible=False,
+    ),
+    StaticPredictor(
+        name="SITP_BUS_STOP_DENSITY",
+        family=POINT_FAMILY,
+        path=_points("Paraderos_SITP", "Paraderos_SITP.shp"),
+        label="SITP bus stops",
+        measures="SITP bus stops per square kilometre",
+        zero_is_implausible=False,
+    ),
+    StaticPredictor(
+        name="SIGNALISED_INTERSECTION_DENSITY",
+        family=POINT_FAMILY,
+        path=_points("Red_Semaforica", "Red_Semaforica.shp"),
+        label="Signalised junctions",
+        measures="traffic-light controlled intersections per square kilometre",
+        zero_is_implausible=False,
+    ),
+    StaticPredictor(
+        name="PEDESTRIAN_CROSSING_DENSITY",
+        family=POINT_FAMILY,
+        path=_points("crossings", "crossings.shp"),
+        label="Pedestrian crossings",
+        measures="pedestrian crossings per square kilometre, extracted from OpenStreetMap",
+        # Not a claim that every unit has crossings on the ground, but that an
+        # OSM extraction returning none for a whole UPL is an extraction gap.
+        zero_is_implausible=True,
+    ),
+    StaticPredictor(
+        name="SPEED_CAMERA_DENSITY",
+        family=POINT_FAMILY,
+        path=_points("camaras_salvavidas_bogota", "Camaras_Salvavidas_Bogota.shp"),
+        label="Speed cameras",
+        measures="speed enforcement cameras per square kilometre",
+        # 92 cameras over 30 units: most units having none is the expected shape.
+        zero_is_implausible=False,
+    ),
+    StaticPredictor(
+        name="TRANSMILENIO_STATION_DENSITY",
+        family=POINT_FAMILY,
+        path=_points("estacion_localidad", "estacion_localidad.shp"),
+        label="TransMilenio stations",
+        measures="TransMilenio trunk stations per square kilometre",
+        # The trunk network does not reach every unit, which is a fact about the
+        # network rather than a gap in the layer.
+        zero_is_implausible=False,
+    ),
+)
+
+STATIC_PREDICTOR_NAMES: tuple[str, ...] = tuple(p.name for p in STATIC_PREDICTORS)
+STATIC_PREDICTORS_BY_NAME: dict[str, StaticPredictor] = {p.name: p for p in STATIC_PREDICTORS}
+
+# Columns of the predictor tables. Scale, unit and year deliberately reuse the
+# names and the values of the matrix and rho tables, because the dashboard joins
+# all three on them.
+PREDICTOR_COL = "PREDICTOR"
+PREDICTOR_FAMILY_COL = "PREDICTOR_FAMILY"
+PREDICTOR_MEASURE_COL = "MEASURE"  # raw magnitude: km2 of surface, or number of points
+PREDICTOR_MEASURE_UNIT_COL = "MEASURE_UNIT"
+PREDICTOR_VALUE_COL = "VALUE"  # the magnitude normalised by the area of the unit
+PREDICTOR_VALUE_UNIT_COL = "VALUE_UNIT"
+PREDICTOR_STATUS_COL = "VALUE_STATUS"
+AREA_UNIT_KM2_COL = "AREA_UNIT_KM2"
+
+# A cell is MEASURED when the unit was measured, whatever came out — a unit with
+# no bridge is a valid observation of zero. NOT_MEASURED is for a unit the
+# computation could not reach at all, which must never be read as a zero. The two
+# are indistinguishable in the legacy output, where an absent row means either.
+MEASURED_STATUS = "MEASURED"
+NOT_MEASURED_STATUS = "NOT_MEASURED"
+
+
+def predictor_units(family: str) -> tuple[str, str]:
+    """The (raw magnitude, normalised value) units of a family."""
+    return FAMILY_UNITS[family]
+
+
+# ---------------------------------------------------------------------------
 # Figures
 # ---------------------------------------------------------------------------
 FIGURE_DPI = 150
@@ -509,6 +695,52 @@ HEATMAP_EMPTY_COLOR = "#eeeeee"
 RHO_SERIES_COLOR = "#1b6ca8"
 RHO_REFERENCE_COLOR = "#9e9e9e"
 RHO_GRID_COLOR = "#e3e3e3"
+
+# -- predictor histograms ---------------------------------------------------
+# With thirty observations the choice of bins decides a good deal of what the
+# histogram looks like, so it is declared here rather than left to the plotting
+# library, and the same rule applies to all ten figures.
+#
+# The rule is Sturges', ceil(log2(n)) + 1, evaluated on the size of the study
+# universe. Two properties made it the choice:
+#
+#   * n is the same for every variable, because the universe is fixed at thirty
+#     units (D7). So a rule that depends only on n gives one bin count for all
+#     ten histograms, and ten figures drawn to the same structure can be read
+#     against each other. A data-dependent rule such as Freedman-Diaconis would
+#     give each variable its own resolution, which is the defect D12 rejects for
+#     colour scales: two figures that look comparable and are not.
+#   * Six bins over thirty observations averages five units per bin. Finer
+#     binning at this n produces a comb of ones and zeros that reads as structure
+#     where there is only sampling.
+#
+# Bins are equal width and span the observed range of each variable, so the
+# skewness of a variable shows as mass piling into the first bin rather than
+# being smoothed away by variable-width bins.
+HISTOGRAM_BIN_RULE = "Sturges: ceil(log2(n)) + 1"
+HISTOGRAM_BAR_COLOR = "#1b6ca8"
+HISTOGRAM_BAR_EDGE_COLOR = "#ffffff"
+
+
+def histogram_bin_count(observations: int) -> int:
+    """Number of equal-width bins for a histogram of `observations` values."""
+    if observations < 2:
+        return 1
+    return math.ceil(math.log2(observations)) + 1
+
+
+# -- predictor correlation matrix -------------------------------------------
+# Diverging and centred on zero, because the sign of a correlation matters as
+# much as its magnitude: two variables that move against each other and two that
+# move together must not land on similar colours.
+CORRELATION_METHOD = "pearson"
+CORRELATION_COLORMAP = "RdBu_r"
+
+# Pairs above this in absolute value are named in the report. Two variables that
+# correlate this strongly measure close to the same thing, and putting both into
+# the same model is what this number exists to prevent. It is a reporting
+# threshold: nothing is dropped from any table because of it.
+CORRELATION_HIGH_THRESHOLD = 0.7
 
 # ---------------------------------------------------------------------------
 # Run-time switches

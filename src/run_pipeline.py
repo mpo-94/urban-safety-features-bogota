@@ -10,6 +10,7 @@ resolution should not have to rebuild fifty-seven figures first.
     python -m src.run_pipeline parties         # stop after party resolution
     python -m src.run_pipeline loading         # sources only
     python -m src.run_pipeline rho             # the rho(t) diagnostic
+    python -m src.run_pipeline predictors      # the static urban predictors
     python -m src.run_pipeline completeness    # do the sources cover every month?
     python -m src.run_pipeline integrate       # rebuild the layers from the updated extract
     python -m src.run_pipeline loading --dump-intermediates
@@ -27,7 +28,7 @@ from typing import Callable
 
 import pandas as pd
 
-from src import completeness, config, integration, loading, matrix, parties, rho
+from src import completeness, config, integration, loading, matrix, parties, predictors, rho
 from src.provenance import RunLog
 
 
@@ -126,6 +127,25 @@ def run_rho(log: RunLog) -> None:
     rho.report(long_table, log)
 
 
+def run_predictors(log: RunLog) -> None:
+    """The static urban predictors, with their histograms and correlation matrix.
+
+    It reads the unit layer and the predictor layers, and nothing else: the
+    casualty sources have no part in it, so the route does not load them. The
+    predictors with an annual series join this route when they are written.
+    """
+    units = loading.load_territorial_units(log)
+    long_table = predictors.build(units, log)
+
+    paths = predictors.export(long_table, log)
+    predictors.render_figures(paths, log)
+
+    log.table("record funnel:", log.funnel())
+    if not predictors.verify(long_table, units, log):
+        raise RouteFailed("the static predictor tables do not agree with what entered them")
+    predictors.report(long_table, log)
+
+
 def run_matrix(log: RunLog) -> None:
     """The full pipeline: sources, parties, matrix, tables and figures."""
     units, casualties, vehicles = load_sources(log)
@@ -156,12 +176,13 @@ class Route:
 
 
 # The pipeline routes first, longest to shortest, then the analyses that sit
-# beside it, then the build step. The static predictors and their figures join
-# this list as they are written.
+# beside it, then the build step. The predictors with an annual series join the
+# predictors route as they are written, rather than adding a route of their own.
 ROUTES: tuple[Route, ...] = (
     Route("matrix", "full pipeline up to the casualty matrix, with tables and figures", run_matrix),
     Route("parties", "up to party resolution: one row per affected party", run_parties),
     Route("loading", "sources only: read them, locate them, verify the counts", run_loading),
+    Route("predictors", "the static urban predictors, with histograms and their correlation", run_predictors),
     Route("rho", "rho(t): share of two-party crashes where both parties were hurt", run_rho),
     Route("completeness", "month-by-month coverage of the casualty layers", run_completeness),
     Route("integrate", f"rebuild the layers with {config.REPLACED_YEAR} from the updated extract", run_integrate),
