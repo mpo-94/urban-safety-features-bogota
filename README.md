@@ -81,9 +81,13 @@ surfaces as a share of the unit, five point layers as a density over it — agai
 every unit, and emits the wide table the figures are drawn from, the long table
 the dashboard joins, ten histograms, the Pearson correlation matrix among the ten
 and one master table figure of the thirty units against the ten variables, shaded
-column by column because the variables are not on a common scale. The four layers
-that carry an annual series join this route later; the tables already carry the
-year column they will fill.
+column by column because the variables are not on a common scale. It also exports
+a data dictionary: one row per variable with its source layer as the data names
+it, its file, its geometry, what it measures, in what units and how it is
+computed. The measurement runs on that declaration — it locates every layer and
+dispatches every computation through it — so a wrong entry stops the run instead
+of misinforming a reader. The four layers that carry an annual series join this
+route later; the tables already carry the year column they will fill.
 
 `rho` is not a stage of the pipeline: it measures, for each pair of road user
 types, the share of two-party crashes in which both parties suffered casualties,

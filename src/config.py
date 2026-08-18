@@ -402,8 +402,11 @@ INTERMEDIATE_SUBDIR = "intermediate"
 
 # File name prefixes. A table meant for models and a table meant for reading are
 # never interchangeable, so the name says which it is before anyone opens it.
+# A third kind exists: a table that describes the variables rather than measuring
+# anything, which is neither of the two and is named apart from both.
 ANALYSIS_PREFIX = "analysis"
 PRESENTATION_PREFIX = "presentation"
+REFERENCE_PREFIX = "reference"
 
 # ---------------------------------------------------------------------------
 # rho(t): share of two-party crashes in which both parties suffered casualties
@@ -513,41 +516,176 @@ RHO_JUMP_THRESHOLD = 0.10
 # See D21.
 PREDICTORS_DIR = DATA_DIR / "shp_properties_sorted"
 
-# How a layer is measured against a unit. The family decides the whole treatment:
-# what the raw magnitude is, how it is normalised, and what the result means.
+# -- the geometry of a source layer -----------------------------------------
+# The code is in English and the delivered data is in Spanish, so there is no way
+# to walk from ARTERIAL_ROAD_AREA_SHARE back to the avenidas_corregidas layer and
+# from there to the file it came out of, except by reading the measurement and
+# deducing it. Everything below closes that chain and, more importantly, makes
+# the code depend on it: the path is built from the declaration, the measurement
+# is dispatched by it, and the geometry is checked against the file when it is
+# read. A wrong entry stops the run instead of misinforming a reader, which is
+# the one property a comment can never have.
+AREA_GEOMETRY = "area"
+POINT_GEOMETRY = "point"
+LINE_GEOMETRY = "line"
+
+# The folder each geometry lives in, exactly as the delivered data is arranged.
+# This is what turns a declared layer name into a path, so a typo in the name
+# raises a missing file rather than measuring something else.
+GEOMETRY_FOLDERS: dict[str, str] = {
+    AREA_GEOMETRY: "areas",
+    POINT_GEOMETRY: "points",
+    LINE_GEOMETRY: "lines",
+}
+
+# The geometry types each kind admits, checked against the layer at the moment it
+# is read. MultiPoint is in the point list because the TransMilenio layer records
+# a station as a collection of platforms, which the measurement explodes.
+GEOMETRY_TYPES: dict[str, tuple[str, ...]] = {
+    AREA_GEOMETRY: ("Polygon", "MultiPolygon"),
+    POINT_GEOMETRY: ("Point", "MultiPoint"),
+    LINE_GEOMETRY: ("LineString", "MultiLineString"),
+}
+
+# The family is the geometry as the exported tables label it, and it is what the
+# rest of the pipeline groups by. It follows from the geometry rather than being
+# declared twice, so the two can never disagree.
 AREA_FAMILY = "AREA"
 POINT_FAMILY = "POINT"
+LINE_FAMILY = "LINE"
 
-# (raw magnitude, normalised value) per family, as they are labelled in the
-# exported tables. Areas normalise to a share of the unit, which is dimensionless
-# and bounded; points normalise to a density, which is not bounded above.
-FAMILY_UNITS: dict[str, tuple[str, str]] = {
-    AREA_FAMILY: ("km2", "share of unit area"),
-    POINT_FAMILY: ("count", "points per km2"),
+GEOMETRY_FAMILIES: dict[str, str] = {
+    AREA_GEOMETRY: AREA_FAMILY,
+    POINT_GEOMETRY: POINT_FAMILY,
+    LINE_GEOMETRY: LINE_FAMILY,
 }
+
+# -- how a variable is measured ---------------------------------------------
+# A method is the operation that turns a layer into one number per unit. The
+# sentence describing it lives here, beside the units it produces, and not on
+# each variable: the key a variable declares is the same key that selects the
+# function which runs, so the sentence cannot end up describing something the
+# code does not do. That is the failure the legacy notebook had, where a text
+# cell described an ordering rule the code never implemented.
+AREA_SHARE_METHOD = "area_share"
+POINT_DENSITY_METHOD = "point_density"
+
+
+@dataclass(frozen=True)
+class MeasurementMethod:
+    """One way of measuring a layer against a unit, with what it yields."""
+
+    name: str
+    geometry: str  # the geometry this method can measure
+    measure_unit: str  # unit of the raw magnitude, before normalising
+    value_unit: str  # unit after dividing by the area of the unit
+    computation: str  # one sentence: what the code actually does
+
+
+MEASUREMENT_METHODS: dict[str, MeasurementMethod] = {
+    AREA_SHARE_METHOD: MeasurementMethod(
+        name=AREA_SHARE_METHOD,
+        geometry=AREA_GEOMETRY,
+        measure_unit="km2",
+        value_unit="share of unit area",
+        computation=(
+            "repair invalid polygons, intersect the layer with the unit in EPSG:3116, "
+            "add the area of every fragment falling inside the unit, and divide that "
+            "surface by the area of the unit"
+        ),
+    ),
+    POINT_DENSITY_METHOD: MeasurementMethod(
+        name=POINT_DENSITY_METHOD,
+        geometry=POINT_GEOMETRY,
+        measure_unit="count",
+        value_unit="points per km2",
+        computation=(
+            "explode multi-part features into one point each, keep the points contained "
+            "in the unit in EPSG:3116, count them, and divide the count by the area of "
+            "the unit"
+        ),
+    ),
+}
+
+# -- how much time a variable covers ----------------------------------------
+# All ten implemented here are a single snapshot with no year, and the long table
+# carries a null YEAR for every one of them. The constant exists because the four
+# layers with an annual series are declared the same way when they arrive, and
+# the check that a snapshot carries no year is what keeps the two apart.
+SNAPSHOT_COVERAGE = "snapshot"
+ANNUAL_SERIES_COVERAGE = "annual series"
+TIME_COVERAGES: tuple[str, ...] = (SNAPSHOT_COVERAGE, ANNUAL_SERIES_COVERAGE)
 
 
 @dataclass(frozen=True)
 class StaticPredictor:
-    """One urban feature layer, measured once against every unit."""
+    """One urban feature layer, measured once against every unit.
+
+    The whole declaration of a variable: what it is called in the code, in the
+    figures and in the data, where it comes from, what it measures and how. The
+    measurement reads its source through `path`, dispatches on `method` and
+    checks `geometry` against the file, so this is the description the pipeline
+    runs on rather than a description of it.
+    """
 
     name: str  # canonical name: the value in the long table, the column in the wide one
-    family: str
-    path: Path
     label: str  # short form, for figure axes where the canonical name is too long
+    source_layer: str  # the layer as the delivered data names it, in Spanish
+    source_file: str  # the file inside that layer's folder
+    geometry: str
+    method: str
     measures: str  # one line: what the number is, for the run log and the docs
+    time_coverage: str
     # True where a unit of zero would mean the measurement failed rather than that
     # the feature is absent. An urban planning unit with no roadway is not a fact
     # about Bogotá. Reported loudly; never corrected automatically.
     zero_is_implausible: bool
 
+    def __post_init__(self) -> None:
+        """Reject a declaration that contradicts itself, at import time.
 
-def _areas(folder: str, shapefile: str) -> Path:
-    return PREDICTORS_DIR / "areas" / folder / shapefile
+        Cheap and worth doing here: an inconsistent entry then fails before any
+        layer is read, rather than half way through a run that has already spent
+        minutes on the layers declared correctly.
+        """
+        if self.geometry not in GEOMETRY_FOLDERS:
+            raise ValueError(f"{self.name}: unknown geometry {self.geometry!r}")
+        if self.method not in MEASUREMENT_METHODS:
+            raise ValueError(f"{self.name}: unknown measurement method {self.method!r}")
+        if self.time_coverage not in TIME_COVERAGES:
+            raise ValueError(f"{self.name}: unknown time coverage {self.time_coverage!r}")
+        if self.measurement.geometry != self.geometry:
+            raise ValueError(
+                f"{self.name}: method {self.method!r} measures {self.measurement.geometry} "
+                f"geometry, but the layer is declared as {self.geometry}"
+            )
 
+    @property
+    def path(self) -> Path:
+        """Where the source file is, built from the declared layer and geometry."""
+        return PREDICTORS_DIR / GEOMETRY_FOLDERS[self.geometry] / self.source_layer / self.source_file
 
-def _points(folder: str, shapefile: str) -> Path:
-    return PREDICTORS_DIR / "points" / folder / shapefile
+    @property
+    def family(self) -> str:
+        """The geometry as the exported tables label it."""
+        return GEOMETRY_FAMILIES[self.geometry]
+
+    @property
+    def measurement(self) -> MeasurementMethod:
+        """The method that measures this variable, with its units and its sentence."""
+        return MEASUREMENT_METHODS[self.method]
+
+    @property
+    def measure_unit(self) -> str:
+        return self.measurement.measure_unit
+
+    @property
+    def value_unit(self) -> str:
+        return self.measurement.value_unit
+
+    @property
+    def computation(self) -> str:
+        return self.measurement.computation
 
 
 # Order is fixed here rather than taken from a directory listing, so the wide
@@ -556,91 +694,121 @@ def _points(folder: str, shapefile: str) -> Path:
 STATIC_PREDICTORS: tuple[StaticPredictor, ...] = (
     StaticPredictor(
         name="SIDEWALK_AREA_SHARE",
-        family=AREA_FAMILY,
-        path=_areas("andenes_x_localidad", "andenes_x_localidad.shp"),
         label="Sidewalk",
+        source_layer="andenes_x_localidad",
+        source_file="andenes_x_localidad.shp",
+        geometry=AREA_GEOMETRY,
+        method=AREA_SHARE_METHOD,
         measures="share of the unit covered by sidewalk surface",
+        time_coverage=SNAPSHOT_COVERAGE,
         # A unit with no sidewalk at all would mean the layer did not reach it.
         zero_is_implausible=True,
     ),
     StaticPredictor(
         name="ARTERIAL_ROAD_AREA_SHARE",
-        family=AREA_FAMILY,
-        path=_areas("avenidas_corregidas", "avenidas_corregidas.shp"),
         label="Arterial road",
+        source_layer="avenidas_corregidas",
+        source_file="avenidas_corregidas.shp",
+        geometry=AREA_GEOMETRY,
+        method=AREA_SHARE_METHOD,
         measures="share of the unit covered by arterial road surface",
+        time_coverage=SNAPSHOT_COVERAGE,
         # Every UPL is crossed by at least one arterial; none is small enough to
         # sit between them.
         zero_is_implausible=True,
     ),
     StaticPredictor(
         name="ROADWAY_AREA_SHARE",
-        family=AREA_FAMILY,
-        path=_areas("calzada_x_localidad", "calzada_x_localidad.shp"),
         label="Roadway",
+        source_layer="calzada_x_localidad",
+        source_file="calzada_x_localidad.shp",
+        geometry=AREA_GEOMETRY,
+        method=AREA_SHARE_METHOD,
         measures="share of the unit covered by carriageway surface",
+        time_coverage=SNAPSHOT_COVERAGE,
         # The clearest case of the three: a unit with no carriageway is not a
         # place, it is a failed intersection.
         zero_is_implausible=True,
     ),
     StaticPredictor(
         name="URBAN_PARK_AREA_SHARE",
-        family=AREA_FAMILY,
-        path=_areas("parques_urb", "parques_urb.shp"),
         label="Urban park",
+        source_layer="parques_urb",
+        source_file="parques_urb.shp",
+        geometry=AREA_GEOMETRY,
+        method=AREA_SHARE_METHOD,
         measures="share of the unit covered by urban park",
+        time_coverage=SNAPSHOT_COVERAGE,
         # A unit with no park is unusual but perfectly possible.
         zero_is_implausible=False,
     ),
     StaticPredictor(
         name="BRIDGE_AREA_SHARE",
-        family=AREA_FAMILY,
-        path=_areas("puentes", "puentes.shp"),
         label="Bridge",
+        source_layer="puentes",
+        source_file="puentes.shp",
+        geometry=AREA_GEOMETRY,
+        method=AREA_SHARE_METHOD,
         measures="share of the unit covered by bridge deck",
+        time_coverage=SNAPSHOT_COVERAGE,
         zero_is_implausible=False,
     ),
     StaticPredictor(
         name="SITP_BUS_STOP_DENSITY",
-        family=POINT_FAMILY,
-        path=_points("Paraderos_SITP", "Paraderos_SITP.shp"),
         label="SITP bus stops",
+        source_layer="Paraderos_SITP",
+        source_file="Paraderos_SITP.shp",
+        geometry=POINT_GEOMETRY,
+        method=POINT_DENSITY_METHOD,
         measures="SITP bus stops per square kilometre",
+        time_coverage=SNAPSHOT_COVERAGE,
         zero_is_implausible=False,
     ),
     StaticPredictor(
         name="SIGNALISED_INTERSECTION_DENSITY",
-        family=POINT_FAMILY,
-        path=_points("Red_Semaforica", "Red_Semaforica.shp"),
         label="Signalised junctions",
+        source_layer="Red_Semaforica",
+        source_file="Red_Semaforica.shp",
+        geometry=POINT_GEOMETRY,
+        method=POINT_DENSITY_METHOD,
         measures="traffic-light controlled intersections per square kilometre",
+        time_coverage=SNAPSHOT_COVERAGE,
         zero_is_implausible=False,
     ),
     StaticPredictor(
         name="PEDESTRIAN_CROSSING_DENSITY",
-        family=POINT_FAMILY,
-        path=_points("crossings", "crossings.shp"),
         label="Pedestrian crossings",
+        source_layer="crossings",
+        source_file="crossings.shp",
+        geometry=POINT_GEOMETRY,
+        method=POINT_DENSITY_METHOD,
         measures="pedestrian crossings per square kilometre, extracted from OpenStreetMap",
+        time_coverage=SNAPSHOT_COVERAGE,
         # Not a claim that every unit has crossings on the ground, but that an
         # OSM extraction returning none for a whole UPL is an extraction gap.
         zero_is_implausible=True,
     ),
     StaticPredictor(
         name="SPEED_CAMERA_DENSITY",
-        family=POINT_FAMILY,
-        path=_points("camaras_salvavidas_bogota", "Camaras_Salvavidas_Bogota.shp"),
         label="Speed cameras",
+        source_layer="camaras_salvavidas_bogota",
+        source_file="Camaras_Salvavidas_Bogota.shp",
+        geometry=POINT_GEOMETRY,
+        method=POINT_DENSITY_METHOD,
         measures="speed enforcement cameras per square kilometre",
+        time_coverage=SNAPSHOT_COVERAGE,
         # 92 cameras over 30 units: most units having none is the expected shape.
         zero_is_implausible=False,
     ),
     StaticPredictor(
         name="TRANSMILENIO_STATION_DENSITY",
-        family=POINT_FAMILY,
-        path=_points("estacion_localidad", "estacion_localidad.shp"),
         label="TransMilenio stations",
+        source_layer="estacion_localidad",
+        source_file="estacion_localidad.shp",
+        geometry=POINT_GEOMETRY,
+        method=POINT_DENSITY_METHOD,
         measures="TransMilenio trunk stations per square kilometre",
+        time_coverage=SNAPSHOT_COVERAGE,
         # The trunk network does not reach every unit, which is a fact about the
         # network rather than a gap in the layer.
         zero_is_implausible=False,
@@ -662,17 +830,25 @@ PREDICTOR_VALUE_UNIT_COL = "VALUE_UNIT"
 PREDICTOR_STATUS_COL = "VALUE_STATUS"
 AREA_UNIT_KM2_COL = "AREA_UNIT_KM2"
 
+# Columns of the exported data dictionary. PREDICTOR, PREDICTOR_FAMILY and the
+# two unit columns are the same names carrying the same values as in the tables
+# above, so the dictionary joins to the measurements on the variable name.
+PREDICTOR_LABEL_COL = "PREDICTOR_LABEL"
+SOURCE_LAYER_COL = "SOURCE_LAYER"
+SOURCE_FILE_COL = "SOURCE_FILE"
+SOURCE_PATH_COL = "SOURCE_PATH"
+GEOMETRY_COL = "GEOMETRY"
+MEASURES_COL = "MEASURES"
+COMPUTATION_COL = "COMPUTATION"
+TIME_COVERAGE_COL = "TIME_COVERAGE"
+ZERO_IMPLAUSIBLE_COL = "ZERO_IS_IMPLAUSIBLE"
+
 # A cell is MEASURED when the unit was measured, whatever came out — a unit with
 # no bridge is a valid observation of zero. NOT_MEASURED is for a unit the
 # computation could not reach at all, which must never be read as a zero. The two
 # are indistinguishable in the legacy output, where an absent row means either.
 MEASURED_STATUS = "MEASURED"
 NOT_MEASURED_STATUS = "NOT_MEASURED"
-
-
-def predictor_units(family: str) -> tuple[str, str]:
-    """The (raw magnitude, normalised value) units of a family."""
-    return FAMILY_UNITS[family]
 
 
 # ---------------------------------------------------------------------------

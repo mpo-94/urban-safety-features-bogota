@@ -51,9 +51,10 @@ carried, so the second is larger for the same underlying records.
 | D22 | A predictor is measured against every unit, and a zero is an observation | Methodological | Closed | Yes, for the ten static ones |
 | D23 | The histogram bins and the correlation scale are declared, not inferred | Implementation | Closed; bin rule revised | Yes |
 | D24 | The master table is one figure, shaded column by column | Implementation | Closed | Yes |
+| D25 | The predictor declaration is what the code runs on, and it is exported | Implementation | Closed | Yes |
 
 Methodological decisions: D1-D7, D9, D10, D11, D15, D17, D18, D19, D21, D22.
-Implementation decisions: D8, D12, D13, D14, D16, D20, D23, D24.
+Implementation decisions: D8, D12, D13, D14, D16, D20, D23, D24, D25.
 
 ---
 
@@ -770,6 +771,10 @@ the grouping returns, so two runs can be diffed line by line.
 **Rejected — one file with everything and a column to filter on.** It is what the
 long table already is. The presentation tables exist precisely because that shape
 is unreadable.
+
+**Extended by D25.** A third prefix, `reference`, for a table that describes the
+variables instead of measuring anything. Two prefixes were enough while every
+output was numbers.
 
 ---
 
@@ -1529,3 +1534,96 @@ make one colour scale legitimate across the whole figure, at the cost of printin
 numbers that appear in no exported table. The point of this figure is to show the
 measured values; a reader who wants comparable magnitudes has the correlation
 matrix and, later, the model.
+
+---
+
+## D25 — The predictor declaration is what the code runs on, and it is exported
+
+**Kind:** Implementation.
+
+**Status:** Closed.
+
+**Built:** Yes. Every static predictor is declared in `config.StaticPredictor`, the
+measurement reads that declaration, and it is exported as
+`reference__static_predictors_dictionary.csv`.
+
+**Context.** The code is in English and the delivered data is in Spanish. Going
+from `ARTERIAL_ROAD_AREA_SHARE` to the `avenidas_corregidas` layer, and from there
+to the file it came out of, meant reading the measurement and deducing it. That
+chain has to be written down somewhere, and the only question was where.
+
+**Rejected first, because it is the obvious answer — comments.** A comment drifts
+from the code without anyone noticing, which is precisely the defect the audit
+found in the inherited notebook: a text cell described a rule for ordering the
+pair that the code never implemented, and the cell was right about the intention
+and wrong about the program for as long as anyone had read it. Documentation the
+code does not depend on cannot be trusted, however carefully it is written.
+
+**Decision — one structured declaration per variable, and the code runs on it.**
+Each variable declares its canonical name, its readable label, its source layer as
+the data names it, the file inside that layer, the geometry, the measurement
+method, what it measures, its time coverage and whether a zero would be
+implausible. Four of those fields are load-bearing:
+
+- **the source layer and the file build the path.** There is no path written
+  anywhere else, so a wrong layer name raises a missing file instead of quietly
+  measuring something else.
+- **the geometry picks the folder and is checked against the file.** The layer is
+  read, its geometry types are compared with the ones the declared kind admits,
+  and a disagreement stops the run. Declaring a point layer as a surface fails on
+  contact with the data rather than producing a plausible number.
+- **the method selects the function that computes the variable.** The dictionary
+  entry and the code that produces the number are chosen by the same key.
+- **the time coverage is checked against the table.** All ten declare themselves
+  snapshots, and a check confirms that no row of a snapshot variable carries a
+  year.
+
+Everything a variable can say about itself is therefore either used by the
+measurement or checked against its output. That is the whole point: this is not a
+description of the pipeline, it is what the pipeline reads.
+
+**Decision — the sentence describing a computation belongs to the method, not to
+the variable.** Ten variables are measured by two methods, so a sentence per
+variable would be the same text written five times, and five copies drift
+separately. The sentence sits on the method, beside the units it produces, and the
+key that selects the sentence is the key that selects the function. The exported
+dictionary still carries the sentence on every row, because a table a reader has
+to join to itself is worse than a repeated string.
+
+**Decision — the family is derived from the geometry, not declared beside it.**
+`PREDICTOR_FAMILY` still reads AREA and POINT in the exported tables, exactly as
+before, but it is now computed from the declared geometry. Two fields that must
+always agree are one field.
+
+**Decision — the dictionary is exported, under a prefix of its own.** D13 splits
+the outputs into tables for models (`analysis`) and tables for reading
+(`presentation`). The dictionary is neither: it measures nothing and describes the
+variables the other tables measure. It goes out as `reference`, a third prefix,
+because filing it under either of the other two would make that name mean two
+things. It carries `PREDICTOR`, `PREDICTOR_FAMILY`, `MEASURE_UNIT` and `VALUE_UNIT`
+under the same names and with the same values as the measurement tables, so the
+dashboard joins it to them on the variable name.
+
+**Decision — the declaration is checked against the tables at the end of the run.**
+Four checks, alongside the twelve already there: every declared source file exists
+on disk; the set of declared variables and the set of measured variables are the
+same, so there is no orphan entry and no undeclared variable; the dictionary covers
+every predictor column of the wide table; and the units in the dictionary agree
+with the units in the long table, which the first three would not catch. The
+dictionary and the wide table are read back from disk for this, as D12 requires of
+anything that checks an exported artefact.
+
+**Extending it — the four variables with an annual series.** Adding one is a new
+entry with `time_coverage=ANNUAL_SERIES_COVERAGE`, and for the cycleway and
+horizontal signage layers a `line` geometry, whose folder and geometry types are
+already declared because the delivered data already has that folder. What is not
+there is a method for measuring a line layer: adding it means one entry in
+`MEASUREMENT_METHODS` with its sentence and units, and one function bound to that
+key. No placeholder was left behind for it — a method described in the
+configuration and bound to nothing fails at the variable that declares it, which is
+the correct behaviour and not a gap to pre-fill.
+
+**Out of scope, deliberately.** Only the predictor variables. The vehicle type
+mapping (D4) already carries the Spanish-to-English equivalence for the road user
+types and is declared the same way — exhaustively, in the configuration, used by
+the code — so there is nothing to fix there.

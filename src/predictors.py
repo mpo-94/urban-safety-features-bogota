@@ -10,6 +10,13 @@ layers — are not here yet. Nothing in this module is shaped around the absence
 a time dimension: the long table carries a YEAR column already, null for a
 snapshot, and a series slots into it without a schema change.
 
+Every variable is declared in the configuration — its source layer as the data
+names it, its file, its geometry, what it measures and by which method — and the
+measurement runs on that declaration: it builds the path from it, dispatches on
+it and checks the geometry of the file against it. The declaration is exported as
+a data dictionary beside the tables, so a column name in English can be traced to
+a layer named in Spanish without reading any code.
+
 Two things the inherited pipeline did are deliberately not done here:
 
 * A unit with no observation gets a row with a zero, not no row at all. In the
@@ -29,6 +36,7 @@ from __future__ import annotations
 
 import itertools
 from pathlib import Path
+from typing import Callable
 
 import geopandas as gpd
 import matplotlib
@@ -104,6 +112,43 @@ def _repair(layer: gpd.GeoDataFrame, predictor: config.StaticPredictor, log: Run
     return usable, dropped
 
 
+def _read_source(predictor: config.StaticPredictor, log: RunLog) -> gpd.GeoDataFrame:
+    """Read the layer a predictor declares, and hold the declaration to account.
+
+    The path is built from the declared layer name and geometry, so a wrong name
+    raises here instead of measuring something else, and the geometry types the
+    file actually holds are checked against the declared kind. This is what keeps
+    the data dictionary from drifting: it is not a description of the pipeline,
+    it is what the pipeline reads.
+    """
+    if not predictor.path.exists():
+        raise FileNotFoundError(
+            f"{predictor.name}: the declared source {predictor.path} does not exist; "
+            f"layer {predictor.source_layer!r}, file {predictor.source_file!r}"
+        )
+
+    layer = gpd.read_file(predictor.path)
+    # Null geometries are not a disagreement about the kind of layer this is; the
+    # repair step counts and drops them a moment later.
+    present = set(layer.geom_type.dropna())
+    unexpected = sorted(present - set(config.GEOMETRY_TYPES[predictor.geometry]))
+    if unexpected:
+        raise ValueError(
+            f"{predictor.name}: declared as {predictor.geometry} geometry, but "
+            f"{predictor.source_layer} holds {', '.join(unexpected)}; the declaration and "
+            "the file disagree, and the measurement would be meaningless either way"
+        )
+    log.info(
+        "%s: read %s from %s/%s (%s)",
+        predictor.name,
+        f"{len(layer):,} features",
+        predictor.source_layer,
+        predictor.source_file,
+        predictor.geometry,
+    )
+    return layer
+
+
 def measure_area_layer(
     predictor: config.StaticPredictor,
     units: gpd.GeoDataFrame,
@@ -115,7 +160,7 @@ def measure_area_layer(
     feature straddling a boundary contributes its own part to each unit it
     reaches, which is why the fragment count exceeds the feature count.
     """
-    raw = gpd.read_file(predictor.path)
+    raw = _read_source(predictor, log)
     polygons, dropped = _repair(raw, predictor, log)
 
     # Attributes are not used by any of the five area variables — the surface is
@@ -148,7 +193,7 @@ def measure_area_layer(
             (split, "fragments gained where a feature crosses a unit boundary and is split between units"),
         ],
         notes=[
-            f"source={predictor.path.name}, {predictor.measures}",
+            f"source={predictor.source_layer}/{predictor.source_file}, {predictor.measures}",
             f"{captured_km2:,.4f} km2 captured inside the units of "
             f"{total_km2:,.4f} km2 in the layer "
             f"({100 * captured_km2 / total_km2:.2f}%)" if total_km2 > 0 else "layer has no area",
@@ -170,7 +215,7 @@ def measure_point_layer(
     of platforms counts once per platform rather than once per record — which is
     what a density of stations is asking for.
     """
-    raw = gpd.read_file(predictor.path)
+    raw = _read_source(predictor, log)
     usable, dropped = _repair(raw, predictor, log)
 
     exploded = usable[["geometry"]].explode(index_parts=False).reset_index(drop=True)
@@ -212,7 +257,7 @@ def measure_point_layer(
         rows_out=len(joined),
         changes=changes,
         notes=[
-            f"source={predictor.path.name}, {predictor.measures}",
+            f"source={predictor.source_layer}/{predictor.source_file}, {predictor.measures}",
             f"{len(joined):,} of {len(points):,} points fall inside a unit "
             f"({100 * len(joined) / len(points):.2f}%)" if len(points) else "layer has no points",
         ],
@@ -222,13 +267,26 @@ def measure_point_layer(
     return measured.rename(config.PREDICTOR_MEASURE_COL).reset_index()
 
 
+# The method a variable declares is the key that selects the function which runs.
+# A method described in the configuration and bound to nothing here fails at the
+# variable that declares it, which is the point: the sentence in the dictionary
+# and the code that produces the number are selected by one key.
+MEASUREMENTS: dict[str, Callable[[config.StaticPredictor, gpd.GeoDataFrame, RunLog], pd.DataFrame]] = {
+    config.AREA_SHARE_METHOD: measure_area_layer,
+    config.POINT_DENSITY_METHOD: measure_point_layer,
+}
+
+
 def measure(predictor: config.StaticPredictor, units: gpd.GeoDataFrame, log: RunLog) -> pd.DataFrame:
     """The raw magnitude of one predictor per unit, for the units it reaches."""
-    if predictor.family == config.AREA_FAMILY:
-        return measure_area_layer(predictor, units, log)
-    if predictor.family == config.POINT_FAMILY:
-        return measure_point_layer(predictor, units, log)
-    raise ValueError(f"predictor {predictor.name!r} has unknown family {predictor.family!r}")
+    try:
+        measurement = MEASUREMENTS[predictor.method]
+    except KeyError:
+        raise ValueError(
+            f"predictor {predictor.name!r} declares the method {predictor.method!r}, "
+            "which is described in the configuration but bound to no function here"
+        ) from None
+    return measurement(predictor, units, log)
 
 
 # ---------------------------------------------------------------------------
@@ -287,9 +345,17 @@ def build_long_table(
     long_table[config.PREDICTOR_FAMILY_COL] = long_table[config.PREDICTOR_COL].map(
         {p.name: p.family for p in config.STATIC_PREDICTORS}
     )
-    units_by_family = long_table[config.PREDICTOR_FAMILY_COL].map(config.FAMILY_UNITS)
-    long_table[config.PREDICTOR_MEASURE_UNIT_COL] = units_by_family.str[0]
-    long_table[config.PREDICTOR_VALUE_UNIT_COL] = units_by_family.str[1]
+    # Units come from the method that produced the number, so the column says what
+    # the measurement actually yields rather than what a family is assumed to.
+    # Mapped as a pair and split, rather than mapped twice: a dict of plain strings
+    # makes pandas infer its str dtype, which writes the column to parquet as
+    # large_string while every other text column of the table is string. Same
+    # values either way, different file.
+    units_by_predictor = long_table[config.PREDICTOR_COL].map(
+        {p.name: (p.measure_unit, p.value_unit) for p in config.STATIC_PREDICTORS}
+    )
+    long_table[config.PREDICTOR_MEASURE_UNIT_COL] = units_by_predictor.str[0]
+    long_table[config.PREDICTOR_VALUE_UNIT_COL] = units_by_predictor.str[1]
 
     # Both families normalise by the area of the unit; what differs is what the
     # quotient means, which is what VALUE_UNIT is for.
@@ -430,7 +496,7 @@ def summary_statistics(long_table: pd.DataFrame) -> pd.DataFrame:
             {
                 config.PREDICTOR_COL: predictor.name,
                 config.PREDICTOR_FAMILY_COL: predictor.family,
-                config.PREDICTOR_VALUE_UNIT_COL: config.predictor_units(predictor.family)[1],
+                config.PREDICTOR_VALUE_UNIT_COL: predictor.value_unit,
                 "UNITS_MEASURED": int(measured.sum()),
                 "UNITS_NOT_MEASURED": int((~measured).sum()),
                 "UNITS_AT_ZERO": int((values.fillna(-1) == 0).sum()),
@@ -440,7 +506,40 @@ def summary_statistics(long_table: pd.DataFrame) -> pd.DataFrame:
                 "MEAN": float(values.mean()),
                 "STD_DEV": float(values.std()),
                 "TOTAL_MEASURE": float(subset[config.PREDICTOR_MEASURE_COL].sum()),
-                config.PREDICTOR_MEASURE_UNIT_COL: config.predictor_units(predictor.family)[0],
+                config.PREDICTOR_MEASURE_UNIT_COL: predictor.measure_unit,
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def dictionary_table() -> pd.DataFrame:
+    """The declaration of the ten variables, as a table.
+
+    Built from the same objects the measurement runs on, so it cannot describe a
+    source the pipeline does not read or a computation it does not perform. It is
+    the answer to going from a column name in English to a layer named in Spanish
+    and to the file it came out of, which until now took reading the code.
+
+    The source path is written relative to the repository root: an absolute path
+    from my machine says nothing to anyone else opening the CSV.
+    """
+    rows = []
+    for predictor in config.STATIC_PREDICTORS:
+        rows.append(
+            {
+                config.PREDICTOR_COL: predictor.name,
+                config.PREDICTOR_LABEL_COL: predictor.label,
+                config.PREDICTOR_FAMILY_COL: predictor.family,
+                config.SOURCE_LAYER_COL: predictor.source_layer,
+                config.SOURCE_FILE_COL: predictor.source_file,
+                config.SOURCE_PATH_COL: predictor.path.relative_to(config.PROJECT_ROOT).as_posix(),
+                config.GEOMETRY_COL: predictor.geometry,
+                config.MEASURES_COL: predictor.measures,
+                config.PREDICTOR_MEASURE_UNIT_COL: predictor.measure_unit,
+                config.PREDICTOR_VALUE_UNIT_COL: predictor.value_unit,
+                config.COMPUTATION_COL: predictor.computation,
+                config.TIME_COVERAGE_COL: predictor.time_coverage,
+                config.ZERO_IMPLAUSIBLE_COL: predictor.zero_is_implausible,
             }
         )
     return pd.DataFrame(rows)
@@ -485,7 +584,18 @@ def export(long_table: pd.DataFrame, log: RunLog) -> dict[str, Path]:
     summary_statistics(long_table).to_csv(summary_path, index=False, encoding="utf-8")
     paths["summary"] = summary_path
 
-    log.info("exported 2 analysis tables and 3 presentation tables to %s/", config.DATA_SUBDIR)
+    # The dictionary measures nothing, so it is neither an analysis table nor a
+    # view of one. It is the declaration the measurement ran on, exported so that
+    # a column name in a CSV can be traced to its layer and its file without
+    # opening the code.
+    dictionary_path = data_dir / f"{config.REFERENCE_PREFIX}__static_predictors_dictionary.csv"
+    dictionary_table().to_csv(dictionary_path, index=False, encoding="utf-8")
+    paths["dictionary"] = dictionary_path
+
+    log.info(
+        "exported 2 analysis tables, 3 presentation tables and 1 reference table to %s/",
+        config.DATA_SUBDIR,
+    )
     return paths
 
 
@@ -564,8 +674,7 @@ def _draw_histogram(values: np.ndarray, predictor: config.StaticPredictor, out_p
         colour = "black" if count else config.FIGURE_TECHNICAL_LABEL_COLOR
         ax.text(left + width / 2, height, f"{int(count)}", ha="center", va="bottom", fontsize=9, color=colour)
 
-    _, value_unit = config.predictor_units(predictor.family)
-    ax.set_xlabel(f"{predictor.label} ({value_unit})")
+    ax.set_xlabel(f"{predictor.label} ({predictor.value_unit})")
     ax.set_ylabel(f"{config.active_scale().label} units")
     ax.set_title(f"{predictor.name}\n{predictor.measures}", fontsize=10)
     ax.set_ylim(0, max(tallest * 1.18, 1))
@@ -885,8 +994,18 @@ def render_figures(paths: dict[str, Path], log: RunLog) -> int:
 # ---------------------------------------------------------------------------
 
 
-def verify(long_table: pd.DataFrame, units: gpd.GeoDataFrame, log: RunLog) -> bool:
-    """Check the tables against the grid they claim to be and against arithmetic."""
+def verify(
+    long_table: pd.DataFrame,
+    units: gpd.GeoDataFrame,
+    log: RunLog,
+    paths: dict[str, Path] | None = None,
+) -> bool:
+    """Check the tables against the grid they claim to be and against arithmetic.
+
+    Given the exported paths it also checks the data dictionary against the tables
+    it describes, reading both back from disk: a declaration nobody checks is a
+    comment with a file extension.
+    """
     wide = wide_table(long_table)
     correlation = correlation_matrix(wide)
     checks: list[tuple[str, bool, str]] = []
@@ -990,6 +1109,83 @@ def verify(long_table: pd.DataFrame, units: gpd.GeoDataFrame, log: RunLog) -> bo
         )
     )
 
+    # -- the declaration against what was measured --------------------------
+    # Every declared source has to be on disk. Checked here as well as at read
+    # time, so a run whose figures came from a cached table still says whether the
+    # declaration still points at something real.
+    missing = [p.name for p in config.STATIC_PREDICTORS if not p.path.exists()]
+    checks.append(
+        (
+            "every declared source file exists on disk",
+            not missing,
+            f"{len(config.STATIC_PREDICTORS) - len(missing)} of {len(config.STATIC_PREDICTORS)}"
+            + (f"; missing {', '.join(missing)}" if missing else ""),
+        )
+    )
+
+    snapshots = {p.name for p in config.STATIC_PREDICTORS if p.time_coverage == config.SNAPSHOT_COVERAGE}
+    dated = long_table[long_table[config.PREDICTOR_COL].isin(snapshots)][config.YEAR_COL].notna().sum()
+    checks.append(
+        (
+            "variables declared as snapshots carry no year",
+            int(dated) == 0,
+            f"{len(snapshots)} snapshot variables, {int(dated)} rows with a year",
+        )
+    )
+
+    if paths is not None:
+        dictionary = pd.read_csv(paths["dictionary"])
+        exported_wide = pd.read_csv(paths["wide"])
+        declared = set(dictionary[config.PREDICTOR_COL])
+        measured_names = set(long_table[config.PREDICTOR_COL])
+        undeclared = sorted(measured_names - declared)
+        orphaned = sorted(declared - measured_names)
+        checks.append(
+            (
+                "the dictionary and the measured variables are the same set",
+                not undeclared and not orphaned,
+                f"{len(declared)} declared, {len(measured_names)} measured"
+                + (f"; undeclared {', '.join(undeclared)}" if undeclared else "")
+                + (f"; orphaned {', '.join(orphaned)}" if orphaned else ""),
+            )
+        )
+
+        # The wide table is the one the dashboard and the figures read, so its
+        # columns are what a reader will look up in the dictionary.
+        wide_variables = [column for column in exported_wide.columns if column in declared]
+        checks.append(
+            (
+                "the dictionary covers every column of the wide table",
+                set(wide_variables) == declared and len(wide_variables) == len(declared),
+                f"{len(wide_variables)} of {len(declared)} columns matched",
+            )
+        )
+
+        # A dictionary that names the right variables in the wrong units would
+        # still pass everything above.
+        units_in_tables = (
+            long_table.groupby(config.PREDICTOR_COL)[
+                [config.PREDICTOR_MEASURE_UNIT_COL, config.PREDICTOR_VALUE_UNIT_COL]
+            ]
+            .agg(lambda column: set(column))
+            .to_dict("index")
+        )
+        disagreeing = [
+            row[config.PREDICTOR_COL]
+            for _, row in dictionary.iterrows()
+            if units_in_tables[row[config.PREDICTOR_COL]][config.PREDICTOR_MEASURE_UNIT_COL]
+            != {row[config.PREDICTOR_MEASURE_UNIT_COL]}
+            or units_in_tables[row[config.PREDICTOR_COL]][config.PREDICTOR_VALUE_UNIT_COL]
+            != {row[config.PREDICTOR_VALUE_UNIT_COL]}
+        ]
+        checks.append(
+            (
+                "the dictionary and the long table agree on the units of every variable",
+                not disagreeing,
+                f"{len(dictionary) - len(disagreeing)} of {len(dictionary)} variables agree",
+            )
+        )
+
     width = max(len(name) for name, _, _ in checks)
     lines = [f"{'check'.ljust(width)}  {'result':>8}  detail", f"{'-' * width}  {'-' * 8}  ------"]
     for name, ok, detail in checks:
@@ -1017,6 +1213,29 @@ def _format_value(value: float, family: str) -> str:
 def report(long_table: pd.DataFrame, log: RunLog) -> None:
     wide = wide_table(long_table)
     correlation = correlation_matrix(wide)
+
+    # -- what each variable is and where it comes from -----------------------
+    # First in the log because everything after it is numbers, and a number whose
+    # source is three files away is not evidence of anything.
+    header = f"{'predictor':<33}  {'source layer':<27}  {'file':<37}  {'geom':<6}  {'value unit':<19}"
+    lines = [header, "-" * len(header)]
+    for predictor in config.STATIC_PREDICTORS:
+        lines.append(
+            f"{predictor.name:<33}  {predictor.source_layer:<27}  {predictor.source_file:<37}  "
+            f"{predictor.geometry:<6}  {predictor.value_unit:<19}"
+        )
+    log.table(
+        f"static predictor dictionary, {len(config.STATIC_PREDICTORS)} variables "
+        f"(exported as {config.REFERENCE_PREFIX}__static_predictors_dictionary.csv):",
+        "\n".join(lines),
+    )
+
+    lines = []
+    for method in config.MEASUREMENT_METHODS.values():
+        declared = [p.name for p in config.STATIC_PREDICTORS if p.method == method.name]
+        lines.append(f"{method.name} ({len(declared)} variables, {method.measure_unit} -> {method.value_unit})")
+        lines.append(f"    {method.computation}")
+    log.table("how each magnitude is computed:", "\n".join(lines))
 
     # -- the table itself, all thirty rows ----------------------------------
     header = f"{'unit':<6}  {'name':<24}  {'km2':>8}"

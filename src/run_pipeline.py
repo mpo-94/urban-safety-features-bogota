@@ -141,7 +141,7 @@ def run_predictors(log: RunLog) -> None:
     predictors.render_figures(paths, log)
 
     log.table("record funnel:", log.funnel())
-    if not predictors.verify(long_table, units, log):
+    if not predictors.verify(long_table, units, log, paths):
         raise RouteFailed("the static predictor tables do not agree with what entered them")
     predictors.report(long_table, log)
 
