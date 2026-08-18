@@ -495,7 +495,7 @@ def export(long_table: pd.DataFrame, log: RunLog) -> dict[str, Path]:
 
 
 def histogram_edges(values: np.ndarray) -> np.ndarray:
-    """Equal-width bin edges over the observed range, by the declared rule.
+    """Bin edges on round values, by the rule declared in the configuration.
 
     Degenerate ranges are handled rather than left to produce a figure with one
     infinitely narrow bar: if every unit holds the same value the histogram is a
@@ -506,45 +506,88 @@ def histogram_edges(values: np.ndarray) -> np.ndarray:
         centre = low if np.isfinite(low) else 0.0
         span = abs(centre) * 0.05 or 0.5
         return np.array([centre - span, centre + span])
-    return np.linspace(low, high, config.histogram_bin_count(len(values)) + 1)
+    step = config.histogram_bin_step(low, high)
+    return np.array(config.histogram_bin_edges(low, high, step))
+
+
+def _step_decimals(step: float) -> int:
+    """Decimals needed to write `step` exactly, so a tick reads 0.02 and not 0.020."""
+    decimals, scaled = 0, float(step)
+    while decimals < 6 and abs(scaled - round(scaled)) > 1e-9:
+        scaled *= 10
+        decimals += 1
+    return decimals
 
 
 def _draw_histogram(values: np.ndarray, predictor: config.StaticPredictor, out_path: Path) -> None:
     edges = histogram_edges(values)
     counts, _ = np.histogram(values, bins=edges)
+    step = float(edges[1] - edges[0])
+    decimals = _step_decimals(step)
 
     fig, ax = plt.subplots(figsize=(7.2, 4.6))
+    widths = np.diff(edges)
+    tallest = max(int(counts.max()), 1)
     ax.bar(
         edges[:-1],
         counts,
-        width=np.diff(edges),
+        width=widths,
         align="edge",
         color=config.HISTOGRAM_BAR_COLOR,
         edgecolor=config.HISTOGRAM_BAR_EDGE_COLOR,
         linewidth=0.8,
     )
 
+    # An empty bin is a finding, not a gap in the figure: the units stop before
+    # that range and start again after it. Drawn blank it reads as the figure
+    # having failed, so it gets a hatched stub and its own zero, which say that
+    # the range was measured and holds nothing.
+    empty = np.flatnonzero(counts == 0)
+    if len(empty):
+        ax.bar(
+            edges[empty],
+            np.full(len(empty), tallest * config.HISTOGRAM_EMPTY_BIN_STUB_FRACTION),
+            width=widths[empty],
+            align="edge",
+            color=config.HISTOGRAM_EMPTY_BIN_COLOR,
+            edgecolor=config.HISTOGRAM_BAR_COLOR,
+            linewidth=0.8,
+            hatch="///",
+        )
+
     # The count above each bar, because with thirty observations the exact number
     # of units in a bin is the whole content of the figure and reading it off a
-    # short axis is guesswork.
-    for left, width, count in zip(edges[:-1], np.diff(edges), counts):
-        if count:
-            ax.text(left + width / 2, count, f"{int(count)}", ha="center", va="bottom", fontsize=9)
+    # short axis is guesswork. The zeros are printed where the other counts are,
+    # so an empty bin is read the same way as a full one.
+    for left, width, count in zip(edges[:-1], widths, counts):
+        height = count if count else tallest * config.HISTOGRAM_EMPTY_BIN_STUB_FRACTION
+        colour = "black" if count else config.FIGURE_TECHNICAL_LABEL_COLOR
+        ax.text(left + width / 2, height, f"{int(count)}", ha="center", va="bottom", fontsize=9, color=colour)
 
     _, value_unit = config.predictor_units(predictor.family)
     ax.set_xlabel(f"{predictor.label} ({value_unit})")
     ax.set_ylabel(f"{config.active_scale().label} units")
     ax.set_title(f"{predictor.name}\n{predictor.measures}", fontsize=10)
-    ax.set_ylim(0, max(counts.max() * 1.18, 1))
-    ax.set_yticks(range(0, int(counts.max()) + 1, max(1, int(counts.max()) // 6)))
+    ax.set_ylim(0, max(tallest * 1.18, 1))
+    ax.set_yticks(range(0, tallest + 1, max(1, tallest // 6)))
+
+    # The ticks are the bin edges themselves, never the ones the library would
+    # pick: every bar then begins and ends on a labelled number, so what a bar
+    # covers is read off the axis instead of interpolated between two labels.
+    ax.set_xlim(float(edges[0]), float(edges[-1]))
+    ax.set_xticks(edges, [f"{edge:.{decimals}f}" for edge in edges], fontsize=9)
+
     ax.grid(axis="y", color=config.RHO_GRID_COLOR, linewidth=0.8)
     ax.set_axisbelow(True)
     for side in ("top", "right"):
         ax.spines[side].set_visible(False)
 
+    note = f"n = {len(values)} units | {len(edges) - 1} bins of {step:.{decimals}f} ({config.HISTOGRAM_BIN_RULE})"
+    if len(empty):
+        note += f" | {len(empty)} empty bin(s), hatched"
     ax.annotate(
-        f"n = {len(values)} units | {len(edges) - 1} equal-width bins ({config.HISTOGRAM_BIN_RULE})",
-        xy=(0.5, -0.22),
+        note,
+        xy=(0.5, -0.26),
         xycoords="axes fraction",
         ha="center",
         fontsize=8,
@@ -556,25 +599,120 @@ def _draw_histogram(values: np.ndarray, predictor: config.StaticPredictor, out_p
     plt.close(fig)
 
 
+# -- axis labels shared by the correlation matrix and the master table ------
+# Both carry the ten variables on an axis, and both are read beside the exported
+# tables. A reader who sees only the short label has to guess which column of
+# which CSV it became, so the canonical name goes underneath it: smaller, and in
+# a monospaced face to mark it as a literal string rather than prose.
+
+
+def _label_lines(name: str) -> tuple[str, str]:
+    """The readable label and the canonical name of a predictor, in that order."""
+    return config.STATIC_PREDICTORS_BY_NAME[name].label, name
+
+
+def _two_line_y_labels(ax, names: list[str]) -> None:
+    """Readable label with the canonical name below it, along the vertical axis."""
+    ax.set_yticks(range(len(names)), [""] * len(names))
+    for position, name in enumerate(names):
+        readable, technical = _label_lines(name)
+        ax.annotate(
+            readable,
+            xy=(0, position),
+            xycoords=("axes fraction", "data"),
+            xytext=(-8, 1),
+            textcoords="offset points",
+            ha="right",
+            va="bottom",
+            fontsize=config.FIGURE_READABLE_LABEL_SIZE,
+        )
+        ax.annotate(
+            technical,
+            xy=(0, position),
+            xycoords=("axes fraction", "data"),
+            xytext=(-8, -1),
+            textcoords="offset points",
+            ha="right",
+            va="top",
+            fontsize=config.FIGURE_TECHNICAL_LABEL_SIZE,
+            color=config.FIGURE_TECHNICAL_LABEL_COLOR,
+            family="monospace",
+        )
+
+
+def _two_line_x_labels(ax, names: list[str], rotation: float = 40.0, at_top: bool = False) -> None:
+    """The same pair of lines along the horizontal axis, rotated to fit.
+
+    Rotated text has to be offset perpendicular to itself for the second line to
+    land parallel underneath the first; offsetting straight down would leave the
+    two lines crossing at this angle.
+    """
+    angle = np.radians(rotation)
+    below = np.array([np.sin(angle), -np.cos(angle)])  # unit vector across a rotated line
+    gap = 8.5  # points between the two lines, measured across them
+
+    ax.set_xticks(range(len(names)), [""] * len(names))
+    if at_top:
+        ax.xaxis.set_ticks_position("top")
+    edge, base, vertical, horizontal = (
+        (1.0, np.array([0.0, 6.0]), "bottom", "left")
+        if at_top
+        else (0.0, np.array([0.0, -6.0]), "top", "right")
+    )
+    # At the top the technical line sits nearest the axis, so the readable one
+    # stays on the outside where the eye enters the figure.
+    readable_offset = base - below * gap if at_top else base
+    technical_offset = base if at_top else base + below * gap
+
+    for position, name in enumerate(names):
+        readable, technical = _label_lines(name)
+        ax.annotate(
+            readable,
+            xy=(position, edge),
+            xycoords=("data", "axes fraction"),
+            xytext=tuple(readable_offset),
+            textcoords="offset points",
+            ha=horizontal,
+            va=vertical,
+            rotation=rotation,
+            rotation_mode="anchor",
+            fontsize=config.FIGURE_READABLE_LABEL_SIZE,
+        )
+        ax.annotate(
+            technical,
+            xy=(position, edge),
+            xycoords=("data", "axes fraction"),
+            xytext=tuple(technical_offset),
+            textcoords="offset points",
+            ha=horizontal,
+            va=vertical,
+            rotation=rotation,
+            rotation_mode="anchor",
+            fontsize=config.FIGURE_TECHNICAL_LABEL_SIZE,
+            color=config.FIGURE_TECHNICAL_LABEL_COLOR,
+            family="monospace",
+        )
+
+
 def _draw_correlation(correlation: pd.DataFrame, out_path: Path) -> None:
     values = correlation.to_numpy(dtype=float)
-    labels = [config.STATIC_PREDICTORS_BY_NAME[name].label for name in correlation.columns]
+    names = list(correlation.columns)
 
-    fig, ax = plt.subplots(figsize=(9.0, 7.6))
+    fig, ax = plt.subplots(figsize=(9.6, 8.4))
     # Centred on zero and symmetric, so that +0.4 and -0.4 are equally far from
     # the neutral colour: the sign is as much of the finding as the magnitude.
     image = ax.imshow(values, cmap=config.CORRELATION_COLORMAP, vmin=-1.0, vmax=1.0, aspect="auto")
 
-    ax.set_xticks(range(len(labels)), labels, rotation=40, ha="right", fontsize=9)
-    ax.set_yticks(range(len(labels)), labels, fontsize=9)
+    _two_line_x_labels(ax, names)
+    _two_line_y_labels(ax, names)
     ax.set_title(
-        f"Pearson correlation among the {len(labels)} static predictors "
+        f"Pearson correlation among the {len(names)} static predictors "
         f"({len(correlation)} x {len(correlation)}, n = {config.active_scale().expected_units} "
         f"{config.active_scale().label} units)",
         fontsize=11,
     )
 
-    for row, col in itertools.product(range(len(labels)), range(len(labels))):
+    for row, col in itertools.product(range(len(names)), range(len(names))):
         value = values[row, col]
         # White on the saturated ends of the ramp, black in the pale middle.
         colour = "white" if abs(value) > 0.6 else "black"
@@ -583,16 +721,128 @@ def _draw_correlation(correlation: pd.DataFrame, out_path: Path) -> None:
     bar = fig.colorbar(image, ax=ax, shrink=0.85)
     bar.set_label(f"{config.CORRELATION_METHOD} correlation coefficient")
     fig.tight_layout()
-    fig.savefig(out_path, dpi=config.FIGURE_DPI)
+    fig.savefig(out_path, dpi=config.FIGURE_DPI, bbox_inches="tight")
+    plt.close(fig)
+
+
+def _draw_master_table(wide: pd.DataFrame, out_path: Path) -> None:
+    """Every unit against every variable, printed and shaded column by column.
+
+    The one figure that shows the predictor half whole. Its colour is computed
+    inside each column, from that variable's own minimum to its own maximum,
+    because a share of a unit and a density per square kilometre have nothing to
+    say to each other on a shared ramp. That makes the colours comparable down a
+    column and meaningless across columns, which the figure says twice: in the
+    note under the title, and in the range printed at the foot of every column.
+    """
+    names = list(config.STATIC_PREDICTOR_NAMES)
+    values = wide[names].to_numpy(dtype=float)
+    row_count, column_count = values.shape
+
+    shaded = np.full(values.shape, np.nan)
+    column_ranges: list[tuple[float, float]] = []
+    for index in range(column_count):
+        column = values[:, index]
+        observed = column[np.isfinite(column)]
+        low, high = (float(observed.min()), float(observed.max())) if len(observed) else (np.nan, np.nan)
+        column_ranges.append((low, high))
+        if np.isfinite(low) and high > low:
+            shaded[:, index] = (column - low) / (high - low)
+        else:
+            # A flat column has no high and no low; painting it at one end of the
+            # ramp would invent a gradient that is not in the data.
+            shaded[:, index] = np.where(np.isfinite(column), config.MASTER_TABLE_FLAT_COLUMN_POSITION, np.nan)
+
+    colormap = plt.get_cmap(config.MASTER_TABLE_COLORMAP).copy()
+    colormap.set_bad(config.HEATMAP_EMPTY_COLOR)
+
+    fig, ax = plt.subplots(figsize=(13.0, 13.5))
+    ax.imshow(np.ma.masked_invalid(shaded), cmap=colormap, vmin=0.0, vmax=1.0, aspect="auto")
+
+    # Decimals come from the top of each column, so a column of thousandths and a
+    # column of hundreds are both printed to about three significant digits.
+    decimals = [config.predictor_decimals(high) for _, high in column_ranges]
+    for row, column in itertools.product(range(row_count), range(column_count)):
+        value = values[row, column]
+        if not np.isfinite(value):
+            ax.text(column, row, "-", ha="center", va="center", fontsize=7, color="#444444")
+            continue
+        colour = "white" if shaded[row, column] > config.MASTER_TABLE_LIGHT_TEXT_ABOVE else "black"
+        ax.text(
+            column,
+            row,
+            f"{value:.{decimals[column]}f}",
+            ha="center",
+            va="center",
+            fontsize=7,
+            color=colour,
+        )
+
+    _two_line_x_labels(ax, names, at_top=True)
+    ax.set_yticks(
+        range(row_count),
+        [f"{code}  {name}" for code, name in zip(wide[config.AREA_CODE_COL], wide[config.AREA_NAME_COL])],
+        fontsize=8,
+    )
+
+    # Separators on the cell boundaries rather than on the cell centres, so three
+    # hundred numbers read as a table instead of as a field of colour.
+    ax.set_xticks(np.arange(-0.5, column_count, 1), minor=True)
+    ax.set_yticks(np.arange(-0.5, row_count, 1), minor=True)
+    ax.grid(which="minor", color="white", linewidth=1.0)
+    ax.tick_params(which="minor", length=0)
+
+    # The range each column's colour spans, printed under the column it belongs
+    # to: it is what makes the per-column scale checkable rather than a claim in
+    # a caption.
+    for index, (low, high) in enumerate(column_ranges):
+        if not np.isfinite(low):
+            continue
+        ax.annotate(
+            f"{low:.{decimals[index]}f}\nto {high:.{decimals[index]}f}",
+            xy=(index, 0),
+            xycoords=("data", "axes fraction"),
+            xytext=(0, -8),
+            textcoords="offset points",
+            ha="center",
+            va="top",
+            fontsize=6.5,
+            color=config.FIGURE_TECHNICAL_LABEL_COLOR,
+            family="monospace",
+        )
+    ax.annotate(
+        "own colour scale\nof each column:",
+        xy=(0, 0),
+        xycoords="axes fraction",
+        xytext=(-8, -8),
+        textcoords="offset points",
+        ha="right",
+        va="top",
+        fontsize=6.5,
+        color=config.FIGURE_TECHNICAL_LABEL_COLOR,
+    )
+
+    scale = config.active_scale()
+    ax.set_title(
+        f"Static urban predictors: {row_count} {scale.label} units x {column_count} variables\n"
+        "Each column is shaded on its own scale, palest at that column's minimum and darkest "
+        "at its maximum.\nColours can be compared down a column and never across columns: the "
+        "ten variables are not on one scale.",
+        fontsize=10,
+        pad=104,
+    )
+
+    fig.tight_layout()
+    fig.savefig(out_path, dpi=config.FIGURE_DPI, bbox_inches="tight")
     plt.close(fig)
 
 
 def render_figures(paths: dict[str, Path], log: RunLog) -> int:
-    """Ten histograms and one correlation heatmap, drawn from the exported tables.
+    """Ten histograms, the correlation heatmap and the master table.
 
-    Read back from disk rather than recomputed from memory, as everywhere else in
-    the pipeline: what is seen and what is analysed are then the same numbers by
-    construction rather than by care.
+    Drawn from the exported tables read back from disk rather than recomputed
+    from memory, as everywhere else in the pipeline: what is seen and what is
+    analysed are then the same numbers by construction rather than by care.
     """
     figures_dir = log.run_dir / config.FIGURES_SUBDIR / config.PREDICTORS_FIGURES_SUBDIR
     figures_dir.mkdir(parents=True, exist_ok=True)
@@ -616,6 +866,9 @@ def render_figures(paths: dict[str, Path], log: RunLog) -> int:
         index=list(config.STATIC_PREDICTOR_NAMES), columns=list(config.STATIC_PREDICTOR_NAMES)
     )
     _draw_correlation(correlation, figures_dir / "correlation__static_predictors.png")
+    written += 1
+
+    _draw_master_table(wide, figures_dir / "table__static_predictors.png")
     written += 1
 
     log.info(

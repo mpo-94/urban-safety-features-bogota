@@ -701,32 +701,120 @@ RHO_GRID_COLOR = "#e3e3e3"
 # histogram looks like, so it is declared here rather than left to the plotting
 # library, and the same rule applies to all ten figures.
 #
-# The rule is Sturges', ceil(log2(n)) + 1, evaluated on the size of the study
-# universe. Two properties made it the choice:
+# The rule: bin edges fall on round numbers. The width of a bin is a step taken
+# from the 1-2-2.5-5 ladder scaled to the magnitude of the variable — 0.02,
+# 0.25, 5, 50 — and the edges are the multiples of that step that cover the
+# observed range. The step chosen is the one whose bin count comes closest to
+# six, among those that stay inside HISTOGRAM_BIN_COUNT_LIMITS; ties go to the
+# finer step, which shows more of the shape.
 #
-#   * n is the same for every variable, because the universe is fixed at thirty
-#     units (D7). So a rule that depends only on n gives one bin count for all
-#     ten histograms, and ten figures drawn to the same structure can be read
-#     against each other. A data-dependent rule such as Freedman-Diaconis would
-#     give each variable its own resolution, which is the defect D12 rejects for
-#     colour scales: two figures that look comparable and are not.
-#   * Six bins over thirty observations averages five units per bin. Finer
-#     binning at this n produces a comb of ones and zeros that reads as structure
-#     where there is only sampling.
+# Round edges are not cosmetic. The axis of a histogram is labelled at round
+# values whatever the bars do, so edges at 0.098 and 0.197 put every bar between
+# two labels and leave the reader interpolating to find out what a bar covers.
+# With this rule the ticks *are* the edges, so a bar starts and ends on a printed
+# number and the range it counts can be read off directly.
 #
-# Bins are equal width and span the observed range of each variable, so the
-# skewness of a variable shows as mass piling into the first bin rather than
-# being smoothed away by variable-width bins.
-HISTOGRAM_BIN_RULE = "Sturges: ceil(log2(n)) + 1"
+# Six is still the target, for the reason Sturges' rule was picked to give it:
+# thirty observations over six bins averages five per bin, and finer binning at
+# this n produces a comb of ones and zeros that reads as structure where there is
+# only sampling. What changed is that six is now a target rather than a result —
+# rounding the edges means the count lands between four and ten depending on how
+# the range of a variable sits against the ladder.
+#
+# Bins are equal width and the ladder is the same for every variable, so the ten
+# figures are still drawn to one rule and can be read against each other. This is
+# not the data-dependent binning D23 rejects: Freedman-Diaconis sets the width
+# from the spread of the data, while here only the *magnitude* of the variable
+# picks a rung of a fixed ladder.
+HISTOGRAM_BIN_RULE = "round edges: 1-2-2.5-5 step, targeting 6 bins"
+HISTOGRAM_TARGET_BIN_COUNT = 6
+HISTOGRAM_BIN_COUNT_LIMITS = (4, 10)  # inclusive; outside this the step is rejected
+HISTOGRAM_STEP_MANTISSAS = (1.0, 2.0, 2.5, 5.0)
 HISTOGRAM_BAR_COLOR = "#1b6ca8"
 HISTOGRAM_BAR_EDGE_COLOR = "#ffffff"
 
+# A bin with no unit in it is drawn as a hatched stub of this height, measured as
+# a fraction of the tallest bar, instead of being left blank. A blank bin and a
+# bin outside the axis look the same, and the empty bins are findings here: the
+# gap between the park-poor units and the three park-rich ones is the shape of
+# that variable, not a defect of the figure.
+HISTOGRAM_EMPTY_BIN_COLOR = "#c9d6e0"
+HISTOGRAM_EMPTY_BIN_STUB_FRACTION = 0.025
 
-def histogram_bin_count(observations: int) -> int:
-    """Number of equal-width bins for a histogram of `observations` values."""
-    if observations < 2:
+
+def histogram_bin_step(low: float, high: float) -> float:
+    """Width of a histogram bin covering [low, high], from the declared ladder.
+
+    Every rung of the ladder is tried; the ones whose bin count falls outside the
+    limits are discarded, and of the rest the count nearest the target wins. A
+    tie is broken towards the finer step: two candidates equally far from six
+    bins are equally defensible, and the one with more bins hides less.
+    """
+    span = high - low
+    if span <= 0 or not math.isfinite(span):
+        raise ValueError(f"a histogram needs a positive finite range, got [{low}, {high}]")
+
+    # Five decades around the span cover every rung that could possibly produce a
+    # bin count in range, from far too fine to far too coarse.
+    lowest_exponent = math.floor(math.log10(span)) - 2
+    ladder = sorted(
+        mantissa * 10.0**exponent
+        for exponent in range(lowest_exponent, lowest_exponent + 5)
+        for mantissa in HISTOGRAM_STEP_MANTISSAS
+    )
+
+    minimum_bins, maximum_bins = HISTOGRAM_BIN_COUNT_LIMITS
+    best_step: float | None = None
+    best_key: tuple[int, float] | None = None
+    for step in ladder:
+        bins = len(histogram_bin_edges(low, high, step)) - 1
+        if not minimum_bins <= bins <= maximum_bins:
+            continue
+        key = (abs(bins - HISTOGRAM_TARGET_BIN_COUNT), step)
+        if best_key is None or key < best_key:
+            best_key, best_step = key, step
+
+    # No rung fits only if the limits are set to an impossible window; falling
+    # back to equal parts of the range keeps a figure on the page rather than
+    # failing the run over a plotting parameter.
+    return best_step if best_step is not None else span / HISTOGRAM_TARGET_BIN_COUNT
+
+
+def histogram_bin_edges(low: float, high: float, step: float) -> tuple[float, ...]:
+    """Multiples of `step` covering [low, high], rounded to kill float noise.
+
+    Edges are computed as integer multiples and then rounded, because 3 * 0.1
+    lands at 0.30000000000000004 and an axis labelled with that is worse than no
+    axis at all.
+    """
+    first = math.floor(low / step)
+    last = math.ceil(high / step)
+    if last == first:  # the range sits exactly on one multiple
+        last += 1
+    decimals = max(0, -math.floor(math.log10(step)) + 1)
+    return tuple(round((first + index) * step, decimals) for index in range(last - first + 1))
+
+
+def predictor_decimals(magnitude: float) -> int:
+    """Decimals that keep about three significant digits at `magnitude`.
+
+    The ten variables span four orders of magnitude, from bridge deck at 0.0001
+    of a unit to 355 crossings per km2. One decimal count for all of them either
+    prints 355.3447 or rounds bridge deck to 0.00. This picks the count from the
+    top of each variable's own range, which is what makes a table of three
+    hundred numbers readable.
+    """
+    if not math.isfinite(magnitude) or magnitude <= 0:
+        return 2
+    if magnitude >= 100:
+        return 0
+    if magnitude >= 10:
         return 1
-    return math.ceil(math.log2(observations)) + 1
+    if magnitude >= 1:
+        return 2
+    if magnitude >= 0.1:
+        return 3
+    return 4
 
 
 # -- predictor correlation matrix -------------------------------------------
@@ -741,6 +829,41 @@ CORRELATION_COLORMAP = "RdBu_r"
 # the same model is what this number exists to prevent. It is a reporting
 # threshold: nothing is dropped from any table because of it.
 CORRELATION_HIGH_THRESHOLD = 0.7
+
+# -- predictor master table -------------------------------------------------
+# The thirty units against the ten variables, every cell printed and coloured.
+# The colour of a cell is computed inside its own column, from that variable's
+# minimum to its maximum, because the ten variables are not on one scale: a
+# global ramp would paint every share of a unit at the bottom of the ramp and
+# every crossing density at the top, and the figure would show nothing but which
+# family a column belongs to.
+#
+# This is the opposite of D12's rule for the casualty heatmaps, where one scale
+# is shared precisely so cells can be compared across the figure. The two figures
+# are answering different questions, and the danger here is a reader carrying
+# D12's habit over: hence the note printed on the figure itself, and the per
+# column range printed under each column, which says what the darkest cell means
+# in that column and nowhere else.
+#
+# A single-hue sequential ramp, deliberately not the viridis of the casualty
+# heatmaps and not the diverging ramp of the correlation matrix, so the figure
+# does not look like either at a glance.
+MASTER_TABLE_COLORMAP = "Blues"
+# Fraction of a column's range above which the printed value switches to white.
+MASTER_TABLE_LIGHT_TEXT_ABOVE = 0.62
+# Where a whole column is flat, every cell sits at this point of the ramp: a
+# constant variable has no high or low, and painting it all white or all dark
+# would suggest one.
+MASTER_TABLE_FLAT_COLUMN_POSITION = 0.5
+
+# The technical name printed under the readable one on the axes of the
+# correlation matrix and the master table. It is the column name in the exported
+# tables, so anyone reading a figure can go straight to the right column of the
+# CSV instead of guessing which label became which name.
+FIGURE_TECHNICAL_LABEL_COLOR = "#6b6b6b"
+FIGURE_TECHNICAL_LABEL_SIZE = 6.0
+FIGURE_READABLE_LABEL_SIZE = 9.0
+
 
 # ---------------------------------------------------------------------------
 # Run-time switches

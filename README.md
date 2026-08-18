@@ -79,9 +79,11 @@ python -m src.run_pipeline --help     # the routes available, with a line each
 casualty rates are to be regressed against. It measures ten static layers — five
 surfaces as a share of the unit, five point layers as a density over it — against
 every unit, and emits the wide table the figures are drawn from, the long table
-the dashboard joins, ten histograms and the Pearson correlation matrix among the
-ten. The four layers that carry an annual series join this route later; the
-tables already carry the year column they will fill.
+the dashboard joins, ten histograms, the Pearson correlation matrix among the ten
+and one master table figure of the thirty units against the ten variables, shaded
+column by column because the variables are not on a common scale. The four layers
+that carry an annual series join this route later; the tables already carry the
+year column they will fill.
 
 `rho` is not a stage of the pipeline: it measures, for each pair of road user
 types, the share of two-party crashes in which both parties suffered casualties,

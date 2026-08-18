@@ -49,10 +49,11 @@ carried, so the second is larger for the same underlying records.
 | D20 | The sources are checked for coverage, not only for arithmetic | Implementation | Closed | Yes |
 | D21 | The desire lines are out until it is settled what they measure | Methodological | **Open** | No, excluded |
 | D22 | A predictor is measured against every unit, and a zero is an observation | Methodological | Closed | Yes, for the ten static ones |
-| D23 | The histogram bins and the correlation scale are declared, not inferred | Implementation | Closed | Yes |
+| D23 | The histogram bins and the correlation scale are declared, not inferred | Implementation | Closed; bin rule revised | Yes |
+| D24 | The master table is one figure, shaded column by column | Implementation | Closed | Yes |
 
 Methodological decisions: D1-D7, D9, D10, D11, D15, D17, D18, D19, D21, D22.
-Implementation decisions: D8, D12, D13, D14, D16, D20, D23.
+Implementation decisions: D8, D12, D13, D14, D16, D20, D23, D24.
 
 ---
 
@@ -1384,41 +1385,68 @@ the output to tell the two situations apart.
 
 **Kind:** Implementation.
 
-**Status:** Closed.
+**Status:** Closed. The binning rule was revised once, after looking at the
+rendered figures; the earlier rule and why it was replaced are recorded below.
 
 **Built:** Yes. Both are settings in the configuration, and both figures are drawn
 from the exported tables read back from disk, as D12 requires.
 
 **Context.** With thirty observations the choice of bins decides a good part of
-what a histogram looks like, and the plotting library's default is a choice made by
-someone who never saw this data. Leaving it to the default means the figure has a
-parameter nobody picked and nobody can defend.
+what a histogram looks like, and the plotting library's default is a choice made
+by someone who never saw this data. Leaving it to the default means the figure has
+a parameter nobody picked and nobody can defend.
 
-**Decision — Sturges' rule, evaluated once on the size of the study universe.**
-`ceil(log2(30)) + 1 = 6` equal-width bins spanning the observed range of each
-variable, with explicit edges rather than a bin count handed to the library.
+**Decision — bin edges fall on round numbers, at a step chosen for the magnitude
+of each variable.** The step is a rung of the 1-2-2.5-5 ladder scaled to the
+variable — 0.001, 0.02, 0.25, 5, 50 — and the edges are the multiples of that step
+that cover the observed range. Of the rungs that yield between four and ten bins,
+the one whose bin count is nearest six wins; ties go to the finer step, which hides
+less. The ten variables come out at six to eight bins.
 
-Two properties made it the choice, and the second is the one that decided it:
+**Decision — the ticks of the horizontal axis are the bin edges.** Not the ticks
+the library would choose. This is the point of the whole rule: an axis is labelled
+at round values whatever the bars do, so edges at 0.098 and 0.197 put every bar
+between two labels and leave the reader interpolating to find out what the bar
+covers. With round edges *and* the edges as the ticks, a bar begins and ends on a
+printed number and the range it counts is read off directly.
 
-- Six bins over thirty observations averages five units per bin. Finer binning at
-  this n produces a comb of ones and zeros that reads as structure where there is
-  only sampling.
-- **n is the same for every variable**, because the universe is fixed at thirty
-  units (D7). A rule depending only on n therefore gives *one* bin count for all
-  ten figures, so ten histograms are drawn to the same structure and can be read
-  against each other.
+**Decision — an empty bin is drawn, not left blank.** A bin with no unit in it gets
+a hatched stub at the axis and its own zero, printed where the other counts are.
+Blank, it reads as the figure having failed. It is a finding: in the urban park
+histogram the units stop at 0.12 of the unit and start again at 0.14, and that gap
+between the twenty-seven ordinary units and the three park-rich ones is the shape
+of the variable. The count of empty bins is stated in the note under the figure so
+that the hatching is not a private code.
 
-**Rejected — Freedman-Diaconis, or any data-dependent rule.** It would give each
-variable its own resolution according to its own spread. Ten figures drawn to ten
-different rulers that look like one series is the defect D12 rejects for the heatmap
-colour scales, and it is worse here because a histogram carries no colour bar to
-give the ruler away.
+**Replaced — Sturges' rule, `ceil(log2(30)) + 1 = 6` equal parts of the observed
+range.** It was the rule until the figures were looked at side by side with their
+own axes. Six bins over thirty observations is a good target and remains the
+target; what failed was cutting the *observed range* into six, which puts the edges
+wherever the extreme values happen to fall. The bars and the axis labels then
+disagree — the bars start at 0.0250 and 0.0463 while the axis is labelled 0.02,
+0.04, 0.06 — and the figure looks misaligned even though every count in it is
+right. Round edges keep the target and remove the disagreement.
+
+The property that made Sturges' attractive was that n is fixed at thirty by D7, so
+one rule gives one bin count for all ten figures. That is weakened, not lost: the
+count now lands between six and eight depending on how a variable's range sits
+against the ladder. It is worth the trade, because the alignment defect is visible
+in every figure and the difference between six and eight bins is not something a
+reader has to reconcile across figures that are, in any case, in different units.
+
+**Rejected — Freedman-Diaconis, or any data-dependent rule.** Unchanged from the
+first version of this entry, and the new rule is not a step towards it. F-D sets
+the bin *width* from the spread of the data, so each variable is drawn to its own
+resolution; here the data only picks a rung of a ladder that is the same for all
+ten, and it picks it from the magnitude of the variable, which is exactly what has
+to differ between a share bounded by 1 and a density reaching 355.
 
 **Rejected — the library default.** It is a data-dependent rule with no name on it,
-which is the same objection plus the inability to state in the thesis what was done.
+which is the same objection plus the inability to state in the thesis what was
+done.
 
 **Rejected — unequal-width bins, quantile or logarithmic.** Several of these
-variables are strongly right-skewed — bridge surface has fifteen of thirty units in
+variables are strongly right-skewed — bridge deck has fourteen of thirty units in
 its first bin — and variable-width bins would flatten exactly that. The skew is a
 property of the city worth seeing, not a rendering problem to fix.
 
@@ -1430,6 +1458,13 @@ similar colours. The value is printed on every cell, for the same reason D12 pri
 them on the casualty heatmaps: a colour ramp shows the pattern well and the number
 badly.
 
+**Decision — both axes carry the readable label and the canonical name.** The short
+label on one line, the name as it appears in the code and in the exported tables
+underneath it, smaller and monospaced. The figure is read next to the CSV it came
+from, and `Signalised junctions` does not say which of ten columns to open;
+`SIGNALISED_INTERSECTION_DENSITY` does. The same pair of lines labels the master
+table of D24, so the two figures are labelled alike.
+
 **Decision — high pairs are reported, never dropped.** Pairs above 0.7 in absolute
 value are named in the run log and exported as their own small table, because two
 variables that correlate that strongly measure close to the same thing and putting
@@ -1437,3 +1472,60 @@ both into one model buys nothing and destabilises the coefficients of each. It i
 reporting threshold in the sense of D17's sparse denominator: nothing is removed
 from any table because of it, and which pair to drop is a modelling decision, not a
 plotting one.
+
+---
+
+## D24 — The master table is one figure, shaded column by column
+
+**Kind:** Implementation.
+
+**Status:** Closed.
+
+**Built:** Yes, as `table__static_predictors.png` in the predictors route.
+
+**Context.** Ten histograms show ten distributions and no unit; the correlation
+matrix shows ten variables against each other and no unit either. Neither answers
+the question the predictor half is for, which is what a given UPL is like across
+all ten variables at once, and how it sits against the rest of the city. That
+question is answered by the wide table, and until now the wide table existed only
+as a CSV and as a block of monospaced text in the run log.
+
+**Decision — the whole grid in one figure: thirty units by ten variables, every
+value printed.** The same three hundred cells the wide table holds, in the order of
+the unit code, with the variables in the configured order. Nothing is summarised
+and nothing is dropped, because the figure exists to be read cell by cell as much
+as at a glance.
+
+**Decision — the colour of a cell comes from its own column.** Each column is
+shaded from its own minimum to its own maximum. The variables span four orders of
+magnitude — bridge deck at 0.0001 of a unit against 355 crossings per km² — so a
+single ramp across the figure would paint every share at one end and every density
+at the other, and the picture would show which family a column belongs to and
+nothing else.
+
+**This is the opposite of D12's rule, deliberately, and the figure says so.** D12
+puts the casualty heatmaps on one shared scale precisely so cells can be compared
+across the figure. A reader who carries that habit here would compare a dark cell
+in one column against a dark cell in another and conclude something false. Two
+devices guard against it: a note under the title stating that colours are
+comparable down a column and never across, and the minimum and maximum of each
+column printed at its foot, which says what the palest and the darkest cell of that
+column actually mean. The second one matters more — it makes the scale checkable
+instead of asserted.
+
+**Decision — the number of decimals comes from the top of each column.** About
+three significant digits at the column maximum: four decimals for bridge deck, one
+for bus stop density, none for pedestrian crossings. One decimal count for all ten
+either prints `355.3447` or rounds bridge deck to `0.00`, and with three hundred
+numbers on one page, readability is the whole point of printing them.
+
+**Rejected — a figure per variable, or a small multiple of thirty maps.** Both
+exist in some form already: the histograms are the per-variable view, and a map is
+a different project with its own decisions about classification and colour. What
+was missing was the join of the two axes in one place, which is a table.
+
+**Rejected — normalising the values themselves and printing z-scores.** That would
+make one colour scale legitimate across the whole figure, at the cost of printing
+numbers that appear in no exported table. The point of this figure is to show the
+measured values; a reader who wants comparable magnitudes has the correlation
+matrix and, later, the model.
