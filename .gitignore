@@ -25,3 +25,6 @@ __pycache__/
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# Thesis deliverables: not part of the published code
+deliverables/
