@@ -174,7 +174,7 @@ That is how the two rows below that depend on the footprint are read.
 | Severity origin after concatenation | lost — both layers flagged alike | preserved on every row | Different, defect corrected |
 | Unit of the output row | one row per crash | one row per affected party | Different, methodology |
 | Rows emitted | 179,110 crashes | 203,808 parties, covering 172,993 crashes | Different, both causes |
-| Multi-party rule | 4,208 crashes removed | 15,014 crashes removed | Different, defect corrected |
+| Multi-party rule | 4,208 crashes removed | 15,375 crashes removed | Different, defect corrected |
 | Unmapped vehicle types | became null, then silently dropped | routed to the residual category, reported | Different, defect corrected |
 | Casualties with no vehicle | all called pedestrians | typed by role | Different, methodology |
 | Grid coverage | only observed combinations | complete grid, 22,680 cells | Different, methodology |
@@ -197,8 +197,9 @@ normalised text, and anything unrecognised reaches the residual category and is
 reported: on this run, 5,658 parties whose type is blank in the source.
 
 **The multi-party rule now counts parties.** The inherited pipeline removed 4,208
-crashes; this one removes 15,014. That is not a discrepancy but the same rule
-applied correctly. The inherited code deduplicated actor *types* before counting,
+crashes on the original extract; this one removes 15,375 on the updated one and
+15,014 on the original, so the gap is the rule and not the extract. That is not a
+discrepancy but the same rule applied correctly. The inherited code deduplicated actor *types* before counting,
 so a crash between two cars counted as one type and passed a threshold that is
 about parties, where that crash is plainly two. The larger figure is the honest
 one, and the research proposal, which quotes 4,208, needs correcting.
@@ -233,7 +234,7 @@ observed, making a true zero indistinguishable from a missing observation. The
 matrix here is a full grid of 22,680 cells, 7,673 of them zero.
 
 **Casualties with no recorded vehicle are typed by role.** The inherited code
-called all 66,037 of them pedestrians. 2,090 are recorded as passengers or
+called all 67,116 of them pedestrians. 2,031 are recorded as passengers or
 drivers, whose vehicle simply was not captured.
 
 ### The orientation of the motorcycle–bicycle pair

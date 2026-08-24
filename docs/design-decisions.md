@@ -277,10 +277,13 @@ party, with no ambiguity at all.
 resulting restriction as a declared limitation of the study rather than a
 technicality to leave unmentioned.
 
-> **What this costs, in absolute terms.** The rule removes **15,014 crashes of
-> 184,112 (8.15%)** and **33,527 people of 269,841 (12.42%)**. Among the
-> discarded crashes there are **4,299 pedestrian-struck crashes, which is 7.76%
-> of every pedestrian-struck crash in the base**.
+> **What this costs, in absolute terms.** The rule removes **15,375 crashes of
+> 188,368 (8.16%)** and **34,475 people of 277,513 (12.42%)**. Among the
+> discarded crashes there are **4,398 pedestrian-struck crashes, which is 7.81%
+> of every pedestrian-struck crash in the base**. Measured on the updated 2024
+> extract (D19); on the original extract it was 15,014 crashes of 184,112
+> (8.15%), 33,527 people of 269,841 and 4,299 pedestrian-struck crashes (7.76%).
+> The rule did not change — a fuller year has more crashes to apply it to.
 >
 > **The research proposal declares the inherited figure of 4,208 crashes (2.3%)
 > and it has to be corrected to the figures above.** The two are not measuring
@@ -303,14 +306,15 @@ which mode causes harm into the very measurement meant to test that hypothesis.
 remains is whether the loss falls evenly, because a rule that quietly thinned out
 one mode would not be neutral however small it looked in total.
 
-| Crash type | Discarded | % | Kept | % | Ratio |
-|---|---:|---:|---:|---:|---:|
-| CHOQUE (collision) | 10,541 | 70.22% | 94,670 | 55.99% | 1.25x |
-| ATROPELLO (pedestrian struck) | 4,299 | 28.64% | 51,081 | 30.21% | **0.95x** |
-| VOLCAMIENTO (rollover) | 81 | 0.54% | 5,514 | 3.26% | 0.17x |
-| OTRO | 69 | 0.46% | 4,778 | 2.83% | 0.16x |
-| CAIDA DE OCUPANTE (occupant fall) | 22 | 0.15% | 10,829 | 6.40% | 0.02x |
-| AUTOLESION | 0 | 0.00% | 2,193 | 1.30% | 0.00x |
+| Crash type | Discarded | % | Kept | % | Ratio | % of type |
+|---|---:|---:|---:|---:|---:|---:|
+| CHOQUE (collision) | 10,797 | 70.23% | 97,349 | 56.28% | 1.25x | 9.98% |
+| ATROPELLO (pedestrian struck) | 4,398 | 28.61% | 51,881 | 29.99% | **0.95x** | 7.81% |
+| VOLCAMIENTO (rollover) | 82 | 0.53% | 5,619 | 3.25% | 0.16x | 1.44% |
+| OTRO | 74 | 0.48% | 4,818 | 2.79% | 0.17x | 1.51% |
+| CAIDA DE OCUPANTE (occupant fall) | 22 | 0.14% | 11,100 | 6.42% | 0.02x | 0.20% |
+| AUTOLESION | 0 | 0.00% | 2,193 | 1.27% | 0.00x | 0.00% |
+| INCENDIO (fire) | 0 | 0.00% | 8 | 0.00% | 0.00x | 0.00% |
 
 The exclusion is **not neutral, but it does not fall on pedestrians.** Collisions
 are over-represented among the discarded by a quarter, which is mechanical: a
@@ -327,13 +331,13 @@ thinned out pedestrian records would have been a serious problem. It does not.
 **The two readings both belong in the limitations, and they are not in
 conflict.** In relative terms the exclusion does not discriminate against
 pedestrians: they are removed at 0.95x their share of the survivors, marginally
-less than their weight. In absolute terms it still removes 4,299 pedestrian-struck
-crashes, 7.76% of all of them. A reader whose subject is vulnerable road users
+less than their weight. In absolute terms it still removes 4,398 pedestrian-struck
+crashes, 7.81% of all of them. A reader whose subject is vulnerable road users
 will want the second number, and giving only the reassuring ratio would be a way
 of not answering. The limitation to declare is: the matrix under-represents
-crashes with three or more parties, 8.15% of the base, which skew towards
+crashes with three or more parties, 8.16% of the base, which skew towards
 multi-vehicle collisions rather than towards any vulnerable mode, and this costs
-7.76% of the pedestrian-struck crashes.
+7.81% of the pedestrian-struck crashes.
 
 ---
 
@@ -535,18 +539,22 @@ moment it happens rather than discovered afterwards.
 **Built:** Yes. The rule is applied when parties are resolved, and every run
 reports how each group of standalone casualties was typed.
 
-**Context.** 66,037 casualty records name no vehicle. The inherited pipeline
+**Context.** 67,116 casualty records name no vehicle. The inherited pipeline
 called every one of them a pedestrian. The role column disagrees, and its full
 inventory over that group is short:
 
 | Role recorded | Records |
 |---|---:|
-| PEATON | 63,947 |
-| PASAJERO | 1,908 |
+| PEATON | 65,022 |
+| PASAJERO | 1,912 |
 | CONDUCTOR | 119 |
 | SIN INFORMACION | 63 |
 | *no role recorded* | 0 |
-| **Total** | **66,037** |
+| **Total** | **67,116** |
+
+Measured on the updated 2024 extract (D19). On the original extract the group was
+66,037 records, split 63,947 / 1,908 / 119 / 63 in the same order; the shape of
+the inventory is what matters and it did not move.
 
 A passenger with no vehicle recorded is not someone walking; it is someone whose
 vehicle the form did not capture. Calling them pedestrians inflates one of the
@@ -567,8 +575,8 @@ of D4 applied to a different symptom of the same gap:
 | Anything else, or nothing | Residual | Reported separately, never classified on a guess |
 
 **What the rule actually recovers, measured.** Nothing, on these sources. Of the
-2,090 non-pedestrian records above, **0** carry a role of motorcyclist or
-cyclist, so all 2,090 stay in the residual category. Every motorcyclist and every
+2,094 non-pedestrian records above, **0** carry a role of motorcyclist or
+cyclist, so all 2,094 stay in the residual category. Every motorcyclist and every
 cyclist in the data names a vehicle, which is what one would expect: the form
 records the motorcycle or the bicycle as a vehicle in its own right.
 
