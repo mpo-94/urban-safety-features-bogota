@@ -52,9 +52,11 @@ carried, so the second is larger for the same underlying records.
 | D23 | The histogram bins and the correlation scale are declared, not inferred | Implementation | Closed; bin rule revised | Yes |
 | D24 | The master table is one figure, shaded column by column | Implementation | Closed | Yes |
 | D25 | The predictor declaration is what the code runs on, and it is exported | Implementation | Closed | Yes |
+| D26 | The pipeline draws the map, as a reference map in four colours | Implementation | Closed; reverses D24's exclusion | Yes |
+| D27 | A figure the document draws itself gets its data exported for it | Implementation | Closed | Yes, for the city series of ρ |
 
 Methodological decisions: D1-D7, D9, D10, D11, D15, D17, D18, D19, D21, D22.
-Implementation decisions: D8, D12, D13, D14, D16, D20, D23, D24, D25.
+Implementation decisions: D8, D12, D13, D14, D16, D20, D23, D24, D25, D26, D27.
 
 ---
 
@@ -1537,6 +1539,11 @@ exist in some form already: the histograms are the per-variable view, and a map 
 a different project with its own decisions about classification and colour. What
 was missing was the join of the two axes in one place, which is a table.
 
+*Superseded in part by D26.* The half of this that says a map brings its own
+decisions still holds; what no longer holds is that those decisions had nowhere to
+be made. They are made in D26, and the pipeline draws a reference map of the
+units. The small multiple of thirty thematic maps rejected here is still rejected.
+
 **Rejected — normalising the values themselves and printing z-scores.** That would
 make one colour scale legitimate across the whole figure, at the cost of printing
 numbers that appear in no exported table. The point of this figure is to show the
@@ -1635,3 +1642,159 @@ the correct behaviour and not a gap to pre-fill.
 mapping (D4) already carries the Spanish-to-English equivalence for the road user
 types and is declared the same way — exhaustively, in the configuration, used by
 the code — so there is nothing to fix there.
+
+---
+
+## D26 — The pipeline draws the map, as a reference map in four colours
+
+**Kind:** Implementation.
+
+**Status:** Closed. Reverses the exclusion D24 made.
+
+**Built:** Yes, as the `map` route, writing `map__territorial_units.pdf`.
+
+**Context.** D24 turned a map down among the alternatives it rejected, on the
+grounds that a map is a different project with its own decisions about
+classification and colour. That was true, and it is no longer a reason to leave it
+out, because those decisions can be made and are made below. What changed is the
+demand: both documents need the reader to see the geography before any result
+means anything. The informe final says so in its own section 3.2, and the
+presentation opens on the study universe. A reader who does not know Bogotá cannot
+weigh a rate per unit without knowing what the units look like, and with units
+running from 6.52 to 53.82 square kilometres the shapes carry as much as the count.
+
+**Decision — the pipeline draws it, from the layer every other stage reads.** Not
+from the copy of the official cartography that also sits in the repository. Drawn
+from `UnidadPlaneamientoLocal.shp` through the same loader, the figure shows the
+thirty units of the study *by construction*: same file, same universe check, same
+CRS handling. Drawn from a second copy it would show thirty units only for as long
+as whoever produced it filtered correctly, and nothing would catch it if they did
+not.
+
+**Decision — it is a reference map, not a thematic one.** This is the decision the
+rest follow from. A reference map shows the shape of the territory and how it is
+divided; a thematic map shows a variable over it. Nothing here is measured and
+nothing is classified, so the fill carries no information: it says only that this
+unit is not that one.
+
+**Decision — four colours, not thirty.** The first version gave every unit a
+colour of its own, from a palette of thirty spread around the hue circle, assigned
+by a search that maximised the contrast between neighbours. It was the wrong
+instrument. A qualitative palette of one colour per category is built for
+categorical data, where a colour means something; here there is no category and no
+meaning, so thirty hues are thirty hues of noise, and the map competes for
+attention with the argument it exists to support. The convention on a reference
+map is the *fewest* colours that separate neighbours, and the four colour theorem
+says four is enough. The adjacency of the thirty UPL is computed from the
+geometries and coloured by DSATUR, which finds four on this layer over
+seventy-four borders. Five would have been acceptable; the run reports how many it
+used, and a check fails if any two units sharing a border share a colour.
+
+**Decision — ColorBrewer Pastel2, and hairline borders in one colour.** Pastel2 is
+the pastel form of Set2, the qualitative family built to survive colour blindness,
+and it is unsaturated, which is what a background should be. With the fill
+separating the units the stroke has nothing left to do, so it is a hairline in a
+single grey. The first version needed a heavy white border *and* a dark silhouette
+precisely because its fills were fighting each other; fixing the fill removed the
+need for both.
+
+**Decision — identity is the unit code, printed inside the unit.** Colour cannot
+carry identity when four colours cover thirty units, and it should not: a legend
+of thirty entries beside a map of thirty units is a lookup table pretending to be
+a figure. The number is the UPL code without its prefix and without a leading
+zero, because the narrowest unit is 6.52 km² and a character that carries no
+information is a character that does not go in.
+
+**Decision — the label sits at the pole of inaccessibility.** The centroid is out:
+on a polygon shaped like a crescent or an L it falls outside the polygon
+altogether, and several of these units are shaped exactly like that.
+`representative_point` fixes that much, and it was the first choice for that
+reason, but it answers the wrong question. It returns *some* interior point, and a
+label needs the interior point with the most room around it, which is the pole of
+inaccessibility: `shapely.ops.polylabel`. On this layer the difference decides the
+figure. `representative_point` leaves as little as 438 m of clearance, on a unit
+where it lands in a neck, against never less than 932 m for the pole. At 7 pt that
+is five labels crossing their own borders against none.
+
+**Decision — the font size is the largest the geometry allows, and it is
+checked.** The check compares each label's rendered box against its own polygon in
+data coordinates, and names the units that spill. Measured, not estimated:
+estimating from the area would credit a 6.52 km² unit with 2.5 km of room in every
+direction, which is true of a square and false of everything on this map. Because
+the test is a ratio of font to figure, the largest font that passes is also the
+largest the number will be once a document scales the figure down. On this layer
+that ceiling sits between 7 and 8 points against a five inch figure.
+
+**Decision — the north arrow and the scale bar come from libraries.**
+`matplotlib-map-utils` for the arrow, which is what the GeoPandas documentation
+points at, and `matplotlib-scalebar` for the bar. Neither is drawn by hand. The
+scale bar states a real distance and can only do that where the coordinates are
+metres, which fixes the map's CRS at EPSG:3116, the one the pipeline already uses
+for every area it measures. Both are drawn in the colour of the labels, with the
+arrow's two-tone form and drop shadow off: their defaults make the furniture the
+loudest thing on the page.
+
+**Decision — vector, and transparent.** Every other figure the pipeline writes is
+a PNG at 150 dpi, which suits figures dense with text and marks. This one is
+almost all edges, and edges are what rasterising ruins. Transparent, so it carries
+no white rectangle of its own onto a slide whose background is an image.
+
+**Rejected — a legend, unit names, or a title inside the figure.** The caption of
+the document that carries it says what it is, in that document's language, and a
+title inside the figure would repeat it in the wrong one. Names would not fit, and
+the code plus a table is how a reader gets from a number on the map to a name.
+
+**Rejected — one colour per unit, assigned to maximise contrast between
+neighbours.** Built first, and described above. It is recorded here rather than
+quietly deleted because it is the kind of thing that looks like the obvious answer
+until the question "what does this colour mean" is asked out loud.
+
+---
+
+## D27 — A figure the document draws itself gets its data exported for it
+
+**Kind:** Implementation.
+
+**Status:** Closed.
+
+**Built:** Yes, as `presentation__rho_city_rho__by_year.dat` in the rho route.
+
+**Context.** Two kinds of figure now exist. Most are drawn by the pipeline and
+copied into a document as images. A few are drawn by the document itself, in
+LaTeX: the casualty matrices as native tables, and now the city series of ρ with
+`pgfplots`. The reason is the same in both cases and is recorded in the style
+rules of `deliverables/plan.md`. A native figure is legible at any size, inherits
+the document's typeface, and is corrected by changing a number in the source
+rather than by rebuilding an image.
+
+That reason has a cost, and this decision is about the cost. A native figure whose
+numbers are typed into the `.tex` is a copy of a run, and it drifts from that run
+the moment anything upstream changes. These numbers have already moved three
+times.
+
+**Decision — the pipeline exports the series the document plots.** The rho route
+writes the same city view it already exports as a CSV a second time, in the shape
+`pgfplots` reads. The document points `\pgfplotstableread` at that file and every
+`\addplot` names a column. No value is written by hand.
+
+**Decision — it is a separate file and not a change to the CSV.** The CSV beside
+it is what the dashboard joins, and its column names have to keep matching the
+matrix, which is the point of D13's naming discipline. The `.dat` differs from it
+in exactly two ways, both forced by its only reader being LaTeX:
+
+- The pair separator becomes an underscore. `pgfplots` addresses a column by name
+  inside a key-value list, and a hyphen there is fragile.
+- An undefined ρ is written out as `nan` rather than left as an empty field. An
+  empty field between two separators reads as a zero, and a year in which a pair
+  had no crash at all is not a year in which nobody was hurt. The axis is set to
+  break the line at those points instead of drawing through them.
+
+**Decision — all nine pairs go out, whatever a given figure plots.** The
+presentation draws five and the informe final will draw nine. Exporting only what
+one figure needs would mean re-running the pipeline to redraw it.
+
+**Decision — a check reads the file back.** Both things that can go wrong here are
+silent: a value rounded away by the printed precision, and an undefined ρ arriving
+as a zero. The check compares the file on disk against the series it came from,
+cell by cell, and confirms the gaps are still gaps. That is what D12 asks of
+anything that checks an exported artefact.

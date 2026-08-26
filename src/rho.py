@@ -390,6 +390,23 @@ def city_table(long_table: pd.DataFrame, column: str) -> pd.DataFrame:
     return table.reindex(index=list(config.STUDY_YEARS), columns=list(config.RHO_PAIR_LABELS))
 
 
+def pgfplots_table(long_table: pd.DataFrame) -> pd.DataFrame:
+    """The city rho series with column names a LaTeX plot can address.
+
+    Same nine columns and same eighteen rows as `city_table`, renamed so pgfplots
+    can name a column in a key-value list. All nine pairs go out whatever a given
+    figure plots: which of them a document draws is the document's decision, and
+    exporting only the ones one figure happens to need would mean re-running the
+    pipeline to redraw it.
+    """
+    table = city_table(long_table, config.RHO_COL).copy()
+    table.columns = [
+        label.replace(config.RHO_PAIR_SEPARATOR, config.RHO_PGFPLOTS_PAIR_SEPARATOR)
+        for label in table.columns
+    ]
+    return table
+
+
 # ---------------------------------------------------------------------------
 # Export
 # ---------------------------------------------------------------------------
@@ -413,6 +430,20 @@ def export(long_table: pd.DataFrame, log: RunLog) -> dict[str, Path]:
         path = data_dir / f"{config.PRESENTATION_PREFIX}__rho_city_{name}__by_year.csv"
         city_table(long_table, column).to_csv(path, encoding="utf-8")
         paths[f"city_{name}"] = path
+
+    # The same city series once more, this time for a document that draws the
+    # figure itself. Written beside the CSV rather than instead of it: the CSV is
+    # what the dashboard joins, and its column names have to keep matching the
+    # matrix. See RHO_PGFPLOTS_* in the configuration for what differs and why.
+    plot_path = data_dir / f"{config.PRESENTATION_PREFIX}__rho_city_rho__by_year.dat"
+    pgfplots_table(long_table).to_csv(
+        plot_path,
+        sep=" ",
+        na_rep=config.RHO_PGFPLOTS_MISSING,
+        float_format=f"%.{config.RHO_PGFPLOTS_DECIMALS}f",
+        encoding="utf-8",
+    )
+    paths["city_rho_plot"] = plot_path
 
     log.info("exported 1 analysis table and %d presentation tables to %s/", len(paths) - 1, config.DATA_SUBDIR)
     return paths
@@ -616,7 +647,13 @@ def render_figures(long_table: pd.DataFrame, units: pd.DataFrame, log: RunLog) -
 # ---------------------------------------------------------------------------
 
 
-def verify(long_table: pd.DataFrame, crashes: pd.DataFrame, units: pd.DataFrame, log: RunLog) -> bool:
+def verify(
+    long_table: pd.DataFrame,
+    crashes: pd.DataFrame,
+    units: pd.DataFrame,
+    log: RunLog,
+    paths: dict[str, Path] | None = None,
+) -> bool:
     """Check the table against its own definition and against what entered it."""
     checks: list[tuple[str, bool, str]] = []
 
@@ -666,6 +703,23 @@ def verify(long_table: pd.DataFrame, crashes: pd.DataFrame, units: pd.DataFrame,
         len(long_table) == expected_rows,
         f"{len(long_table):,} of {expected_rows:,}",
     ))
+
+    if paths is not None and "city_rho_plot" in paths:
+        # Read back what a document will plot, not what the code meant to write.
+        # The two things that can go wrong here are silent: a value rounded away
+        # by the printed precision, and an undefined rho arriving as a zero.
+        expected = pgfplots_table(long_table)
+        written = pd.read_csv(paths["city_rho_plot"], sep=r"\s+", index_col=0)
+        tolerance = 10.0 ** -config.RHO_PGFPLOTS_DECIMALS
+        same_shape = list(written.columns) == list(expected.columns) and len(written) == len(expected)
+        gaps_kept = same_shape and written.isna().to_numpy().tolist() == expected.isna().to_numpy().tolist()
+        values_kept = gaps_kept and bool(((written - expected).abs() <= tolerance).all().all())
+        checks.append((
+            "the plot table reads back as the city series",
+            values_kept,
+            f"{int(expected.isna().to_numpy().sum())} undefined cell(s), "
+            f"tolerance {tolerance:g}",
+        ))
 
     width = max(len(name) for name, _, _ in checks)
     lines = [f"{'check'.ljust(width)}  {'result':>8}  detail", f"{'-' * width}  {'-' * 8}  ------"]

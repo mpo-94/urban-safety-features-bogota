@@ -494,6 +494,22 @@ RHO_SPARSE_DENOMINATOR = 10
 # this only decides what gets pointed at first.
 RHO_JUMP_THRESHOLD = 0.10
 
+# -- the city series in a shape LaTeX can plot ------------------------------
+# A document that draws its own rho figure needs the series as a file, or every
+# value ends up retyped into the source and drifts from the run that produced it.
+# Two things separate this file from the CSV beside it, and both come from its
+# only reader being pgfplots rather than the dashboard:
+#
+#   the pair separator is an underscore, because pgfplots addresses a column by
+#   name inside a key-value list, where a hyphen is fragile;
+#
+#   an undefined rho is written out as a word rather than left as an empty field,
+#   because an empty field between two separators reads as a zero, and a year in
+#   which a pair had no crash at all is not a year in which nobody was hurt.
+RHO_PGFPLOTS_PAIR_SEPARATOR = "_"
+RHO_PGFPLOTS_MISSING = "nan"
+RHO_PGFPLOTS_DECIMALS = 6
+
 # ---------------------------------------------------------------------------
 # Urban predictors
 # ---------------------------------------------------------------------------
@@ -871,6 +887,96 @@ HEATMAP_EMPTY_COLOR = "#eeeeee"
 RHO_SERIES_COLOR = "#1b6ca8"
 RHO_REFERENCE_COLOR = "#9e9e9e"
 RHO_GRID_COLOR = "#e3e3e3"
+
+# -- the map of the territorial units ---------------------------------------
+# D24 kept maps out of the pipeline, on the grounds that a map brings its own
+# decisions about classification and colour and those had nowhere to be settled.
+# D26 reverses that: the decisions are settled here, and the reason is that both
+# documents need the reader to see the geography before any result means
+# anything. Drawn from the same layer every other stage reads, so the figure
+# shows the study universe by construction rather than because someone filtered
+# a second copy correctly.
+#
+# It is a reference map, not a thematic one. It shows the shape of the territory
+# and how it is divided, and the fill carries no information at all: it says
+# only that this unit is not that one. Everything below follows from that.
+MAP_FIGURES_SUBDIR = "map"
+
+# Vector, unlike every other figure the pipeline writes. The others are dense
+# with text and marks that a raster at 150 dpi renders adequately; this one is
+# projected on a wall and is almost all edges, and edges are what rasterising
+# ruins.
+MAP_FIGURE_FORMAT = "pdf"
+MAP_FIGURE_HEIGHT_IN = 5.0  # width follows from the footprint of the city
+
+# Two polygons are neighbours if their boundaries come within this distance, in
+# the metric CRS. Exact touching would be the right test on a topologically
+# clean layer; a metre of tolerance costs nothing and survives the slivers a
+# layer digitised from several sources tends to carry.
+MAP_ADJACENCY_TOLERANCE_M = 1.0
+
+# The four colour theorem: four are enough for no two units sharing a border to
+# share a colour, and on a reference map the convention is to use the fewest
+# colours rather than the most. Thirty would be a qualitative palette used for
+# something that is not categorical data, and thirty hues that mean nothing are
+# thirty hues of noise.
+#
+# ColorBrewer Pastel2, which is the pastel form of Set2, the qualitative scheme
+# in that family built to survive colour blindness. Six entries are declared for
+# the two the heuristic might need beyond four; the run reports how many it
+# actually used. Nothing here is saturated, because the map is background.
+MAP_PALETTE = ("#b3e2cd", "#fdcdac", "#cbd5e8", "#f4cae4", "#e6f5c9", "#fff2ae")
+
+# One colour for every border and a hairline width. With the fill doing the
+# separating there is nothing left for the stroke to do, so it gets out of the
+# way; the previous version had it carrying the work and needed two colours and
+# three times the width to do it.
+MAP_BOUNDARY_COLOR = "#7c8288"
+MAP_BOUNDARY_WIDTH = 0.5
+
+# The identifying number inside each unit, without the UPL prefix and without a
+# leading zero. Not padded on purpose: the narrowest unit is 6.52 km2 and the
+# label has to fit inside it, so a character that carries no information is a
+# character that does not go in. The run checks that every label fits inside its
+# own polygon and names the ones that do not.
+# The size is the largest the geometry allows, not a matter of taste. The fit
+# test compares a text box with a polygon in data coordinates, so it depends on
+# the ratio of font to figure and not on either alone, which means the largest
+# font that fits is also the largest the number will be once a document scales
+# the figure down. On this layer that ceiling is between 7 and 8 points against
+# a five inch figure: 8 puts three labels over their own borders.
+MAP_LABEL_COLOR = "#2b2f33"
+MAP_LABEL_FONT_PT = 7.0
+
+# The label sits at the pole of inaccessibility: the interior point furthest
+# from the boundary. Both it and representative_point are guaranteed to land
+# inside the polygon, which is what rules the centroid out, but only this one
+# also asks for room around itself, and room is what a label needs.
+#
+# On this layer the difference decides the figure. representative_point leaves
+# as little as 438 m of clearance, on a unit shaped like an L where it lands in
+# the neck; the pole never drops below 932 m. At 6.5pt that is five labels
+# spilling over their own borders against none.
+#
+# The tolerance is how precisely the pole is located. Ten metres on a city
+# 23 km across is far below anything the eye resolves, and asking for less only
+# spends iterations.
+MAP_LABEL_ANCHOR_TOLERANCE_M = 10.0
+
+# Where the north arrow and the scale bar sit. Both come from libraries rather
+# than being drawn by hand: matplotlib-map-utils for the arrow, which is what
+# the GeoPandas documentation points at, and matplotlib-scalebar for the bar,
+# which needs a projected CRS to state a real distance and therefore fixes the
+# CRS the map is drawn in.
+#
+# Both are drawn in the colour of the labels and nothing else, with the arrow's
+# two-tone form and drop shadow turned off. They orient the reader and are not
+# the subject: the default arrow is a black and white figure with a heavy N and
+# it ends up the loudest thing on a map whose whole job is to sit quietly.
+MAP_NORTH_ARROW_LOCATION = "upper right"
+MAP_NORTH_ARROW_SCALE = 0.22
+MAP_SCALEBAR_LOCATION = "lower right"
+MAP_SCALEBAR_LENGTH_FRACTION = 0.32
 
 # -- predictor histograms ---------------------------------------------------
 # With thirty observations the choice of bins decides a good deal of what the

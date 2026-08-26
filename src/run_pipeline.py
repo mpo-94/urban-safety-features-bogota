@@ -28,7 +28,7 @@ from typing import Callable
 
 import pandas as pd
 
-from src import completeness, config, integration, loading, matrix, parties, predictors, rho
+from src import completeness, config, integration, loading, maps, matrix, parties, predictors, rho
 from src.provenance import RunLog
 
 
@@ -118,11 +118,11 @@ def run_rho(log: RunLog) -> None:
     universe = parties.party_universe(casualties, vehicles, log)
     long_table, crashes = rho.compute(universe, parties.crash_attributes(casualties), units, log)
 
-    rho.export(long_table, log)
+    paths = rho.export(long_table, log)
     rho.render_figures(long_table, units, log)
 
     log.table("record funnel:", log.funnel())
-    if not rho.verify(long_table, crashes, units, log):
+    if not rho.verify(long_table, crashes, units, log, paths):
         raise RouteFailed("the rho table does not agree with what entered it")
     rho.report(long_table, log)
 
@@ -144,6 +144,24 @@ def run_predictors(log: RunLog) -> None:
     if not predictors.verify(long_table, units, log, paths):
         raise RouteFailed("the static predictor tables do not agree with what entered them")
     predictors.report(long_table, log)
+
+
+def run_map(log: RunLog) -> None:
+    """The reference map of the territorial units.
+
+    It reads the unit layer and nothing else, which is the point: the figure
+    shows the study universe because it was drawn from the same file every other
+    stage reads, and not because a second copy of the cartography was filtered
+    correctly. See D26, which reverses the exclusion D24 made.
+    """
+    units = loading.load_territorial_units(log)
+    composition = maps.compose(units)
+    out_path, overflowing = maps.render_figures(units, composition, log)
+
+    log.table("record funnel:", log.funnel())
+    if not maps.verify(units, composition, out_path, overflowing, log):
+        raise RouteFailed("the map does not agree with the layer it was drawn from")
+    maps.report(units, composition, log)
 
 
 def run_matrix(log: RunLog) -> None:
@@ -184,6 +202,7 @@ ROUTES: tuple[Route, ...] = (
     Route("loading", "sources only: read them, locate them, verify the counts", run_loading),
     Route("predictors", "the static urban predictors, with histograms and their correlation", run_predictors),
     Route("rho", "rho(t): share of two-party crashes where both parties were hurt", run_rho),
+    Route("map", "the reference map of the territorial units, four-coloured", run_map),
     Route("completeness", "month-by-month coverage of the casualty layers", run_completeness),
     Route("integrate", f"rebuild the layers with {config.REPLACED_YEAR} from the updated extract", run_integrate),
 )
