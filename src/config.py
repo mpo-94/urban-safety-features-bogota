@@ -973,10 +973,22 @@ MAP_LABEL_ANCHOR_TOLERANCE_M = 10.0
 # two-tone form and drop shadow turned off. They orient the reader and are not
 # the subject: the default arrow is a black and white figure with a heavy N and
 # it ends up the loudest thing on a map whose whole job is to sit quietly.
-MAP_NORTH_ARROW_LOCATION = "upper right"
+# The arrow goes upper left. Bogotá's footprint leans to the north east, so the
+# upper right corner is over the city and the arrow sat on top of Torca; the
+# upper left is empty at that latitude.
+MAP_NORTH_ARROW_LOCATION = "upper left"
 MAP_NORTH_ARROW_SCALE = 0.22
+
+# The scale bar is drawn in a second copy of the figure rather than in the only
+# one. A map reproduced at the width of a page can carry it and one shrunk into
+# a slide cannot: at that size the bar's own label falls below anything a
+# projector resolves, and it earns its place by supporting a claim about
+# distance, which the slide does not make. Both files come out of every run, so
+# switching between them is a matter of which one a document includes and never
+# of editing this line and running again.
 MAP_SCALEBAR_LOCATION = "lower right"
 MAP_SCALEBAR_LENGTH_FRACTION = 0.32
+MAP_SCALEBAR_SUFFIX = "__scalebar"
 
 # -- predictor histograms ---------------------------------------------------
 # With thirty observations the choice of bins decides a good deal of what the

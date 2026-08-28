@@ -1734,6 +1734,20 @@ for every area it measures. Both are drawn in the colour of the labels, with the
 arrow's two-tone form and drop shadow off: their defaults make the furniture the
 loudest thing on the page.
 
+**Decision — the arrow goes in the upper left.** Bogotá's footprint leans to the
+north east, so the upper right corner of the figure is over the city and the
+arrow sat on top of Torca. At that latitude the left side is empty.
+
+**Decision — the scale bar goes in a second copy of the figure, not in the only
+one.** Every run writes both, and a document includes whichever it needs. A map
+reproduced at the width of a page can carry a scale bar and one shrunk into a
+slide cannot: at that size the bar's own label falls below what a projector
+resolves, and it earns its place by supporting a claim about distance, which the
+presentation does not make and the informe final does. Two files rather than a
+setting, so producing the other variant is never a matter of editing the
+configuration and running again — which is the failure mode that leaves two
+documents disagreeing about which run they came from.
+
 **Decision — vector, and transparent.** Every other figure the pipeline writes is
 a PNG at 150 dpi, which suits figures dense with text and marks. This one is
 almost all edges, and edges are what rasterising ruins. Transparent, so it carries

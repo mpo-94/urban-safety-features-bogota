@@ -205,13 +205,19 @@ def compose(units: gpd.GeoDataFrame) -> Composition:
 # ---------------------------------------------------------------------------
 
 
-def render(units: gpd.GeoDataFrame, composition: Composition, out_path: Path) -> list[int]:
+def render(
+    units: gpd.GeoDataFrame,
+    composition: Composition,
+    out_path: Path,
+    scalebar: bool,
+) -> list[int]:
     """Draw the map and return the units whose label does not fit inside them.
 
     Drawn in the metric CRS for two reasons. The scale bar states a distance and
     can only do that where the coordinates are metres; and plotted in degrees a
     figure of Bogotá comes out stretched north to south by about the secant of
     its latitude, which is small enough to pass unnoticed and wrong all the same.
+    The CRS does not change with `scalebar`: the second reason stands on its own.
     """
     metric = units.to_crs(epsg=config.PROJECTED_CRS)
 
@@ -265,17 +271,18 @@ def render(units: gpd.GeoDataFrame, composition: Composition, out_path: Path) ->
         },
         shadow=False,
     )
-    axis.add_artist(
-        ScaleBar(
-            1,  # the CRS is in metres, so one data unit is one metre
-            units="m",
-            location=config.MAP_SCALEBAR_LOCATION,
-            length_fraction=config.MAP_SCALEBAR_LENGTH_FRACTION,
-            frameon=False,
-            color=config.MAP_LABEL_COLOR,
-            font_properties={"size": config.MAP_LABEL_FONT_PT},
+    if scalebar:
+        axis.add_artist(
+            ScaleBar(
+                1,  # the CRS is in metres, so one data unit is one metre
+                units="m",
+                location=config.MAP_SCALEBAR_LOCATION,
+                length_fraction=config.MAP_SCALEBAR_LENGTH_FRACTION,
+                frameon=False,
+                color=config.MAP_LABEL_COLOR,
+                font_properties={"size": config.MAP_LABEL_FONT_PT},
+            )
         )
-    )
 
     overflowing = _labels_that_do_not_fit(figure, axis, metric, texts)
 
@@ -312,15 +319,21 @@ def render_figures(
     units: gpd.GeoDataFrame,
     composition: Composition,
     log: RunLog,
-) -> tuple[Path, list[int]]:
-    """Write the map and say how it came out."""
-    out_path = (
-        log.run_dir
-        / config.FIGURES_SUBDIR
-        / config.MAP_FIGURES_SUBDIR
-        / f"map__territorial_units.{config.MAP_FIGURE_FORMAT}"
-    )
-    overflowing = render(units, composition, out_path)
+) -> tuple[list[Path], list[int]]:
+    """Write both maps and say how they came out.
+
+    Two files, identical but for the scale bar: see MAP_SCALEBAR_SUFFIX for why
+    that is a second figure rather than a setting. Everything else about them is
+    the same, so the labels are measured once, on the plain one.
+    """
+    directory = log.run_dir / config.FIGURES_SUBDIR / config.MAP_FIGURES_SUBDIR
+    stem = "map__territorial_units"
+    out_paths = [
+        directory / f"{stem}.{config.MAP_FIGURE_FORMAT}",
+        directory / f"{stem}{config.MAP_SCALEBAR_SUFFIX}.{config.MAP_FIGURE_FORMAT}",
+    ]
+    overflowing = render(units, composition, out_paths[0], scalebar=False)
+    render(units, composition, out_paths[1], scalebar=True)
 
     log.info(
         "map: %d units over %d borders, coloured with %d of the %d declared colours",
@@ -341,8 +354,9 @@ def render_figures(
             config.MAP_LABEL_FONT_PT,
             names,
         )
-    log.info("wrote %s", out_path)
-    return out_path, overflowing
+    for path in out_paths:
+        log.info("wrote %s", path)
+    return out_paths, overflowing
 
 
 # ---------------------------------------------------------------------------
@@ -353,7 +367,7 @@ def render_figures(
 def verify(
     units: gpd.GeoDataFrame,
     composition: Composition,
-    out_path: Path,
+    out_paths: list[Path],
     overflowing: list[int],
     log: RunLog,
 ) -> bool:
@@ -393,10 +407,11 @@ def verify(
         f"{len(overflowing)} of {len(units)} spilling over",
     ))
 
+    written = [path for path in out_paths if path.exists() and path.stat().st_size > 0]
     checks.append((
-        "the figure is on disk and is not empty",
-        out_path.exists() and out_path.stat().st_size > 0,
-        f"{out_path.stat().st_size:,} bytes" if out_path.exists() else "missing",
+        "both figures are on disk and neither is empty",
+        len(written) == len(out_paths),
+        ", ".join(f"{path.name} {path.stat().st_size:,} bytes" for path in written) or "none written",
     ))
 
     width = max(len(name) for name, _, _ in checks)

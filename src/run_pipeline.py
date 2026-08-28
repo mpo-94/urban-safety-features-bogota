@@ -156,10 +156,10 @@ def run_map(log: RunLog) -> None:
     """
     units = loading.load_territorial_units(log)
     composition = maps.compose(units)
-    out_path, overflowing = maps.render_figures(units, composition, log)
+    out_paths, overflowing = maps.render_figures(units, composition, log)
 
     log.table("record funnel:", log.funnel())
-    if not maps.verify(units, composition, out_path, overflowing, log):
+    if not maps.verify(units, composition, out_paths, overflowing, log):
         raise RouteFailed("the map does not agree with the layer it was drawn from")
     maps.report(units, composition, log)
 
@@ -202,7 +202,7 @@ ROUTES: tuple[Route, ...] = (
     Route("loading", "sources only: read them, locate them, verify the counts", run_loading),
     Route("predictors", "the static urban predictors, with histograms and their correlation", run_predictors),
     Route("rho", "rho(t): share of two-party crashes where both parties were hurt", run_rho),
-    Route("map", "the reference map of the territorial units, four-coloured", run_map),
+    Route("map", "the reference map of the territorial units, with and without a scale bar", run_map),
     Route("completeness", "month-by-month coverage of the casualty layers", run_completeness),
     Route("integrate", f"rebuild the layers with {config.REPLACED_YEAR} from the updated extract", run_integrate),
 )
