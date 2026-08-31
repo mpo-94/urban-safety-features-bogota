@@ -34,6 +34,7 @@ from src import (
     config,
     correction,
     integration,
+    latex,
     loading,
     maps,
     matrix,
@@ -155,6 +156,13 @@ def run_predictors(log: RunLog) -> None:
     log.table("record funnel:", log.funnel())
     if not predictors.verify(long_table, units, log, paths):
         raise RouteFailed("the static predictor tables do not agree with what entered them")
+    # Read back from the file that was written rather than recomputed, so the
+    # check is on what the documents will include and not on a value in memory
+    # that happens to agree with it.
+    if not latex.verify_correlation_table(
+        pd.read_csv(paths["model_correlation"], index_col=0), log
+    ):
+        raise RouteFailed("the correlation exported for the models is not the model set's")
     predictors.report(long_table, log)
 
 
@@ -184,10 +192,13 @@ def run_matrix(log: RunLog) -> None:
 
     paths = matrix.export(long_table, log)
     matrix.render_heatmaps(paths, log)
+    latex.export_matrices(long_table, config.OBSERVED_DATASET, log)
 
     log.table("record funnel:", log.funnel())
     if not matrix.verify(long_table, affected, units, log):
         raise RouteFailed("the matrix does not agree with what entered it")
+    if not latex.verify_matrix_table(long_table, config.OBSERVED_DATASET, log):
+        raise RouteFailed("the emitted LaTeX matrices do not add up to the long table")
     matrix.report(long_table, log)
 
 
@@ -219,6 +230,7 @@ def run_corrected(log: RunLog) -> None:
     observed = matrix.build(observed_affected, units, log)
     observed_paths = matrix.export(observed, log)
     matrix.render_heatmaps(observed_paths, log)
+    latex.export_matrices(observed, config.OBSERVED_DATASET, log)
 
     corrected_universe, tables = correction.apply(universe, crash_attrs, log)
     corrected_affected = parties.emit_rows(
@@ -249,6 +261,7 @@ def run_corrected(log: RunLog) -> None:
     )
     corrected_paths = matrix.export(corrected, log, years=years, suffix=config.CORRECTION_FILE_SUFFIX)
     matrix.render_heatmaps(corrected_paths, log, years=years, suffix=config.CORRECTION_FILE_SUFFIX)
+    latex.export_matrices(corrected, config.CORRECTED_DATASET, log)
 
     correction.export(tables["plan"], tables["city"], tables["reference"], tables["persons"], log)
 
@@ -258,6 +271,12 @@ def run_corrected(log: RunLog) -> None:
         raise RouteFailed("the observed matrix does not agree with what entered it")
     if not matrix.verify(corrected, kept, units, log, years=years):
         raise RouteFailed("the corrected matrix does not agree with what entered it")
+
+    # Both sets of emitted tables, checked the same way, because the whole point
+    # of producing them in one run is that the two are comparable cell by cell.
+    for dataset, table in ((config.OBSERVED_DATASET, observed), (config.CORRECTED_DATASET, corrected)):
+        if not latex.verify_matrix_table(table, dataset, log):
+            raise RouteFailed(f"the emitted LaTeX matrices of the {dataset} dataset do not add up")
 
     # Rebuilt from the corrected universe rather than taken from the plan, so the
     # check is against the data and not against the arithmetic that produced it.

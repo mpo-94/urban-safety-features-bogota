@@ -8,6 +8,8 @@ figure quoted can be traced back to a file that run wrote. Sections 7 and 8 cove
 ρ(t) and the completeness audit, each a separate route with a run of its own.
 Section 10 covers the correction for the change in recording practice, which
 produces a second dataset beside the observed one rather than replacing it.
+Section 11 covers the tree variables and the tables the pipeline now emits as
+LaTeX source.
 
 | | |
 |---|---|
@@ -751,3 +753,100 @@ D29:
 The correction is an estimate and the pipeline treats it as one: the observed
 dataset is never replaced, the plan is exported cell by cell, and the reference
 window is a single constant so revising it costs one edit and one run.
+
+---
+
+## 11. The tree variables
+
+Run `run_20260831_011423`, route `predictors`, command
+`python -m src.run_pipeline predictors`. **Every check passed.** Three variables
+come off one layer: `TREE_DENSITY`, which enters the models, and
+`TREE_DENSITY_WITHOUT_P1` and `TREE_DENSITY_U_CODES`, which are measured for
+comparison and stay out. The decision and the evidence behind it are D32.
+
+### Funnel
+
+The tree census is the first layer measured on part of itself rather than whole,
+so each selection appears in the funnel as its own stage and the balance closes
+on the layer as delivered.
+
+| Stage | In | Out | Cause of the difference |
+|---|---:|---:|---|
+| measure `TREE_DENSITY` | 1,475,041 | 1,430,548 | −44,493 points falling outside every unit |
+| select `TREE_DENSITY_WITHOUT_P1` | 1,475,041 | 1,163,036 | −312,005 features with `Tipo_Empla` = `P1` |
+| measure `TREE_DENSITY_WITHOUT_P1` | 1,163,036 | 1,155,532 | −7,504 points falling outside every unit |
+| select `TREE_DENSITY_U_CODES` | 1,475,041 | 442,742 | −1,032,299 features carrying none of the fifteen U codes |
+| measure `TREE_DENSITY_U_CODES` | 442,742 | 442,147 | −595 points falling outside every unit |
+
+Every value the selections send away is named individually in the log, one cause
+per emplacement code, so the twenty codes the U rule excludes are itemised rather
+than rolled into a single unmatched count.
+
+96.98% of the census falls inside a unit, in line with the other point layers,
+which run from 98.18% to 100%. The narrower a variant is the higher its coverage
+gets, which is what it should do: 99.35% without P1 and 99.87% for the U codes,
+because the codes furthest from the built-up city are the first to go.
+
+### What the three variables look like
+
+Trees per square kilometre, over the thirty units.
+
+| Variable | Minimum | Median | Maximum | Units at zero |
+|---|---:|---:|---:|---:|
+| `TREE_DENSITY` | 901.55 | 3,405.41 | 7,937.46 | 0 |
+| `TREE_DENSITY_WITHOUT_P1` | 388.52 | 2,945.03 | 5,584.85 | 0 |
+| `TREE_DENSITY_U_CODES` | 248.94 | 1,070.97 | 2,386.79 | 0 |
+
+All three carry `zero_is_implausible` and none of them fires.
+
+### The grid grew by three variables and nothing else moved
+
+| Check | Result |
+|---|---|
+| Grid cells | 390 of 390 (30 units × 13 predictors) |
+| Every predictor covers every unit | 13 predictors, 30 units each |
+| Every declared source file exists | 13 of 13 |
+| Snapshots carry no year | 13 snapshot variables, 0 rows with a year |
+| Dictionary and measured variables are the same set | 13 declared, 13 measured |
+| Correlation is symmetric, diagonal 1, range within [−1, 1] | 13 × 13 |
+
+### The correlation structure of the model set is unchanged
+
+The model set is eight variables: the thirteen measured, less carriageway
+(collinear with sidewalk at 0.969), bridge deck (excluded by my advisor), urban
+park (superseded by the tree census, D32) and the two tree variants.
+
+| | Before the swap | After the swap |
+|---|---|---|
+| Pairs at or above 0.70 in absolute value | 5 | 5 |
+| Largest | 0.901, signalised junctions × TransMilenio | 0.901, signalised junctions × TransMilenio |
+| Largest correlation of the green variable | 0.243, parks × sidewalk | 0.308, trees × TransMilenio |
+
+`TREE_DENSITY` against `URBAN_PARK_AREA_SHARE` is 0.383. Both stay measured, so
+that figure can be recomputed from `analysis__static_predictors_wide.csv` of any
+run.
+
+`TREE_DENSITY` against `TREE_DENSITY_WITHOUT_P1` is 0.944 and appears in the
+table of pairs above the threshold. That is two counts of the same objects rather
+than a redundancy in the study, and the table marks it: the
+`SAME_SOURCE_LAYER` column is true exactly for pairs that share a source layer,
+and the run report says so in words underneath.
+
+### Emitted tables
+
+Four casualty matrices and one correlation table leave the pipeline as LaTeX
+source rather than as figures to transcribe (D33). Each carries its run in a
+comment on the second line, and each was checked against the table it was built
+from before the run was allowed to finish.
+
+| File | Route | Check |
+|---|---|---|
+| `presentation__matrix_persons__observed.tex` | `corrected` | totals 241,912, matches the long table |
+| `presentation__matrix_parties__observed.tex` | `corrected` | totals 203,077, matches the long table |
+| `presentation__matrix_persons__rho_corrected.tex` | `corrected` | totals 259,177, matches the long table |
+| `presentation__matrix_parties__rho_corrected.tex` | `corrected` | totals 216,155, matches the long table |
+| `presentation__model_correlation.tex` | `predictors` | read back from disk, checked to be the model set, symmetric, diagonal 1 |
+
+The matrices come from run `run_20260830_201503`, route `corrected`, which also
+passed every check of section 10. All five are included by the informe de avance,
+which no longer holds a transcribed number.

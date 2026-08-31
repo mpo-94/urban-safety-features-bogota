@@ -1,9 +1,14 @@
 """Static urban predictors measured against every territorial unit.
 
 The other half of the study. The casualty matrix says how much harm happened
-where; these variables say what the place is like. Ten of them are implemented
-here, all single snapshots with no year: five surfaces measured as a share of the
-unit, and five point layers measured as a density over it.
+where; these variables say what the place is like. Thirteen of them are
+implemented here, all single snapshots with no year: five surfaces measured as a
+share of the unit, and eight point layers measured as a density over it.
+
+Two of the thirteen are measured on part of their layer rather than all of it,
+and both read the same layer as a third that is measured whole. The rule that
+selects the part is declared beside the variable, applied when the layer is read,
+and reported in the funnel like any other loss of records.
 
 The four layers that carry an annual series — cycleways and the three signage
 layers — are not here yet. Nothing in this module is shaped around the absence of
@@ -47,10 +52,11 @@ import numpy as np
 import pandas as pd
 
 try:  # regular package import
-    from src import config
+    from src import config, latex
     from src.provenance import RunLog
 except ImportError:  # executed as a plain script from inside src/
     import config  # type: ignore[no-redef]
+    import latex  # type: ignore[no-redef]
     from provenance import RunLog  # type: ignore[no-redef]
 
 
@@ -112,6 +118,86 @@ def _repair(layer: gpd.GeoDataFrame, predictor: config.StaticPredictor, log: Run
     return usable, dropped
 
 
+def _apply_filter(
+    layer: gpd.GeoDataFrame, predictor: config.StaticPredictor, log: RunLog
+) -> gpd.GeoDataFrame:
+    """Keep the part of a layer its variable is declared to measure.
+
+    Everything the rule touches is reported: the whole distribution of the column
+    it reads, what each excluded value cost, and what is left. A selection that
+    quietly removed a fifth of a layer would be the same failure as a vehicle type
+    falling through a mapping into a null, and it is treated the same way.
+
+    Two things stop the run rather than being worked around, because both mean the
+    declaration and the file disagree and neither can be resolved by guessing. A
+    value the rule names that the column does not hold means the rule is not doing
+    what it says, which is exactly the defect the legacy pipeline had twice: a
+    filter that never filters. A null in the column is a row the rule cannot
+    classify, and keeping or dropping it would both be an assumption.
+    """
+    rule = predictor.source_filter
+    assert rule is not None  # the caller checks; this keeps the type checker honest
+
+    if rule.column not in layer.columns:
+        raise ValueError(
+            f"{predictor.name}: the selection rule reads {rule.column!r}, which "
+            f"{predictor.source_layer} does not have; it holds {', '.join(sorted(layer.columns))}"
+        )
+
+    values = layer[rule.column]
+    missing = int(values.isna().sum())
+    if missing:
+        raise ValueError(
+            f"{predictor.name}: {missing:,} row(s) have no {rule.column!r}, so the selection "
+            "rule cannot say whether they are in or out; the layer changed and the rule needs "
+            "a decision, not a default"
+        )
+
+    counts = values.value_counts()
+    absent = [value for value in rule.declared_values if value not in counts.index]
+    if absent:
+        raise ValueError(
+            f"{predictor.name}: the rule names {', '.join(absent)}, which {rule.column!r} "
+            f"does not contain; it holds {', '.join(map(str, counts.index))}. A rule naming a "
+            "value the source does not use does not do what it says, and whichever half of it "
+            "is wrong would go unnoticed"
+        )
+
+    surviving = values.map(rule.keeps_value)
+    kept = layer[surviving]
+
+    # The whole distribution, not only the part that was dropped. Which codes the
+    # census uses and how many trees each carries is the evidence the criterion
+    # rests on, and it belongs in the log of the run that applied it.
+    log.table(
+        f"{predictor.name}: {rule.column} across the layer, and what the rule did with each value:",
+        "\n".join(
+            f"  {str(value):<6} {count:>9,}  {'kept' if rule.keeps_value(value) else 'dropped'}"
+            for value, count in counts.items()
+        ),
+    )
+    # Its own entry in the funnel rather than a line folded into the measurement,
+    # so the balance still closes on the layer as delivered. The measurement that
+    # follows starts from what the rule left, and the funnel says how much that
+    # was and why.
+    log.record(
+        f"select {predictor.name}",
+        rows_in=len(layer),
+        rows_out=len(kept),
+        # One named cause per value the rule sends away, whichever way round the
+        # rule is written. Rolling them into a single "did not match" would hide
+        # which code cost what, and that breakdown is the evidence the criterion
+        # rests on.
+        changes=[
+            (-int(count), f"features with {rule.column} = {value}, which {rule.rationale}")
+            for value, count in counts.items()
+            if not rule.keeps_value(value)
+        ],
+        notes=[f"rule: {rule.description}"],
+    )
+    return kept
+
+
 def _read_source(predictor: config.StaticPredictor, log: RunLog) -> gpd.GeoDataFrame:
     """Read the layer a predictor declares, and hold the declaration to account.
 
@@ -127,7 +213,17 @@ def _read_source(predictor: config.StaticPredictor, log: RunLog) -> gpd.GeoDataF
             f"layer {predictor.source_layer!r}, file {predictor.source_file!r}"
         )
 
-    layer = gpd.read_file(predictor.path)
+    # Only the geometry and, where there is a selection rule, the one column that
+    # rule reads. The measurements use no other attribute, and the tree census
+    # carries fifteen columns over 1.5 million rows, so reading the lot would cost
+    # a few hundred megabytes to throw them away immediately.
+    wanted = [predictor.source_filter.column] if predictor.source_filter else []
+    layer = gpd.read_file(predictor.path, columns=wanted)
+    read = len(layer)
+
+    if predictor.source_filter is not None:
+        layer = _apply_filter(layer, predictor, log)
+
     # Null geometries are not a disagreement about the kind of layer this is; the
     # repair step counts and drops them a moment later.
     present = set(layer.geom_type.dropna())
@@ -141,7 +237,9 @@ def _read_source(predictor: config.StaticPredictor, log: RunLog) -> gpd.GeoDataF
     log.info(
         "%s: read %s from %s/%s (%s)",
         predictor.name,
-        f"{len(layer):,} features",
+        f"{read:,} features"
+        if predictor.source_filter is None
+        else f"{read:,} features, {len(layer):,} of them kept by the selection rule",
         predictor.source_layer,
         predictor.source_file,
         predictor.geometry,
@@ -301,7 +399,7 @@ def build_long_table(
 ) -> pd.DataFrame:
     """Measure every predictor against every unit, on a complete grid.
 
-    Thirty units by ten variables, always. A unit the layer does not reach gets a
+    Thirty units by every declared variable, always. A unit the layer does not reach gets a
     zero with the status MEASURED, because the measurement ran and found nothing
     there; a unit that could not be measured at all would get NOT_MEASURED and a
     null value, and the two must never be confused. The legacy tables express
@@ -419,7 +517,7 @@ def build_long_table(
         notes=[
             f"grid = {len(unit_codes)} units x {len(config.STATIC_PREDICTORS)} static predictors",
             f"scale recorded as {scale.label} on every row; year null on every row, "
-            "since all ten are single snapshots",
+            "since every one of them is a single snapshot",
         ],
     )
     return long_table
@@ -458,9 +556,30 @@ def wide_table(long_table: pd.DataFrame) -> pd.DataFrame:
 
 
 def correlation_matrix(wide: pd.DataFrame) -> pd.DataFrame:
-    """Pearson correlation among the ten variables, in the declared order."""
+    """Pearson correlation among every declared variable, in the declared order."""
     values = wide[list(config.STATIC_PREDICTOR_NAMES)]
     return values.corr(method=config.CORRELATION_METHOD)
+
+
+def model_correlation_matrix(wide: pd.DataFrame) -> pd.DataFrame:
+    """The same, restricted to the variables that enter the models.
+
+    Recomputed on the subset rather than sliced out of the full matrix. The two
+    give the same numbers, since a Pearson correlation between two columns does
+    not depend on which other columns are present, but computing it from the
+    declared model set is what makes the exported table follow the declaration
+    instead of a slice someone has to keep in step with it.
+    """
+    values = wide[list(config.MODEL_PREDICTOR_NAMES)]
+    return values.corr(method=config.CORRELATION_METHOD)
+
+
+def _same_source_layer(first: str, second: str) -> bool:
+    """Are these two variables two views of one source layer?"""
+    declared = config.STATIC_PREDICTORS_BY_NAME
+    if first not in declared or second not in declared:
+        return False
+    return declared[first].source_layer == declared[second].source_layer
 
 
 def high_correlation_pairs(correlation: pd.DataFrame) -> pd.DataFrame:
@@ -475,8 +594,22 @@ def high_correlation_pairs(correlation: pd.DataFrame) -> pd.DataFrame:
     for first, second in itertools.combinations(names, 2):
         value = float(correlation.loc[first, second])
         if abs(value) >= config.CORRELATION_HIGH_THRESHOLD:
-            rows.append({"PREDICTOR_A": first, "PREDICTOR_B": second, "CORRELATION": value})
-    table = pd.DataFrame(rows, columns=["PREDICTOR_A", "PREDICTOR_B", "CORRELATION"])
+            rows.append(
+                {
+                    "PREDICTOR_A": first,
+                    "PREDICTOR_B": second,
+                    "CORRELATION": value,
+                    # Two variants of one layer are two ways of counting the same
+                    # objects, so a high correlation between them is arithmetic
+                    # rather than a finding. Without this column the table reads
+                    # as though the study had a redundancy problem it does not
+                    # have, and only one of any such pair is ever in the models.
+                    "SAME_SOURCE_LAYER": _same_source_layer(first, second),
+                }
+            )
+    table = pd.DataFrame(
+        rows, columns=["PREDICTOR_A", "PREDICTOR_B", "CORRELATION", "SAME_SOURCE_LAYER"]
+    )
     return table.reindex(table["CORRELATION"].abs().sort_values(ascending=False).index).reset_index(drop=True)
 
 
@@ -513,7 +646,7 @@ def summary_statistics(long_table: pd.DataFrame) -> pd.DataFrame:
 
 
 def dictionary_table() -> pd.DataFrame:
-    """The declaration of the ten variables, as a table.
+    """The declaration of every variable, as a table.
 
     Built from the same objects the measurement runs on, so it cannot describe a
     source the pipeline does not read or a computation it does not perform. It is
@@ -540,6 +673,12 @@ def dictionary_table() -> pd.DataFrame:
                 config.COMPUTATION_COL: predictor.computation,
                 config.TIME_COVERAGE_COL: predictor.time_coverage,
                 config.ZERO_IMPLAUSIBLE_COL: predictor.zero_is_implausible,
+                config.SOURCE_FILTER_COL: predictor.filter_description,
+                config.IN_MODEL_COL: predictor.name in config.MODEL_PREDICTOR_NAMES,
+                # Blank for the ones that are in, so the column reads as the answer
+                # to "why is this one missing from the models" and not as a field
+                # every row has to fill.
+                config.MODEL_EXCLUSION_REASON_COL: config.MODEL_EXCLUSION_REASONS.get(predictor.name, ""),
             }
         )
     return pd.DataFrame(rows)
@@ -576,6 +715,17 @@ def export(long_table: pd.DataFrame, log: RunLog) -> dict[str, Path]:
     correlation.to_csv(correlation_path, encoding="utf-8")
     paths["correlation"] = correlation_path
 
+    # The model set gets its own correlation, as a CSV and as the LaTeX table the
+    # documents include. It is a strict subset of the one above and is exported
+    # separately rather than left to be sliced out by hand in the document, which
+    # is how the version in the presentation was built and is the step that could
+    # go wrong without anything noticing.
+    model_correlation = model_correlation_matrix(wide)
+    model_correlation_path = data_dir / f"{config.PRESENTATION_PREFIX}__model_correlation.csv"
+    model_correlation.to_csv(model_correlation_path, encoding="utf-8")
+    paths["model_correlation"] = model_correlation_path
+    paths["model_correlation_tex"] = latex.export_correlation(model_correlation, log)
+
     pairs_path = data_dir / f"{config.PRESENTATION_PREFIX}__static_predictors_high_correlation.csv"
     high_correlation_pairs(correlation).to_csv(pairs_path, index=False, encoding="utf-8")
     paths["high_correlation"] = pairs_path
@@ -593,7 +743,7 @@ def export(long_table: pd.DataFrame, log: RunLog) -> dict[str, Path]:
     paths["dictionary"] = dictionary_path
 
     log.info(
-        "exported 2 analysis tables, 3 presentation tables and 1 reference table to %s/",
+        "exported 2 analysis tables, 4 presentation tables, 1 LaTeX table and 1 reference table to %s/",
         config.DATA_SUBDIR,
     )
     return paths
@@ -709,7 +859,7 @@ def _draw_histogram(values: np.ndarray, predictor: config.StaticPredictor, out_p
 
 
 # -- axis labels shared by the correlation matrix and the master table ------
-# Both carry the ten variables on an axis, and both are read beside the exported
+# Both carry the declared variables on an axis, and both are read beside the exported
 # tables. A reader who sees only the short label has to guess which column of
 # which CSV it became, so the canonical name goes underneath it: smaller, and in
 # a monospaced face to mark it as a literal string rather than prose.
@@ -936,7 +1086,7 @@ def _draw_master_table(wide: pd.DataFrame, out_path: Path) -> None:
         f"Static urban predictors: {row_count} {scale.label} units x {column_count} variables\n"
         "Each column is shaded on its own scale, palest at that column's minimum and darkest "
         "at its maximum.\nColours can be compared down a column and never across columns: the "
-        "ten variables are not on one scale.",
+        "variables are not on one scale.",
         fontsize=10,
         pad=104,
     )
@@ -1292,7 +1442,7 @@ def report(long_table: pd.DataFrame, log: RunLog) -> None:
     if lines:
         log.table("units measured at zero:", "\n".join(lines))
     else:
-        log.info("no unit is at zero in any of the ten variables")
+        log.info("no unit is at zero in any of the declared variables")
 
     if suspicious:
         # Loud on purpose. A zero in one of these variables is not a fact about
@@ -1339,20 +1489,30 @@ def report(long_table: pd.DataFrame, log: RunLog) -> None:
     if len(pairs):
         lines = [f"{'predictor A':<33}  {'predictor B':<33}  {'r':>7}", f"{'-' * 33}  {'-' * 33}  {'-' * 7}"]
         for _, row in pairs.iterrows():
-            lines.append(f"{row['PREDICTOR_A']:<33}  {row['PREDICTOR_B']:<33}  {row['CORRELATION']:>7.3f}")
+            marker = "  (same source layer)" if row["SAME_SOURCE_LAYER"] else ""
+            lines.append(
+                f"{row['PREDICTOR_A']:<33}  {row['PREDICTOR_B']:<33}  "
+                f"{row['CORRELATION']:>7.3f}{marker}"
+            )
         lines.append("")
         lines.append(
             "These pairs measure close to the same thing across the thirty units. "
             "Putting both sides of one into the same model buys no information and "
             "makes the coefficients of each unstable."
         )
+        if bool(pairs["SAME_SOURCE_LAYER"].any()):
+            lines.append(
+                "The pairs marked as sharing a source layer are variants of one variable, "
+                "counted two ways. They are expected to agree, only one of them is ever in "
+                "the model set, and they are not evidence of redundancy in the study."
+            )
         log.table(
             f"pairs correlated above {config.CORRELATION_HIGH_THRESHOLD:.2f} in absolute value:",
             "\n".join(lines),
         )
     else:
         log.info(
-            "no pair of predictors reaches %.2f in absolute correlation; none of the ten is "
+            "no pair of predictors reaches %.2f in absolute correlation; none of them is "
             "redundant with another",
             config.CORRELATION_HIGH_THRESHOLD,
         )

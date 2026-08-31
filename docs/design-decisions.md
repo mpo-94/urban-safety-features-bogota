@@ -58,9 +58,11 @@ carried, so the second is larger for the same underlying records.
 | D29 | The deficit is drawn from the side carrying the surplus, by the reference composition | Methodological | Closed | Yes |
 | D30 | 2007 is out of the corrected dataset altogether | Methodological | Closed | Yes |
 | D31 | The corrected set never replaces the observed one, and both are labelled in the data | Implementation | Closed | Yes |
+| D32 | The tree census enters whole, with two narrower variants measured beside it | Methodological | Closed on what is measured; which variant the models use is **open** | Yes |
+| D33 | The tables the deliverables print are emitted as LaTeX, not transcribed | Implementation | Closed | Yes |
 
-Methodological decisions: D1-D7, D9, D10, D11, D15, D17, D18, D19, D21, D22.
-Implementation decisions: D8, D12, D13, D14, D16, D20, D23, D24, D25, D26, D27.
+Methodological decisions: D1-D7, D9, D10, D11, D15, D17, D18, D19, D21, D22, D32.
+Implementation decisions: D8, D12, D13, D14, D16, D20, D23, D24, D25, D26, D27, D33.
 
 ---
 
@@ -2060,3 +2062,275 @@ for every pair-year including the ones left alone, the reference ρ and
 composition per pair, and the people-per-party rates per actor type. The
 correction is an estimate, and an estimate that cannot be audited is a number
 someone has to take on faith.
+
+---
+
+## D32 — The tree census enters whole, with two narrower variants measured beside it
+
+**Kind:** Methodological.
+
+**Status:** Closed on what the pipeline measures and on parks leaving the model
+set. **Which of the three tree variables belongs in the final models is with my
+advisor**, and the point of measuring all three is that he decides on figures
+rather than on a description.
+
+**Built:** Yes. `TREE_DENSITY`, `TREE_DENSITY_WITHOUT_P1` and
+`TREE_DENSITY_U_CODES`, the eleventh, twelfth and thirteenth static predictors,
+in run `run_20260831_011423`.
+
+**Context.** The study needs a variable for the green surroundings of a street.
+Until now that role was filled by `URBAN_PARK_AREA_SHARE`, the share of a unit
+covered by park, which was in the model set from the beginning because it was the
+only green layer delivered. The tree census arrived afterwards and covers the
+same ground far more directly.
+
+The two are not interchangeable, and the reason is mechanical rather than
+statistical. What the literature attributes to street trees is visual narrowing:
+a driver reads a carriageway lined with trees as tighter than it is and slows
+down, and the trees also separate the footway from moving traffic. None of that
+happens at the edge of a park. Park area measures how much green a unit contains;
+tree density measures what its streets are like. The second is the construct this
+study is arguing about, and the Bogotá study cited as an antecedent measured
+street trees rather than the tree stock as a whole.
+
+That argument decides which layer the variable comes from. It does not decide how
+much of the layer belongs in it, and that is the part the delivered data cannot
+settle.
+
+**Decision — the variable that enters the models is the whole census.** No
+criterion at all. This is the neutral state, and it is neutral in the precise
+sense that every alternative presupposes a reading of the emplacement codes that
+the delivered layer does not support and that the measurements below contradict.
+A criterion has to be earned; measuring what the source contains does not.
+
+**Decision — two narrower variants are measured beside it, and both stay out of
+the models.** `TREE_DENSITY_WITHOUT_P1` drops the largest single code;
+`TREE_DENSITY_U_CODES` keeps only the fifteen U codes. They follow the pattern
+parks, carriageway and bridge deck already follow: measured on every run,
+exported in every table, absent from the model set. Three columns in one table is
+what turns "which subset should we use" from a discussion into a comparison.
+
+**Decision — parks leave the model set and stay measured.** One green variable in
+the models, and it is the one whose mechanism the study can state. Parks keep
+being computed, exported and drawn, so the swap can be defended with the number
+in hand rather than with an argument.
+
+**Decision — a selection rule may name what it keeps or what it drops, never
+both.** Naming what goes out suits a criterion that removes one thing from an
+otherwise complete layer, which is the P1 variant. Naming what stays suits a
+criterion that keeps a known set and would otherwise silently admit any new value
+the source invented, which is the U variant: the fifteen codes are enumerated
+rather than matched on their first letter, so a sixteenth appearing stops the run
+instead of quietly joining the variable.
+
+**Decision — all three enter as snapshots.** `Fecha_Actu` is not a time series.
+It records when a tree was last surveyed, not when it was planted or when it grew
+to the size at which it narrows anything. The 2005-2007 census stamps its own
+dates on trees of every age, and those three years carry 1,043,993 of the
+1,475,041 records, 70.8% of the layer. Treating that column as a series would
+produce a variable whose year means "when somebody walked past with a clipboard".
+
+### What the three variables are
+
+Measured over the thirty units, in trees per square kilometre.
+
+| Variable | Trees selected | Minimum | Median | Maximum | In the models |
+|---|---:|---:|---:|---:|---|
+| `TREE_DENSITY` | 1,475,041 | 901.55 | 3,405.41 | 7,937.46 | yes |
+| `TREE_DENSITY_WITHOUT_P1` | 1,163,036 | 388.52 | 2,945.03 | 5,584.85 | no |
+| `TREE_DENSITY_U_CODES` | 442,742 | 248.94 | 1,070.97 | 2,386.79 | no |
+
+None of the three puts a unit at zero, so the implausible-zero flag all three
+carry never fires.
+
+### Why the codes could not decide it
+
+The layer arrived with no dictionary for `Tipo_Empla`: its metadata file is 1 KB
+and defines nothing. So every code was profiled against the other delivered
+layers, over the full 1.47 million trees rather than a sample. Two things came
+out of it, and both cut against a code-based criterion.
+
+**`P1` is not the park emplacement.** It was taken for one, on the reasonable
+ground that a tree inside a park produces none of the visual narrowing the
+variable is about. Measured, 19.4% of `P1` trees fall inside a `parques_urb`
+polygon, below the 34.9% of every other code weighted together, and the median
+`P1` tree stands 40.6 m from the nearest carriageway. The codes that are actually
+inside parks are `L2` at 88.9%, `L1` at 79.6% and `L3` at 74.6%. Dropping `P1`
+removes 21% of the census on a premise the data does not support, which is why
+that variant is a variant and not the variable.
+
+**The fifteen U codes do not behave alike.** They are the closest thing in the
+layer to a street category, and taken together 64.9% of them are within 5 m of a
+carriageway against 27.1% for the census as a whole. But the set is not one
+thing:
+
+| Group | Codes | Trees | Median distance | Within 5 m | On a sidewalk |
+|---|---|---:|---:|---:|---:|
+| Plainly on the street | U13, U3, U11, U6, U5 | 208,664 | 0.9–1.3 m | 88–96% | 2–85% |
+| In between | U9, U15, U4, U14, U1, U7 | 125,051 | 2.1–5.7 m | 45–69% | 1–48% |
+| Not on the street | U2, U8, U10, U12 | 109,047 | 7.9–33.2 m | 11–36% | 3–30% |
+
+A quarter of the U set is not by a carriageway, and most of that quarter is one
+code: `U10` alone carries 86,607 trees at a median of 22.4 m. So "the U codes"
+names a set that is mostly but not uniformly street, on a classification nobody
+documented. That is defensible as a variant to compare against and not as the
+definition the thesis rests on.
+
+### Why not define it by distance to the carriageway
+
+The obvious alternative is to drop the codes and use the mechanism directly:
+keep the trees within some distance of a carriageway polygon. It is cheap, it is
+one pass over the layer, it depends on no undocumented classification, and it is
+exactly the thing the variable claims to be about. It was measured before being
+ruled out, over the full census, at four thresholds.
+
+| Threshold | Trees kept | Share of census | On a sidewalk | Largest correlation with the model set |
+|---|---:|---:|---:|---|
+| 3 m | 306,099 | 20.8% | 61.0% | **0.782** with arterial road |
+| 5 m | 400,370 | 27.1% | 50.4% | **0.759** with arterial road |
+| 7.5 m | 491,667 | 33.3% | 42.7% | **0.726** with arterial road |
+| 10 m | 557,829 | 37.8% | 38.4% | **0.705** with arterial road |
+
+**Every threshold lands above the 0.70 collinearity threshold against arterial
+road area share.** The reason is structural rather than incidental: a unit with
+more arterial surface has more carriageway edge, so more of its trees fall within
+any fixed distance of one. A criterion defined by proximity to the road network
+imports the geometry of the road network into the variable, and the variable
+stops being independent evidence about the streetscape.
+
+The same mechanism explains the U codes. A distance criterion at 5 m correlates
+0.913 with `TREE_DENSITY_U_CODES`, which is as good as saying that the U codes
+already are "trees near a road" under another name, and it is why that variant
+reaches 0.690 against arterial road while the full census reaches 0.232.
+
+So the distance criterion is technically the most viable and statistically the
+worst available. It is worth putting to my advisor in exactly those terms, and it
+is recorded here rather than implemented.
+
+### What the swap does to the collinearity
+
+Street trees and urban parks correlate at 0.383 across the thirty units: enough
+to show they measure related things, nowhere near enough for one to stand in for
+the other. The choice between them is a choice of construct and not of
+collinearity.
+
+Inside the model set nothing moves. Before and after the swap there are five
+pairs at or above 0.70 in absolute value and the largest is 0.901, signalised
+junctions against TransMilenio stations.
+
+The full census is not merely acceptable on this count, it is the best of the
+candidates. Its largest correlation with anything in the model set is 0.308,
+against TransMilenio, which makes it the most independent variable in the whole
+set. The narrower the criterion gets, the more entangled the variable becomes:
+
+| Candidate | Largest correlation with the model set |
+|---|---|
+| `TREE_DENSITY` | 0.308, TransMilenio |
+| `TREE_DENSITY_WITHOUT_P1` | 0.465, TransMilenio |
+| `TREE_DENSITY_U_CODES` | 0.690, arterial road |
+| trees within 5 m of a carriageway | 0.759, arterial road |
+
+That ordering is worth stating plainly, because it runs against the intuition
+that a narrower and more mechanically faithful variable must be a better one
+here. Narrowing the census by proximity to the road progressively replaces a
+measurement of the streetscape with a measurement of the road network, which the
+model already has twice over.
+
+### One consequence for the exported tables
+
+`TREE_DENSITY` and `TREE_DENSITY_WITHOUT_P1` correlate at 0.944, so they appear
+in the table of pairs above the threshold. That is arithmetic, not a finding:
+they are two counts of the same objects. The table carries a `SAME_SOURCE_LAYER`
+column marking exactly this case, and only one variant is ever in the model set.
+
+### Declared as a limitation
+
+**The census is one snapshot of uneven recency, and the unevenness is not
+random.** A unit last surveyed three years ago and one last surveyed fifteen
+years ago sit in the same column with nothing between them to mark the
+difference, and the survey date tracks when the area was urbanised: the 2005-2007
+sweep covers the consolidated city and the later updates concentrate where the
+city grew afterwards. A tree planted in 2010 in a unit whose record dates from
+2006 is not in the layer at all, so the variable understates recently urbanised
+units by an amount the data cannot recover.
+
+This belongs in the Data chapter beside the other source limitations, not in a
+correction. There is nothing to correct against: the column dates the survey, and
+knowing when a unit was surveyed says nothing about how many trees were planted
+after that date.
+
+### Divergence from the anteproyecto
+
+The anteproyecto declares urban parks among the built environment predictors and
+does not mention arbolado, because the tree census had not been delivered when it
+was written. The final report has to carry the change and its reason: the layer
+that arrived allowed the green variable to be defined by the mechanism the
+literature identifies, instead of by the only green layer available at the time.
+Parks are still measured and still reported, so this is a change of model
+specification and not a variable that disappeared.
+
+---
+
+## D33 — The tables the deliverables print are emitted as LaTeX, not transcribed
+
+**Kind:** Implementation.
+
+**Status:** Closed.
+
+**Built:** Yes, as `src/latex.py`, called from the `matrix`, `corrected` and
+`predictors` routes.
+
+**Context.** Three tables travel from the pipeline into the documents as tables
+rather than as pictures: the casualty matrix of each dataset, and the correlation
+among the variables in the model set. That much was already settled. A table
+projected on a screen stays legible at any size, keeps its text selectable and
+takes the typeface of the document; a screenshot has to be redrawn whole every
+time a number moves. What was not settled is how the numbers got from a CSV into
+the `.tex`, and until now the answer was that they were typed in by hand.
+
+Transcription is where the traceability breaks. A figure typed by hand can be
+typed wrongly and nothing downstream would notice, and once it is in the document
+there is no record of which run produced it. The rule that every quoted figure
+carries its run cannot be kept by hand across sixty cells of a matrix.
+
+**Decision — the pipeline emits the table body and the document supplies
+everything around it.** Each file is a `tblr` and nothing else, `\input` inside
+whatever `table` environment the document sets up. Captions, placement and column
+widths depend on how much room the page has, which the pipeline does not know;
+the numbers depend on the run, which the document does not know.
+
+**Decision — every emitted file names its run in a comment at the top.** A LaTeX
+comment, so it never reaches the compiled page, and first in the file, so it is
+read before any of the numbers are.
+
+**Decision — the shading ceiling is fixed in the configuration and the data
+cannot push past it.** No cell goes above 70% of the accent colour, because above
+that black text stops reading when projected, and switching to white text does
+not rescue it: the accent colour never gets dark enough to carry white well.
+Because the ceiling is a constant rather than a function of the data, it means the
+same thing in a table of counts and in a divergent one, where a large negative
+value is as dark as a large positive one.
+
+Counts are shaded on the square root of the value over the largest in that table.
+They span four orders of magnitude, and a proportional ramp would leave every cell
+but a handful indistinguishable from white. Each matrix is shaded on its own
+maximum, so the shading reads within a table and not across two, which is what the
+caption in the document has to say.
+
+**Decision — bold is the statistical claim and colour is only legibility.** In the
+correlation table, bold marks the pairs at or above the declared threshold, which
+is the claim the surrounding text makes; the colour carries sign and magnitude on
+the capped ramp. They answer two different questions, and sharing one threshold
+between them would make each answer the other's.
+
+**Decision — both datasets name themselves in the file name.** The emitted
+matrices are `__observed` and `__rho_corrected`. This is deliberately not what D31
+decided for the CSV exports, where the observed set keeps its unsuffixed names so
+the dashboard does not break. Nothing yet reads these files, and two tables about
+to sit side by side on one slide must not be told apart by which one lacks a
+suffix.
+
+**Consequence.** The matrices in the current presentation were shaded up to 100%
+of the accent colour, with white text in the darkest cell, which is what the
+emitted tables no longer do. Dropping the emitted files in will make the darkest
+cells lighter than they are today.

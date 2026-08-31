@@ -691,6 +691,109 @@ MEASUREMENT_METHODS: dict[str, MeasurementMethod] = {
     ),
 }
 
+# -- keeping part of a layer ------------------------------------------------
+# Every other layer is measured whole: the file is the feature. The tree census
+# is not, because it records trees wherever they stand and two of the three tree
+# variables are about a subset of them. The rule that selects the subset is
+# declared here, beside the variable, for the same reason the measurement method
+# is: the code dispatches on this object, the run log reports what it removed,
+# and the data dictionary exports the sentence. A rule written only in a comment
+# can drift away from the code that runs; this one cannot.
+#
+# A rule is written one of two ways and never both. Naming what goes out suits a
+# criterion that removes one thing from an otherwise complete layer; naming what
+# stays suits a criterion that keeps a known set and would silently admit any new
+# value the source invents. Which form a rule takes is itself a statement about
+# how much the declaration trusts the source.
+@dataclass(frozen=True)
+class SourceFilter:
+    """A rule that keeps part of a source layer and drops the rest."""
+
+    column: str  # the attribute the rule reads, spelled as the delivered file spells it
+    keeps: str  # one sentence: what is left once the rule has run
+    rationale: str  # why what it drops is not what the variable measures
+    # Exactly one of the two is set. Both empty would be a rule that does
+    # nothing; both set would be two rules pretending to be one.
+    excluded_values: tuple[str, ...] = ()  # these go, everything else stays
+    included_values: tuple[str, ...] = ()  # these stay, everything else goes
+
+    def __post_init__(self) -> None:
+        if not self.column:
+            raise ValueError("a source filter must name the column it reads")
+        if bool(self.excluded_values) == bool(self.included_values):
+            raise ValueError(
+                f"the filter on {self.column!r} must either name what it excludes or name what "
+                "it includes, and exactly one of the two: a rule with neither filters nothing, "
+                "and a rule with both is two rules"
+            )
+
+    @property
+    def declared_values(self) -> tuple[str, ...]:
+        """The values the rule names, whichever way round it is written.
+
+        Every one of them has to be present in the column, or the rule is not
+        doing what it says. That check is the same in both directions, so it
+        reads the values through here rather than branching on the form.
+        """
+        return self.excluded_values or self.included_values
+
+    def keeps_value(self, value: str) -> bool:
+        """Does a row carrying this value survive the rule?"""
+        if self.excluded_values:
+            return value not in self.excluded_values
+        return value in self.included_values
+
+    @property
+    def description(self) -> str:
+        """The rule as one line, for the dictionary and the run log."""
+        verb = "drop" if self.excluded_values else "keep only"
+        return f"{verb} {self.column} in {{{', '.join(self.declared_values)}}}: {self.keeps}"
+
+
+# The emplacement column of the tree census, and the two code sets the variants
+# are built on. Neither is a criterion the study endorses: the layer arrived with
+# no dictionary for this column, and what each code turned out to mean was
+# measured rather than looked up. See D32 for the measurements and for why the
+# variable that enters the models uses no criterion at all.
+TREE_EMPLACEMENT_COL = "Tipo_Empla"
+
+# The single largest code, 21% of the census. It was taken for the park
+# emplacement and is not one.
+PARK_TREE_EMPLACEMENTS: tuple[str, ...] = ("P1",)
+
+# The fifteen U codes, enumerated rather than matched on their first letter.
+# A prefix rule would silently admit a code the source had not used before, and
+# this variable exists precisely to put a defined set of trees in front of my
+# advisor. A new code appearing stops the run instead, which is the outcome that
+# gets looked at.
+URBAN_TREE_EMPLACEMENTS: tuple[str, ...] = (
+    "U1", "U2", "U3", "U4", "U5", "U6", "U7", "U8",
+    "U9", "U10", "U11", "U12", "U13", "U14", "U15",
+)
+
+TREES_WITHOUT_PARK_FILTER = SourceFilter(
+    column=TREE_EMPLACEMENT_COL,
+    excluded_values=PARK_TREE_EMPLACEMENTS,
+    keeps="every tree of the census except the largest single emplacement code",
+    rationale=(
+        "P1 was read as the park emplacement, on the reasoning that a tree inside a park "
+        "produces none of the visual narrowing the variable stands for; measured against "
+        "the delivered layers it is not the park code, which is why this is a variant and "
+        "not the variable that enters the models"
+    ),
+)
+
+URBAN_TREES_FILTER = SourceFilter(
+    column=TREE_EMPLACEMENT_COL,
+    included_values=URBAN_TREE_EMPLACEMENTS,
+    keeps="the trees carrying one of the fifteen U emplacement codes",
+    rationale=(
+        "the U codes are the ones the profiling puts next to a carriageway, so this is the "
+        "closest a code-based criterion gets to the mechanism; it is a variant because the "
+        "codes are undocumented and the fifteen do not all behave alike"
+    ),
+)
+
 # -- how much time a variable covers ----------------------------------------
 # All ten implemented here are a single snapshot with no year, and the long table
 # carries a null YEAR for every one of them. The constant exists because the four
@@ -714,6 +817,11 @@ class StaticPredictor:
 
     name: str  # canonical name: the value in the long table, the column in the wide one
     label: str  # short form, for figure axes where the canonical name is too long
+    # The same short form in Spanish. The figures and tables of the body of the
+    # thesis are read by a Colombian jury and are labelled in Spanish, so the
+    # translation is part of the declaration rather than a lookup table kept
+    # somewhere else and forgotten when a variable is added.
+    label_es: str
     source_layer: str  # the layer as the delivered data names it, in Spanish
     source_file: str  # the file inside that layer's folder
     geometry: str
@@ -724,6 +832,10 @@ class StaticPredictor:
     # the feature is absent. An urban planning unit with no roadway is not a fact
     # about Bogotá. Reported loudly; never corrected automatically.
     zero_is_implausible: bool
+    # Set only where the variable is measured on part of its layer. Defaulted so
+    # that the nine variables measured whole say nothing about a rule they do not
+    # have, and the one that has a rule states it.
+    source_filter: SourceFilter | None = None
 
     def __post_init__(self) -> None:
         """Reject a declaration that contradicts itself, at import time.
@@ -771,6 +883,18 @@ class StaticPredictor:
     def computation(self) -> str:
         return self.measurement.computation
 
+    @property
+    def filter_description(self) -> str:
+        """The selection rule as one line, or a statement that there is none.
+
+        Never blank: a reader of the dictionary has to be able to tell a variable
+        measured on its whole layer from one measured on part of it, and an empty
+        cell would leave the two looking the same.
+        """
+        if self.source_filter is None:
+            return "none: the whole layer is measured"
+        return self.source_filter.description
+
 
 # Order is fixed here rather than taken from a directory listing, so the wide
 # table, the correlation matrix and the figures come out in the same order on
@@ -779,6 +903,7 @@ STATIC_PREDICTORS: tuple[StaticPredictor, ...] = (
     StaticPredictor(
         name="SIDEWALK_AREA_SHARE",
         label="Sidewalk",
+        label_es="Andén",
         source_layer="andenes_x_localidad",
         source_file="andenes_x_localidad.shp",
         geometry=AREA_GEOMETRY,
@@ -791,6 +916,7 @@ STATIC_PREDICTORS: tuple[StaticPredictor, ...] = (
     StaticPredictor(
         name="ARTERIAL_ROAD_AREA_SHARE",
         label="Arterial road",
+        label_es="Vía arterial",
         source_layer="avenidas_corregidas",
         source_file="avenidas_corregidas.shp",
         geometry=AREA_GEOMETRY,
@@ -804,6 +930,7 @@ STATIC_PREDICTORS: tuple[StaticPredictor, ...] = (
     StaticPredictor(
         name="ROADWAY_AREA_SHARE",
         label="Roadway",
+        label_es="Calzada",
         source_layer="calzada_x_localidad",
         source_file="calzada_x_localidad.shp",
         geometry=AREA_GEOMETRY,
@@ -817,6 +944,7 @@ STATIC_PREDICTORS: tuple[StaticPredictor, ...] = (
     StaticPredictor(
         name="URBAN_PARK_AREA_SHARE",
         label="Urban park",
+        label_es="Parque urbano",
         source_layer="parques_urb",
         source_file="parques_urb.shp",
         geometry=AREA_GEOMETRY,
@@ -829,6 +957,7 @@ STATIC_PREDICTORS: tuple[StaticPredictor, ...] = (
     StaticPredictor(
         name="BRIDGE_AREA_SHARE",
         label="Bridge",
+        label_es="Puente",
         source_layer="puentes",
         source_file="puentes.shp",
         geometry=AREA_GEOMETRY,
@@ -840,6 +969,7 @@ STATIC_PREDICTORS: tuple[StaticPredictor, ...] = (
     StaticPredictor(
         name="SITP_BUS_STOP_DENSITY",
         label="SITP bus stops",
+        label_es="Paraderos SITP",
         source_layer="Paraderos_SITP",
         source_file="Paraderos_SITP.shp",
         geometry=POINT_GEOMETRY,
@@ -851,6 +981,7 @@ STATIC_PREDICTORS: tuple[StaticPredictor, ...] = (
     StaticPredictor(
         name="SIGNALISED_INTERSECTION_DENSITY",
         label="Signalised junctions",
+        label_es="Semáforos",
         source_layer="Red_Semaforica",
         source_file="Red_Semaforica.shp",
         geometry=POINT_GEOMETRY,
@@ -862,6 +993,7 @@ STATIC_PREDICTORS: tuple[StaticPredictor, ...] = (
     StaticPredictor(
         name="PEDESTRIAN_CROSSING_DENSITY",
         label="Pedestrian crossings",
+        label_es="Cruces peatonales",
         source_layer="crossings",
         source_file="crossings.shp",
         geometry=POINT_GEOMETRY,
@@ -875,6 +1007,7 @@ STATIC_PREDICTORS: tuple[StaticPredictor, ...] = (
     StaticPredictor(
         name="SPEED_CAMERA_DENSITY",
         label="Speed cameras",
+        label_es="Cámaras",
         source_layer="camaras_salvavidas_bogota",
         source_file="Camaras_Salvavidas_Bogota.shp",
         geometry=POINT_GEOMETRY,
@@ -887,6 +1020,7 @@ STATIC_PREDICTORS: tuple[StaticPredictor, ...] = (
     StaticPredictor(
         name="TRANSMILENIO_STATION_DENSITY",
         label="TransMilenio stations",
+        label_es="TransMilenio",
         source_layer="estacion_localidad",
         source_file="estacion_localidad.shp",
         geometry=POINT_GEOMETRY,
@@ -897,10 +1031,150 @@ STATIC_PREDICTORS: tuple[StaticPredictor, ...] = (
         # network rather than a gap in the layer.
         zero_is_implausible=False,
     ),
+    # Last of the points and last of the list, because they arrived last.
+    # Appending leaves every column of the wide table and every row of the
+    # correlation matrix where it was, so a run made after these existed still
+    # diffs line by line against one made before them.
+    #
+    # Three variables over one layer, and only the first enters the models. The
+    # census records trees wherever they stand, and how much of it belongs in a
+    # variable about streets depends on what the emplacement codes mean, which
+    # the delivered layer does not say. Measuring all three and putting the
+    # figures side by side is what lets that be decided on evidence rather than
+    # on a reading of a code. The two variants follow the pattern parks,
+    # carriageway and bridge deck already follow: measured on every run, out of
+    # the model set, and there to be compared against.
+    StaticPredictor(
+        name="TREE_DENSITY",
+        label="Trees, all",
+        label_es="Arbolado completo",
+        source_layer="arbolado_urbano",
+        source_file="arbolado_urbano.shp",
+        geometry=POINT_GEOMETRY,
+        method=POINT_DENSITY_METHOD,
+        measures="trees per square kilometre, the whole census",
+        # Fecha_Actu is not a time series. It records when a tree was last
+        # surveyed, and the 2005-2007 census stamps that date on trees of every
+        # age, so the column dates the survey and not the tree. The layer is one
+        # snapshot of uneven recency, which is a limitation of the variable and
+        # not a series it could be resolved into. See D32.
+        time_coverage=SNAPSHOT_COVERAGE,
+        # 1.5 million trees over 30 units: a unit with none of them would mean
+        # the census did not reach it, not that the unit has no trees.
+        zero_is_implausible=True,
+    ),
+    StaticPredictor(
+        name="TREE_DENSITY_WITHOUT_P1",
+        label="Trees, without P1",
+        label_es="Arbolado sin P1",
+        source_layer="arbolado_urbano",
+        source_file="arbolado_urbano.shp",
+        geometry=POINT_GEOMETRY,
+        method=POINT_DENSITY_METHOD,
+        measures="trees per square kilometre, the census without the P1 emplacement",
+        time_coverage=SNAPSHOT_COVERAGE,
+        zero_is_implausible=True,
+        source_filter=TREES_WITHOUT_PARK_FILTER,
+    ),
+    StaticPredictor(
+        name="TREE_DENSITY_U_CODES",
+        label="Trees, U codes",
+        label_es="Arbolado códigos U",
+        source_layer="arbolado_urbano",
+        source_file="arbolado_urbano.shp",
+        geometry=POINT_GEOMETRY,
+        method=POINT_DENSITY_METHOD,
+        measures="trees per square kilometre, only the fifteen U emplacement codes",
+        time_coverage=SNAPSHOT_COVERAGE,
+        # The narrowest of the three and the only one where a zero would be
+        # plausible on the ground, since a unit could genuinely hold none of a
+        # narrow code set. Left flagged anyway: at this scale it would still be
+        # worth looking at.
+        zero_is_implausible=True,
+        source_filter=URBAN_TREES_FILTER,
+    ),
 )
 
 STATIC_PREDICTOR_NAMES: tuple[str, ...] = tuple(p.name for p in STATIC_PREDICTORS)
 STATIC_PREDICTORS_BY_NAME: dict[str, StaticPredictor] = {p.name: p for p in STATIC_PREDICTORS}
+
+
+# -- which of them enter the models -----------------------------------------
+# Measuring a layer and putting the variable in a model are two decisions, and
+# they are kept apart on purpose: everything declared above is measured on every
+# run, and the exclusions below take effect only where a model set is asked for.
+# That is what makes it possible to answer why a variable was dropped, because
+# the number that justifies dropping it is still in the same table as the ones
+# that stayed. A variable removed from the measurement could not be defended.
+@dataclass(frozen=True)
+class PredictorExclusion:
+    """One variable that is measured but kept out of the models, and why."""
+
+    predictor: str
+    reason: str
+
+
+MODEL_EXCLUSIONS: tuple[PredictorExclusion, ...] = (
+    PredictorExclusion(
+        predictor="ROADWAY_AREA_SHARE",
+        reason=(
+            "correlates at 0.969 with SIDEWALK_AREA_SHARE, which is collinearity and not "
+            "two measurements; the sidewalk variable is the one the study argues about"
+        ),
+    ),
+    PredictorExclusion(
+        predictor="BRIDGE_AREA_SHARE",
+        reason="my advisor does not consider bridge deck relevant to casualty rates among vulnerable users",
+    ),
+    PredictorExclusion(
+        predictor="URBAN_PARK_AREA_SHARE",
+        reason=(
+            "superseded by TREE_DENSITY, which carries the same argument about green "
+            "surroundings through the mechanism the literature actually measures; the two "
+            "are only weakly related, so this is a choice of construct and not of "
+            "collinearity (D32)"
+        ),
+    ),
+    PredictorExclusion(
+        predictor="TREE_DENSITY_WITHOUT_P1",
+        reason=(
+            "a variant of TREE_DENSITY built on one emplacement code, measured so the three "
+            "criteria can be compared on their figures; only one of the three enters (D32)"
+        ),
+    ),
+    PredictorExclusion(
+        predictor="TREE_DENSITY_U_CODES",
+        reason=(
+            "a variant of TREE_DENSITY built on the fifteen U emplacement codes, measured so "
+            "the three criteria can be compared on their figures; only one of the three "
+            "enters (D32)"
+        ),
+    ),
+)
+
+MODEL_EXCLUSION_REASONS: dict[str, str] = {e.predictor: e.reason for e in MODEL_EXCLUSIONS}
+
+# Checked here rather than trusted: an exclusion naming a variable that does not
+# exist would silently exclude nothing, and the model set would quietly grow by
+# one without anybody noticing.
+for _excluded in MODEL_EXCLUSION_REASONS:
+    if _excluded not in STATIC_PREDICTORS_BY_NAME:
+        raise ValueError(f"model exclusion names {_excluded!r}, which is not a declared predictor")
+
+# The order is the declared order with the excluded ones taken out, so the model
+# set reads down the same list as everything else.
+MODEL_PREDICTOR_NAMES: tuple[str, ...] = tuple(
+    name for name in STATIC_PREDICTOR_NAMES if name not in MODEL_EXCLUSION_REASONS
+)
+MODEL_PREDICTORS: tuple[StaticPredictor, ...] = tuple(
+    STATIC_PREDICTORS_BY_NAME[name] for name in MODEL_PREDICTOR_NAMES
+)
+
+# Whether a variable is in the model set is a column of the exported dictionary,
+# with the reason beside it, so the table answers the question on its own.
+IN_MODEL_COL = "IN_MODEL_SET"
+MODEL_EXCLUSION_REASON_COL = "MODEL_EXCLUSION_REASON"
+SOURCE_FILTER_COL = "SOURCE_FILTER"
 
 # Columns of the predictor tables. Scale, unit and year deliberately reuse the
 # names and the values of the matrix and rho tables, because the dashboard joins
@@ -944,6 +1218,79 @@ HEATMAP_COLORMAP = "viridis"
 # of the colour ramp, so that a true zero cannot be mistaken for a small value on
 # a logarithmic scale.
 HEATMAP_EMPTY_COLOR = "#eeeeee"
+
+# ---------------------------------------------------------------------------
+# Tables compiled as LaTeX rather than drawn
+# ---------------------------------------------------------------------------
+# The casualty matrices and the correlation of the model set go into the
+# deliverables as native tables, never as an image: a table projected on a screen
+# stays legible at any size, keeps its text selectable, takes the typeface of the
+# document it lands in, and is corrected by changing one figure in the source. A
+# screenshot has to be redrawn whole every time a number moves, and the numbers
+# move on every run.
+#
+# Emitting them here rather than typing them into the document is the same
+# argument one step further. A number copied by hand is a number that can be
+# copied wrongly, and there is no way to tell afterwards which run it came from.
+LATEX_TABLE_SUFFIX = ".tex"
+
+# Shading runs from nothing to this share of the colour and never past it. The
+# ceiling is legibility, not statistics: above roughly this point black text stops
+# reading when projected, and turning the text white does not rescue the cell,
+# because the accent colour never gets dark enough to carry white text well.
+# Because the ceiling is fixed rather than taken from the data, the rule means the
+# same thing in a table of counts and in a divergent one where a large negative
+# value is as dark as a large positive one.
+LATEX_SHADE_CEILING = 70
+
+LATEX_POSITIVE_COLOR = "ColorEnfasis"  # the accent of the template
+LATEX_NEGATIVE_COLOR = "ColorAlrt"  # its counterpart, for the negative half
+LATEX_LABEL_COLOR = "ColorNav"  # headers and stubs
+LATEX_DIAGONAL_COLOR = "black!35"  # the diagonal, which says nothing and should not draw the eye
+
+# Counts span four orders of magnitude, so shading them in proportion would leave
+# every cell but a handful indistinguishable from white. The square root spreads
+# the small values apart while keeping the order intact, which is what the shading
+# is for: it ranks cells, and the figure printed in the cell gives the magnitude.
+LATEX_COUNT_SHADE_EXPONENT = 0.5
+
+# Bold marks the pairs at or above CORRELATION_HIGH_THRESHOLD, and it is the only
+# thing that does. Keeping it apart from the shading matters: the shading is a
+# legibility ramp with a fixed ceiling and the bold is the statistical statement,
+# so sharing one threshold between them would make each answer the other's
+# question.
+LATEX_CORRELATION_DECIMALS = 2
+
+# Pictograms instead of words, as the template's example matrix does: six row
+# labels and seven column labels of text would not fit at a legible size, and the
+# actor types are exactly the set that has conventional icons.
+LATEX_ACTOR_ICONS: dict[str, str] = {
+    PEDESTRIAN: r"\faWalking",
+    BICYCLE: r"\faBicycle",
+    MOTORCYCLE: r"\faMotorcycle",
+    CAR: r"\faCar",
+    PUBLIC_TRANSPORT: r"\faBus",
+    OTHER: r"\faEllipsisH",
+    SELF_COUNTERPART: r"\faUndo",
+}
+
+# The two matrices the deliverables show, and what each one adds up. Persons is
+# the only place in the pipeline where injured and killed are summed, and it is
+# done here, at the edge, so the tables stay separate everywhere else.
+LATEX_MATRIX_TABLES: dict[str, tuple[tuple[str, ...], str]] = {
+    "persons": (("injured", "killed"), "Personas afectadas: heridos y muertos."),
+    "parties": (("parties",), "Partes afectadas."),
+}
+
+# Each dataset names itself in the file name. The observed set is not left unnamed
+# the way it is in the CSV exports: those keep the names they have always had so
+# that the dashboard does not break, but nothing yet reads these, and two files
+# about to sit side by side in a presentation must not be told apart by which one
+# lacks a suffix.
+LATEX_DATASET_SUFFIXES: dict[str, str] = {
+    OBSERVED_DATASET: "observed",
+    CORRECTED_DATASET: CORRECTION_FILE_SUFFIX,
+}
 
 # rho figures are small multiples: one panel per pair for the city, one panel per
 # unit for a given pair. Each panel therefore draws one series and, where it
