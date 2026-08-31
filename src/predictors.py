@@ -675,6 +675,15 @@ def dictionary_table() -> pd.DataFrame:
                 config.ZERO_IMPLAUSIBLE_COL: predictor.zero_is_implausible,
                 config.SOURCE_FILTER_COL: predictor.filter_description,
                 config.IN_MODEL_COL: predictor.name in config.MODEL_PREDICTOR_NAMES,
+                # Which sets of figures draw this variable, as a list rather than
+                # a flag: there are two sets and a variable can be in either,
+                # both, or neither, and "neither" is a deliberate state here.
+                config.FIGURE_SETS_COL: ", ".join(
+                    figure_set.name
+                    for figure_set in config.FIGURE_SETS
+                    if predictor.name in figure_set.predictor_names
+                )
+                or "none",
                 # Blank for the ones that are in, so the column reads as the answer
                 # to "why is this one missing from the models" and not as a field
                 # every row has to fill.
@@ -953,7 +962,9 @@ def _two_line_x_labels(ax, names: list[str], rotation: float = 40.0, at_top: boo
         )
 
 
-def _draw_correlation(correlation: pd.DataFrame, out_path: Path) -> None:
+def _draw_correlation(
+    correlation: pd.DataFrame, figure_set: config.FigureSet, out_path: Path
+) -> None:
     values = correlation.to_numpy(dtype=float)
     names = list(correlation.columns)
 
@@ -965,7 +976,7 @@ def _draw_correlation(correlation: pd.DataFrame, out_path: Path) -> None:
     _two_line_x_labels(ax, names)
     _two_line_y_labels(ax, names)
     ax.set_title(
-        f"Pearson correlation among the {len(names)} static predictors "
+        f"Pearson correlation among {figure_set.label}: {len(names)} static predictors "
         f"({len(correlation)} x {len(correlation)}, n = {config.active_scale().expected_units} "
         f"{config.active_scale().label} units)",
         fontsize=11,
@@ -975,7 +986,12 @@ def _draw_correlation(correlation: pd.DataFrame, out_path: Path) -> None:
         value = values[row, col]
         # White on the saturated ends of the ramp, black in the pale middle.
         colour = "white" if abs(value) > 0.6 else "black"
-        ax.text(col, row, f"{value:.2f}", ha="center", va="center", fontsize=8, color=colour)
+        # Adding zero drops the sign of a small negative that rounds to nothing,
+        # so the cell reads 0.00 rather than -0.00, which looks like a signed
+        # quantity that is not zero. Same rule the emitted LaTeX table follows,
+        # and the two are read side by side.
+        printed = round(value, 2) + 0.0
+        ax.text(col, row, f"{printed:.2f}", ha="center", va="center", fontsize=8, color=colour)
 
     bar = fig.colorbar(image, ax=ax, shrink=0.85)
     bar.set_label(f"{config.CORRELATION_METHOD} correlation coefficient")
@@ -984,7 +1000,9 @@ def _draw_correlation(correlation: pd.DataFrame, out_path: Path) -> None:
     plt.close(fig)
 
 
-def _draw_master_table(wide: pd.DataFrame, out_path: Path) -> None:
+def _draw_master_table(
+    wide: pd.DataFrame, names: list[str], figure_set: config.FigureSet, out_path: Path
+) -> None:
     """Every unit against every variable, printed and shaded column by column.
 
     The one figure that shows the predictor half whole. Its colour is computed
@@ -994,7 +1012,6 @@ def _draw_master_table(wide: pd.DataFrame, out_path: Path) -> None:
     column and meaningless across columns, which the figure says twice: in the
     note under the title, and in the range printed at the foot of every column.
     """
-    names = list(config.STATIC_PREDICTOR_NAMES)
     values = wide[names].to_numpy(dtype=float)
     row_count, column_count = values.shape
 
@@ -1083,7 +1100,8 @@ def _draw_master_table(wide: pd.DataFrame, out_path: Path) -> None:
 
     scale = config.active_scale()
     ax.set_title(
-        f"Static urban predictors: {row_count} {scale.label} units x {column_count} variables\n"
+        f"Static urban predictors, {figure_set.label}: {row_count} {scale.label} units "
+        f"x {column_count} variables\n"
         "Each column is shaded on its own scale, palest at that column's minimum and darkest "
         "at its maximum.\nColours can be compared down a column and never across columns: the "
         "variables are not on one scale.",
@@ -1096,19 +1114,24 @@ def _draw_master_table(wide: pd.DataFrame, out_path: Path) -> None:
     plt.close(fig)
 
 
-def render_figures(paths: dict[str, Path], log: RunLog) -> int:
-    """Ten histograms, the correlation heatmap and the master table.
+def render_figure_set(
+    figure_set: config.FigureSet,
+    wide: pd.DataFrame,
+    correlation: pd.DataFrame,
+    log: RunLog,
+) -> int:
+    """One histogram per variable of the set, its correlation and its master table.
 
-    Drawn from the exported tables read back from disk rather than recomputed
-    from memory, as everywhere else in the pipeline: what is seen and what is
-    analysed are then the same numbers by construction rather than by care.
+    The set decides which columns are drawn and nothing else. Both sets come off
+    the same two tables, so a number cannot differ between them: if it did, one of
+    the two pictures would be wrong and there would be no way to tell which.
     """
-    figures_dir = log.run_dir / config.FIGURES_SUBDIR / config.PREDICTORS_FIGURES_SUBDIR
+    figures_dir = log.run_dir / config.FIGURES_SUBDIR / figure_set.folder
     figures_dir.mkdir(parents=True, exist_ok=True)
-
-    wide = pd.read_csv(paths["wide"])
+    names = list(figure_set.predictor_names)
     written = 0
-    for predictor in config.STATIC_PREDICTORS:
+
+    for predictor in figure_set.predictors:
         values = wide[predictor.name].to_numpy(dtype=float)
         usable = values[np.isfinite(values)]
         if len(usable) != len(values):
@@ -1117,24 +1140,57 @@ def render_figures(paths: dict[str, Path], log: RunLog) -> int:
                 predictor.name,
                 len(values) - len(usable),
             )
-        _draw_histogram(usable, predictor, figures_dir / f"histogram__{predictor.name}.png")
+        _draw_histogram(
+            usable,
+            predictor,
+            figures_dir / f"histogram__{predictor.name}__{figure_set.name}.png",
+        )
         written += 1
 
-    correlation = pd.read_csv(paths["correlation"], index_col=0)
-    correlation = correlation.reindex(
-        index=list(config.STATIC_PREDICTOR_NAMES), columns=list(config.STATIC_PREDICTOR_NAMES)
+    # Restricted rather than recomputed. A Pearson correlation between two columns
+    # does not depend on which other columns are present, so the restriction is
+    # exact, and taking both sets off one table is what makes them agree by
+    # construction instead of by two calculations happening to match.
+    _draw_correlation(
+        correlation.reindex(index=names, columns=names),
+        figure_set,
+        figures_dir / f"correlation__predictors__{figure_set.name}.png",
     )
-    _draw_correlation(correlation, figures_dir / "correlation__static_predictors.png")
     written += 1
 
-    _draw_master_table(wide, figures_dir / "table__static_predictors.png")
+    _draw_master_table(wide, names, figure_set, figures_dir / f"table__predictors__{figure_set.name}.png")
     written += 1
 
     log.info(
-        "wrote %d figures under %s/%s/",
+        "%s set: %d figures for %d variables under %s/%s/ (%s)",
+        figure_set.name,
         written,
+        len(names),
         config.FIGURES_SUBDIR,
-        config.PREDICTORS_FIGURES_SUBDIR,
+        figure_set.folder,
+        figure_set.purpose,
+    )
+    return written
+
+
+def render_figures(paths: dict[str, Path], log: RunLog) -> int:
+    """Every figure of every declared set.
+
+    Drawn from the exported tables read back from disk rather than recomputed
+    from memory, as everywhere else in the pipeline: what is seen and what is
+    analysed are then the same numbers by construction rather than by care.
+    """
+    wide = pd.read_csv(paths["wide"])
+    correlation = pd.read_csv(paths["correlation"], index_col=0)
+
+    written = sum(render_figure_set(figure_set, wide, correlation, log) for figure_set in config.FIGURE_SETS)
+
+    excluded = ", ".join(config.FIGURE_EXCLUSION_REASONS) or "none"
+    log.info(
+        "wrote %d figures across %d sets; measured but drawn in no set: %s",
+        written,
+        len(config.FIGURE_SETS),
+        excluded,
     )
     return written
 
@@ -1333,6 +1389,34 @@ def verify(
                 "the dictionary and the long table agree on the units of every variable",
                 not disagreeing,
                 f"{len(dictionary) - len(disagreeing)} of {len(dictionary)} variables agree",
+            )
+        )
+
+        # The table that becomes the LaTeX the documents print, against the same
+        # numbers restricted out of the full matrix. The two are computed by
+        # different routes on purpose: one from the declared model set, one by
+        # slicing everything measured. A correlation between two columns does not
+        # depend on which other columns are present, so they must agree, and if
+        # they ever stopped agreeing a figure in a document would be quietly
+        # wrong with nothing else out of place.
+        exported_model = pd.read_csv(paths["model_correlation"], index_col=0)
+        model_names = list(config.MODEL_PREDICTOR_NAMES)
+        restricted = pd.read_csv(paths["correlation"], index_col=0).reindex(
+            index=model_names, columns=model_names
+        )
+        aligned = list(exported_model.columns) == model_names
+        largest_gap = (
+            float(np.abs(exported_model.to_numpy(dtype=float) - restricted.to_numpy(dtype=float)).max())
+            if aligned
+            else float("nan")
+        )
+        checks.append(
+            (
+                "the model correlation matches the full one restricted to the model set",
+                aligned and largest_gap < 1e-12,
+                f"{len(model_names)} variables, largest difference {largest_gap:.2e}"
+                if aligned
+                else "the exported model correlation is not the declared model set",
             )
         )
 

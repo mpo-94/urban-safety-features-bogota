@@ -60,9 +60,10 @@ carried, so the second is larger for the same underlying records.
 | D31 | The corrected set never replaces the observed one, and both are labelled in the data | Implementation | Closed | Yes |
 | D32 | The tree census enters whole, with two narrower variants measured beside it | Methodological | Closed on what is measured; which variant the models use is **open** | Yes |
 | D33 | The tables the deliverables print are emitted as LaTeX, not transcribed | Implementation | Closed | Yes |
+| D34 | The predictor figures come in two sets, and two variables are in neither | Implementation | Closed | Yes |
 
 Methodological decisions: D1-D7, D9, D10, D11, D15, D17, D18, D19, D21, D22, D32.
-Implementation decisions: D8, D12, D13, D14, D16, D20, D23, D24, D25, D26, D27, D33.
+Implementation decisions: D8, D12, D13, D14, D16, D20, D23, D24, D25, D26, D27, D33, D34.
 
 ---
 
@@ -2334,3 +2335,86 @@ suffix.
 of the accent colour, with white text in the darkest cell, which is what the
 emitted tables no longer do. Dropping the emitted files in will make the darkest
 cells lighter than they are today.
+
+---
+
+## D34 — The predictor figures come in two sets, and two variables are in neither
+
+**Kind:** Implementation.
+
+**Status:** Closed.
+
+**Built:** Yes, as `FIGURE_SETS` in the configuration, drawn by the `predictors`
+route in run `run_20260831_060432`.
+
+**Context.** Measuring a variable, putting it in a model and drawing it are three
+separate decisions, and until now the third one was not being made: the figures
+were drawn for whatever happened to be declared. That worked while the declared
+set and the model set were nearly the same. They are not any more. Thirteen
+variables are measured, eight enter the models, and two of the thirteen are
+alternative counts of one layer.
+
+A single set of figures cannot serve both readers. A reader of the thesis needs
+to see the eight the study estimates on; a reader checking the exclusions needs
+to see the ones that were excluded, because the number that justifies an
+exclusion only exists in a matrix that still contains the excluded variable.
+
+**Decision — two sets, drawn on every run, from the same two tables.** The
+complete set and the model set. Nothing but the list of columns differs between
+them: both read the exported wide table and the exported correlation, so a figure
+in one set and a figure in the other cannot disagree about a number. If they
+could, one of the two would be wrong and there would be no way to tell which.
+
+**Decision — the complete set exists to carry its own justification.**
+`ROADWAY_AREA_SHARE` is out of the models because it correlates 0.969 with
+`SIDEWALK_AREA_SHARE`. That figure is only visible in a matrix that still has
+carriageway in it, so the set that excludes it cannot explain why. The complete
+set is the evidence; the model set is the claim.
+
+**Decision — the two tree variants are in neither set.** They are measured,
+exported and reported like everything else, and they appear in no figure at all.
+This is the first time a declared variable is deliberately not drawn, so the
+reason matters: they are alternative counts of the same census as `TREE_DENSITY`,
+kept because they are the evidence for choosing the whole census over a subset of
+it (D32). In a table of data that evidence is a column somebody can quote. In a
+heat map it is three tree columns side by side, three views of one layer, and
+every reader would spend attention working out which one counts. The answer to
+"why the whole census" is a paragraph and a table, not a column in a figure.
+
+So the complete set holds eleven variables and not thirteen. "Complete" means
+every measured *variable*, once each, over the eleven source layers.
+
+**Decision — the set names every folder and every file.** The figures go to
+`figures/predictors__complete/` and `figures/predictors__model/`, and each file
+carries the same suffix: `histogram__TREE_DENSITY__model.png`,
+`correlation__predictors__complete.png`, `table__predictors__model.png`. This is
+the rule the two casualty datasets already follow, and for the same reason:
+neither set is left unsuffixed, because two figures about to sit side by side
+must not be told apart by which one lacks a suffix. A histogram of one variable
+is otherwise identical in the two sets, and its file name is the only thing that
+says which set it was drawn for.
+
+**Decision — which sets draw a variable is a column of the exported
+dictionary.** `FIGURE_SETS` lists them, and reads `none` for the two that are in
+neither. A flag would not have done: there are two sets and a variable can be in
+either, both, or neither, and neither is a deliberate state rather than an
+oversight.
+
+### The check that the figure and the printed table are the same numbers
+
+The correlation of the model set now exists twice over: as the table computed
+from the declared model set, which becomes the LaTeX the documents print, and as
+the full matrix restricted to the model set, which is what the figure is drawn
+from. A Pearson correlation between two columns does not depend on which other
+columns are present, so the two must agree exactly.
+
+The run checks it rather than assuming it, and reports the largest difference
+between the two. It is 0.00e+00. This is worth checking every run because it is
+the one discrepancy that would leave nothing else out of place: a figure in a
+document and a table in the same document, disagreeing, with both routes
+individually passing every other check.
+
+The emitted table was also compared against the copy inside the informe de
+avance, which is the file the presentation includes. The two are identical apart
+from the provenance comment naming the run, so no number in the deck needed
+touching.

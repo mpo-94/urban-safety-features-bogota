@@ -1175,6 +1175,107 @@ MODEL_PREDICTORS: tuple[StaticPredictor, ...] = tuple(
 IN_MODEL_COL = "IN_MODEL_SET"
 MODEL_EXCLUSION_REASON_COL = "MODEL_EXCLUSION_REASON"
 SOURCE_FILTER_COL = "SOURCE_FILTER"
+FIGURE_SETS_COL = "FIGURE_SETS"
+
+
+# -- which of them appear in the figures -------------------------------------
+# Measuring a variable, putting it in a model and drawing it are three separate
+# decisions, and this is the third. Everything declared above is measured and
+# exported on every run whatever happens here; the figures are a narrower thing,
+# because a figure has a reader and a reader has to be able to tell what the
+# picture is claiming.
+#
+# Two variables are measured but never drawn. They are alternative counts of the
+# tree census, kept because they are the evidence for choosing the whole census
+# over a subset of it (D32), and that evidence lives in the data tables where it
+# can be quoted. In a figure they would be three tree columns side by side, three
+# of which are the same layer, and every reader would spend their attention
+# working out which one counts. The answer to "why the whole census" is a
+# paragraph and a table, not a column in a heat map.
+FIGURE_EXCLUSIONS: tuple[PredictorExclusion, ...] = (
+    PredictorExclusion(
+        predictor="TREE_DENSITY_WITHOUT_P1",
+        reason=(
+            "an alternative count of the same census as TREE_DENSITY; it stays in the data "
+            "tables as the evidence behind D32 and would only crowd a figure"
+        ),
+    ),
+    PredictorExclusion(
+        predictor="TREE_DENSITY_U_CODES",
+        reason=(
+            "an alternative count of the same census as TREE_DENSITY; it stays in the data "
+            "tables as the evidence behind D32 and would only crowd a figure"
+        ),
+    ),
+)
+
+FIGURE_EXCLUSION_REASONS: dict[str, str] = {e.predictor: e.reason for e in FIGURE_EXCLUSIONS}
+
+for _excluded in FIGURE_EXCLUSION_REASONS:
+    if _excluded not in STATIC_PREDICTORS_BY_NAME:
+        raise ValueError(f"figure exclusion names {_excluded!r}, which is not a declared predictor")
+
+
+@dataclass(frozen=True)
+class FigureSet:
+    """One set of variables the predictor figures are drawn for.
+
+    The figures come in sets rather than in one run because they answer to two
+    different readers. Both sets are produced on every run, from the same tables,
+    and nothing but the list of columns differs between them.
+    """
+
+    name: str  # the suffix every folder and every file of the set carries
+    label: str  # how the set names itself in a figure title
+    purpose: str  # one line: who reads this set and what for
+    predictor_names: tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        unknown = [name for name in self.predictor_names if name not in STATIC_PREDICTORS_BY_NAME]
+        if unknown:
+            raise ValueError(f"figure set {self.name!r} names undeclared predictors: {', '.join(unknown)}")
+        if not self.predictor_names:
+            raise ValueError(f"figure set {self.name!r} has no variables in it")
+
+    @property
+    def folder(self) -> str:
+        """The subdirectory this set's figures are written to."""
+        return f"{PREDICTORS_FIGURES_SUBDIR}__{self.name}"
+
+    @property
+    def predictors(self) -> tuple[StaticPredictor, ...]:
+        return tuple(STATIC_PREDICTORS_BY_NAME[name] for name in self.predictor_names)
+
+
+# Everything measured except the two alternative counts of the tree census.
+COMPLETE_FIGURE_PREDICTOR_NAMES: tuple[str, ...] = tuple(
+    name for name in STATIC_PREDICTOR_NAMES if name not in FIGURE_EXCLUSION_REASONS
+)
+
+# Both sets are drawn on every run. The complete one is the evidence and the
+# model one is what the documents print, and each would be misleading without the
+# other: the model set cannot show why carriageway was dropped, because the 0.969
+# against sidewalk that justifies dropping it only exists in a matrix that still
+# has carriageway in it.
+FIGURE_SETS: tuple[FigureSet, ...] = (
+    FigureSet(
+        name="complete",
+        label="every measured variable",
+        purpose=(
+            "the backing evidence: it holds the variables the model set excludes, so the "
+            "reason each was excluded can be read off the figure that excluded it"
+        ),
+        predictor_names=COMPLETE_FIGURE_PREDICTOR_NAMES,
+    ),
+    FigureSet(
+        name="model",
+        label="the variables that enter the models",
+        purpose="what the deliverables print: the specification the study actually estimates",
+        predictor_names=MODEL_PREDICTOR_NAMES,
+    ),
+)
+
+FIGURE_SETS_BY_NAME: dict[str, FigureSet] = {figure_set.name: figure_set for figure_set in FIGURE_SETS}
 
 # Columns of the predictor tables. Scale, unit and year deliberately reuse the
 # names and the values of the matrix and rho tables, because the dashboard joins

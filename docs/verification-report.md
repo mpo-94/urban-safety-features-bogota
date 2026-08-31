@@ -9,7 +9,8 @@ figure quoted can be traced back to a file that run wrote. Sections 7 and 8 cove
 Section 10 covers the correction for the change in recording practice, which
 produces a second dataset beside the observed one rather than replacing it.
 Section 11 covers the tree variables and the tables the pipeline now emits as
-LaTeX source.
+LaTeX source. Section 12 covers the two sets of predictor figures and the check
+that the printed correlation and the drawn one are the same numbers.
 
 | | |
 |---|---|
@@ -850,3 +851,59 @@ from before the run was allowed to finish.
 The matrices come from run `run_20260830_201503`, route `corrected`, which also
 passed every check of section 10. All five are included by the informe de avance,
 which no longer holds a transcribed number.
+
+---
+
+## 12. The two sets of predictor figures
+
+Run `run_20260831_060432`, route `predictors`. **Every check passed.** The
+figures are drawn twice, for two sets of variables, and two measured variables
+are drawn in neither. The decision is D34.
+
+| Set | Variables | Folder | Files |
+|---|---:|---|---:|
+| complete | 11 | `figures/predictors__complete/` | 13 |
+| model | 8 | `figures/predictors__model/` | 10 |
+
+Each set holds one histogram per variable, its correlation heat map and its
+master table, so the file counts are the variable count plus two. Every file
+carries its set as a suffix, `histogram__TREE_DENSITY__model.png` and so on, so
+no figure of one set can be mistaken for the same figure of the other.
+
+`TREE_DENSITY_WITHOUT_P1` and `TREE_DENSITY_U_CODES` are measured, exported and
+reported, and appear in no figure. They are alternative counts of the same census
+as `TREE_DENSITY` and exist as the evidence behind D32, which is a thing to quote
+from a table rather than a column to read in a heat map. The exported dictionary
+says so per variable, in its `FIGURE_SETS` column, which reads `none` for these
+two.
+
+The complete set is eleven and not thirteen for that reason: it is every measured
+variable once each, across the eleven source layers.
+
+### The printed correlation and the drawn one are the same numbers
+
+The correlation of the model set exists on two routes. The exported model
+correlation is computed from the declared model set and becomes the LaTeX the
+documents include. The figure is drawn from the full correlation restricted to
+the model set. A Pearson correlation between two columns does not depend on which
+other columns are present, so the two must agree exactly, and the run now checks
+it rather than assuming it.
+
+| Check | Result |
+|---|---|
+| the model correlation matches the full one restricted to the model set | **OK**, 8 variables, largest difference 0.00e+00 |
+
+This is worth a check of its own because it is the one disagreement that would
+leave nothing else out of place: a figure and a table in the same document,
+saying different things, with every other check on both routes passing.
+
+The emitted table was also compared against
+`correlacion_modelo__run_20260831_011423.tex`, the copy the informe de avance
+includes in its frame 10. The two are identical apart from the comment naming the
+run, so no figure in the deck needed correcting.
+
+One cosmetic difference between the two did turn up and was fixed: the heat map
+printed a small negative correlation as `-0.00` where the LaTeX table already
+printed `0.00`. The two are read side by side, and a signed zero reads as a
+quantity that is not zero. Both now drop the sign of a value that rounds to
+nothing.
