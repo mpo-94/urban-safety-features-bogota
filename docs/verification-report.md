@@ -6,6 +6,8 @@ record goes, and how the result differs from the pipeline it replaces.
 Sections 1 to 6 come from a single end-to-end run of the pipeline, so every
 figure quoted can be traced back to a file that run wrote. Sections 7 and 8 cover
 ρ(t) and the completeness audit, each a separate route with a run of its own.
+Section 10 covers the correction for the change in recording practice, which
+produces a second dataset beside the observed one rather than replacing it.
 
 | | |
 |---|---|
@@ -619,3 +621,133 @@ The first row is not a formality. The person code arrives as an integer where th
 layer holds text, and a merge on mismatched types does not raise — it matches
 nothing. That is exactly what happened once while the file was being inspected,
 which is why the check exists and why it stops the run rather than warning.
+
+---
+
+## 10. The correction for the change in recording practice
+
+`python -m src.run_pipeline corrected`, run `run_20260830_140246`. One run
+produces **both** datasets from one reading of the sources and one party
+universe, so they differ by the correction and by nothing else (D31).
+
+| | Observed | Corrected |
+|---|---:|---:|
+| Years | 2007–2024 | 2008–2024 (D30) |
+| Matrix cells | 22,680 | 21,420 |
+| Affected parties | 203,077 | 216,155 |
+| People injured | 234,370 | 251,852 |
+| People killed | 7,542 | 7,325 |
+| `DATASET` column | `OBSERVED` | `RHO_CORRECTED` |
+
+The two totals are not directly comparable, because 2007 is in the first and not
+in the second. Against the shared years the correction adds **23,552 affected
+parties, 28,748 injured and 153 killed**, and that is what the balance check
+tests.
+
+### What was decided before anything was corrected
+
+The reference window was the open question, and the obvious answer was wrong.
+2022–2024 looked like the settled period; 2022 turns out to be the last year of
+the climb. The full argument is D28. In short: the sign test that first raised
+the suspicion cannot settle it, because a permutation treating the year effect as
+shared between pairs cannot return a p-value below 1/6 whatever the data show. The
+question is settled instead by the shape of the ramp, measured as the common
+year-on-year increment of logit ρ across the nine pairs.
+
+| Step | Common increment | In sd of a settled year | Pairs rising |
+|---|---:|---:|---:|
+| 2021 → 2022 | +0.376 | +2.20 | 9 of 9 |
+| 2022 → 2023 | +0.166 | +0.97 | 7 of 9 |
+| 2023 → 2024 | −0.030 | −0.18 | 3 of 9 |
+
+A year followed by a further climb has not reached the plateau. The window is
+**2023–2024**, and the reference is the pooled numerator over the pooled
+denominator, not the mean of the annual ρ.
+
+### The five checks the design promises
+
+| Check | Result | Verdict |
+|---|---|---|
+| Corrected ρ equals the reference in every corrected pair-year | 133 pair-years, worst excess over the one-crash tolerance −2.02 × 10⁻⁴ | **Pass** |
+| No crash reclassified inside the reference window | 0 in 2023–2024 | **Pass** |
+| The excluded year is absent from the corrected matrix | none present; span 2008–2024 | **Pass** |
+| No cell of the corrected matrix is below the observed one | 0 cells fell, over 21,420 shared cells and 3 counts | **Pass** |
+| Parties: corrected exceeds observed by exactly the plan | +23,552 observed, +23,552 planned | **Pass** |
+| Injured: corrected exceeds observed by exactly the plan | +28,748 observed, +28,748 planned | **Pass** |
+| Killed: corrected exceeds observed by exactly the plan | +153 observed, +153 planned | **Pass** |
+
+The first check cannot be exact and says so: the target is a whole number of
+crashes and the reference is a ratio, so ρ can miss it by up to the value of one
+crash. The tolerance is one crash and the worst case sits inside it.
+
+The corrected matrix passes the same eight structural checks the observed one
+does — totals against what entered, no negative cell, no cell with fewer people
+than parties, all 30 units present, all 17 years present, and exactly 21,420 cells.
+
+### Where the correction lands
+
+| Year | Crashes | Reclassified | Share | Parties added |
+|---|---:|---:|---:|---:|
+| 2008 | 3,949 | 1,179 | 29.9% | +15.4% |
+| 2009 | 3,825 | 1,074 | 28.1% | +15.7% |
+| 2010 | 5,412 | 1,706 | 31.5% | +17.7% |
+| 2011 | 5,516 | 1,713 | 31.1% | +18.0% |
+| 2012 | 6,074 | 1,985 | 32.7% | +19.0% |
+| 2013 | 6,153 | 2,040 | 33.2% | +20.8% |
+| 2014 | 5,957 | 1,876 | 31.5% | +19.9% |
+| 2015 | 6,635 | 2,145 | 32.3% | +21.0% |
+| 2016 | 6,815 | 2,219 | 32.6% | +21.5% |
+| 2017 | 6,649 | 1,954 | 29.4% | +18.9% |
+| 2018 | 7,498 | 1,790 | 23.9% | +14.1% |
+| 2019 | 7,353 | 1,741 | 23.7% | +13.4% |
+| 2020 | 5,438 | 1,010 | 18.6% | +10.3% |
+| 2021 | 7,075 | 697 | 9.9% | +5.1% |
+| 2022 | 7,990 | 423 | 5.3% | +2.7% |
+| 2023 | 8,142 | 0 | 0.0% | 0.0% |
+| 2024 | 8,087 | 0 | 0.0% | 0.0% |
+
+The profile is the one the mechanism predicts: flat and large across the years
+before the change, decaying through the ramp, nothing in the reference window.
+The correction reaches all 30 units and 3,460 pair-year-unit cells.
+
+### Which party gets added, and why that is a check rather than a choice
+
+The side the reclassified crashes are drawn from is decided by the composition of
+the reference period (D29), not by any rule about who should be added. What comes
+out of that arithmetic is that the added party is almost always the protected one:
+
+| Actor type | Parties added | Injured | Killed |
+|---|---:|---:|---:|
+| Car | 13,828 | 16,343 | 18 |
+| Motorcycle | 8,403 | 10,386 | 132 |
+| Public transport | 1,201 | 1,899 | 0 |
+| Bicycle | 120 | 120 | 3 |
+| Pedestrian | 0 | 0 | 0 |
+| **Total** | **23,552** | **28,748** | **153** |
+
+That agrees with what the diagnostic concluded by a different route, and it is
+the strongest single piece of evidence that the correction is doing what it
+claims. No pedestrian is ever added, which is not an oversight: the sources have
+no record of an unhurt pedestrian, so a pedestrian can only enter the data as a
+casualty. The same fact means ρ for the three pedestrian pairs is conditioned on
+the pedestrian having been hurt, and is not the same quantity as ρ for a pair of
+vehicles. The two must not be read side by side.
+
+### What is assumed, and what would overturn it
+
+Three things are assumed rather than shown, and all three are recorded in D28 and
+D29:
+
+- **The change of practice was homogeneous between units.** 40.9 % of the unit
+  cells carry fewer than ten crashes, so a per-unit factor cannot be estimated.
+  The reference is a city figure applied to every unit.
+- **The plateau is real.** It rests on two years. If a later extract shows ρ still
+  moving after 2024, the window is wrong and every figure above moves with it.
+- **People per added party follow the reference period.** The mean is taken per
+  actor type over the reference window; the deaths are allocated once per actor
+  type rather than group by group, because rounding them group by group destroyed
+  9 % of them.
+
+The correction is an estimate and the pipeline treats it as one: the observed
+dataset is never replaced, the plan is exported cell by cell, and the reference
+window is a single constant so revising it costs one edit and one run.

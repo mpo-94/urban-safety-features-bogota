@@ -54,6 +54,10 @@ carried, so the second is larger for the same underlying records.
 | D25 | The predictor declaration is what the code runs on, and it is exported | Implementation | Closed | Yes |
 | D26 | The pipeline draws the map, as a reference map in four colours | Implementation | Closed; reverses D24's exclusion | Yes |
 | D27 | A figure the document draws itself gets its data exported for it | Implementation | Closed | Yes, for the city series of ρ |
+| D28 | The recording change is corrected against a 2023-2024 reference, pair by pair | Methodological | Closed | Yes |
+| D29 | The deficit is drawn from the side carrying the surplus, by the reference composition | Methodological | Closed | Yes |
+| D30 | 2007 is out of the corrected dataset altogether | Methodological | Closed | Yes |
+| D31 | The corrected set never replaces the observed one, and both are labelled in the data | Implementation | Closed | Yes |
 
 Methodological decisions: D1-D7, D9, D10, D11, D15, D17, D18, D19, D21, D22.
 Implementation decisions: D8, D12, D13, D14, D16, D20, D23, D24, D25, D26, D27.
@@ -1812,3 +1816,247 @@ silent: a value rounded away by the printed precision, and an undefined ρ arriv
 as a zero. The check compares the file on disk against the series it came from,
 cell by cell, and confirms the gaps are still gaps. That is what D12 asks of
 anything that checks an exported artefact.
+
+---
+
+## D28 — The recording change is corrected against a 2023-2024 reference, pair by pair
+
+**Kind:** Methodological.
+
+**Status:** Closed.
+
+**Built:** Yes, in `src/correction.py`, route `corrected`.
+
+**Context.** ρ(t) established that the source changed practice. Before 2018 a
+crash entered the system with a single casualty recorded; from 2018 every
+affected party gets its own record. What the diagnostic added, and what makes a
+correction thinkable at all, is *what* was missing: not the crash, which was
+always registered, but the casualty of the second party, and almost always the
+protected one. The decomposition of each two-party crash into its three possible
+outcomes — only the exposed side hurt, only the protected side hurt, both — is
+what separated the two mechanisms. Had whole crashes been missing, the count of
+crashes recorded with the protected side as the only casualty would have jumped
+in step with ρ after 2018. It does not.
+
+So the correction is bounded in a way that matters: it does not inflate a pair's
+cell as a whole. It moves crashes from "one affected party" to "two" and credits
+the party that the source failed to write down. That party is already in the data
+— it took part in the crash and is carried through the pipeline precisely so the
+counterpart of the other one can be resolved. Nothing is invented.
+
+**Decision — one reference per pair, not a single factor.** A common factor was
+tested and fails. ρ(2017) as a fraction of its reference is 0.49 and 0.58 in the
+pairs where both sides are exposed, against 0.055 in pedestrian-car and
+bicycle-car. The pairs where both sides are exposed were already near their
+present level in 2018; the pairs facing a protected counterpart were at a quarter
+of it. One coefficient cannot describe all nine, because what was being missed is
+the casualty of the protected party, not "the second party" whichever it is.
+
+**Decision — the reference window is 2023-2024.** This was the open question of
+the session, and it was resolved against the obvious candidate. 2022-2024 was the
+natural window and is wrong: 2022 is the last year of the climb, not the first
+year of the plateau.
+
+The evidence, in the order it settles the question:
+
+- 2022 is the lowest of the three candidate years in seven of the nine pairs.
+  Taken alone this proves little. Under independence the sign test gives
+  p = 0.008, but the pairs are not independent — one city-wide shock moves all
+  nine at once — and a permutation that treats the year effect as entirely shared
+  cannot return anything below 1/6 = 0.167 whatever the data say. Failing to
+  reach 0.05 there is a property of the design, not a finding, so the sign test
+  cannot decide this either way.
+- The statistic *can* be calibrated. Over the settled years 2010-2016, the
+  deviation of the first year of a consecutive triplet from that triplet's mean
+  ranges from −0.038 to +0.213 on the logit scale. 2022's is −0.101: lower than
+  all five stable comparators, and the count of pairs where the first year is
+  lowest is 7 against 1, 2, 3, 4, 4. On both statistics 2022 is as extreme as the
+  design permits.
+- What actually settles it is the shape of the climb. The common year-on-year
+  increment of logit ρ, averaged over the nine pairs, is +0.376 from 2021 to 2022
+  (2.20 standard deviations of a settled year, and every one of the nine pairs
+  rises), +0.166 from 2022 to 2023 (0.97 sd, seven of nine rise), and −0.030 from
+  2023 to 2024 (0.18 sd, three of nine rise). A decelerating ramp that flattens at
+  2023. A year that is followed by a further climb has not reached the plateau,
+  and 2022 is followed by one.
+
+Including 2022 would have dragged the reference below the level the practice
+actually reached, and would have done so in the pairs that had already arrived as
+well as in the ones still climbing. Dropping it raises the reference by 1 to 14
+per cent depending on the pair, most in bicycle-car.
+
+The cost is declared: the plateau is now two years long, so the reference rests
+on 2023 and 2024 alone. If a later extract shows ρ still moving after 2024, the
+window is wrong and everything downstream of it moves. The window is a single
+constant, `CORRECTION_REFERENCE_YEARS`, so revising it costs one edit and one run.
+
+**Decision — the reference is calculated as pooled numerator over pooled
+denominator.** Not the mean of the annual ρ. The years carry different numbers of
+crashes and a mean of ratios would weigh a thin year like a thick one.
+
+**Decision — a city reference, applied to every unit.** 40.9 % of the unit cells
+carry fewer than ten crashes, so a factor cannot be estimated per unit; the
+denominators are not there. The correction therefore assumes the change of
+practice was homogeneous between units, which is reasonable if it came from a
+change of procedure rather than from local habit, but it is an assumption and it
+is stated as one. What follows from it in the arithmetic is that the deficit is
+computed city-wide for each pair and year and then spread over the units in
+proportion to the pool of convertible crashes each one holds.
+
+**Decision — every year below the reference is corrected, pair by pair.** Not a
+fixed cut at 2018. Each pair reached its ceiling at a different moment, and
+leaving the intermediate years uncorrected would put a sawtooth in the series.
+A pair-year already at or above its reference is left alone.
+
+**Result.** 23,552 crashes reclassified, 133 of the 153 pair-years touched, all
+30 units reached. The correction adds 15 to 21 per cent of affected parties in the
+plateau years, decaying to 2.7 per cent in 2022 and nothing in 2023-2024, which is
+the profile the mechanism predicts. Run `run_20260830_140246`.
+
+---
+
+## D29 — The deficit is drawn from the side carrying the surplus, by the reference composition
+
+**Kind:** Methodological.
+
+**Status:** Closed.
+
+**Built:** Yes, in `correction.build_plan`.
+
+**Context.** Knowing how many crashes have to move is not enough. A crash today
+recorded with a single affected party is recorded as *which* party, and the
+correction has to decide how many of the reclassified crashes come from each
+side, because that determines which actor type gains the party and therefore
+which cell of the matrix grows.
+
+**Decision — the reference period's composition defines what a surplus is.** In
+the reference window the practice is complete, so the composition of the three
+outcomes there is the true one. In an under-recorded year, crashes that truly had
+both parties affected appear as one side only. The surplus a side carries against
+the reference composition is therefore the crashes on that side whose second
+party went unrecorded, and that is where the reclassified ones come from.
+
+The arithmetic is closed rather than approximate: the three shares sum to one in
+both periods, so the two surpluses sum to the deficit exactly. Where one side's
+surplus is negative — that side is under-represented against the reference — it
+is clipped to zero and the whole deficit comes from the other, which keeps the
+total whole. Both cases are checked against the pools before anything is moved.
+
+**Consequence, and it is a check on the whole design.** The deficit comes almost
+entirely from the pool where only the exposed side was recorded: 100 % in the
+three pedestrian pairs, 92 to 99 % in the bicycle and motorcycle pairs against
+cars, 66 % in car-public transport. So the party being added is overwhelmingly the
+protected one — 13,828 cars, 8,403 motorcycles, 1,201 public transport vehicles,
+against 120 bicycles and no pedestrians at all. That was not imposed. It falls out
+of the reference composition, and it is the same conclusion the diagnostic reached
+by a different route.
+
+The pedestrian pairs are a special case worth stating plainly, because it limits
+what they mean. A pedestrian is a party only by virtue of being a casualty: the
+sources have no record of an unhurt pedestrian. So the "only the protected side
+was hurt" outcome is structurally impossible there, the share is exactly zero in
+all three pedestrian pairs, and ρ for them is not the same quantity as ρ for a
+pair of vehicles. It is conditioned on the pedestrian having been hurt. The two
+are not comparable and must not be read side by side as if they were.
+
+**Decision — people come from the reference too, and the deaths are not rounded
+away.** Adding a party means adding at least one person, since a party is affected
+precisely because someone in it was hurt. How many comes from the mean people per
+affected party of that actor type over the reference window, measured on the same
+kind of crash, and injured and killed stay separate throughout.
+
+The deaths needed care. The share of people killed is 0.11 % for a car occupant,
+so a group of a few hundred promoted parties expects a fraction of a death and
+rounds to none every single time. Rounded group by group the added deaths
+disappeared: 139 instead of 153, a 9 % shortfall on the one count the whole design
+goes out of its way not to bury. They are therefore allocated once per actor type
+over all its promoted parties, weighted by the people each holds and capped by
+them, so no party is credited with more deaths than occupants.
+
+**Decision — which crashes inside a cell are chosen does not matter, and they are
+chosen in a fixed order anyway.** Every crash in a cell shares its pair, its year,
+its unit and the side that went unrecorded, so they are interchangeable for every
+purpose the study puts them to. They are taken in order of crash identifier, so
+the choice is reproducible and auditable rather than arbitrary at each run.
+
+---
+
+## D30 — 2007 is out of the corrected dataset altogether
+
+**Kind:** Methodological.
+
+**Status:** Closed.
+
+**Built:** Yes: the year leaves before the plan is built and again before the
+grid, each time with its own line in the funnel.
+
+**Context.** D18 established that the 2007 vehicle table does not distinguish the
+two parties of a vehicle-vehicle crash: 98.6 % of its crashes with two vehicles
+carry a single class between them.
+
+**Decision — 2007 is excluded from the corrected set, and the reason is not that
+ρ cannot be computed for it.** ρ can be computed. The problem is upstream of ρ: a
+year that cannot say which of two vehicles was which cannot support an inter-mode
+matrix at all, corrected or observed. Correcting it would be putting a second
+storey on a foundation that is not there.
+
+It stays in the observed dataset, where it has always been, because the observed
+dataset is the record of what the source says and 2007 is part of that record.
+This is the one respect in which the two datasets do not span the same years, and
+it is why the corrected matrix is built over its own year range rather than the
+study period: materialising 2007 as a row of zeros would make a year with no
+usable data look like a year in which nobody was hurt, which is exactly the defect
+D10 exists to prevent.
+
+**Consequence for the comparison.** Any check that compares the two totals has to
+take 2007 off the observed side first, or the corrected set appears to have lost
+11,414 affected parties. The verification does this explicitly rather than by
+matching on the shared years and hoping.
+
+---
+
+## D31 — The corrected set never replaces the observed one, and both are labelled in the data
+
+**Kind:** Implementation.
+
+**Status:** Closed.
+
+**Built:** Yes, in the `corrected` route.
+
+**Context.** The correction rests on an assumption about homogeneity between
+units and on a reference window resting on two years. It is a defensible estimate,
+not a better measurement, and the models will have to be run against both to show
+what it does and does not change. A pipeline that quietly replaced the data with
+its corrected version would make that comparison impossible and would hide the
+assumption inside a file name.
+
+**Decision — one run produces both.** The two are built from a single reading of
+the sources and a single party universe, so they differ by the correction and by
+nothing else — not by a second run against a source that may have moved. That is
+also what lets the verification compare them cell by cell, which is check four.
+
+**Decision — the corrected set gets the same tables, the same matrices and the
+same figures, in the same style.** It is going into a presentation, and an output
+that has to be read differently from the original would not survive the trip.
+What separates them is the name of every file and a column on every row, never
+the shape.
+
+**Decision — the dataset label travels in the data, not only in the file name.**
+Every row of every exported table carries a `DATASET` column reading `OBSERVED` or
+`RHO_CORRECTED`. A file name protects nothing once the file has been opened,
+joined and passed on; a column survives all three. This is the guarantee that
+nobody feeds a model the corrected set believing it is the observed one, or the
+other way round.
+
+**Decision — the observed files keep the names they already had.** Only the
+corrected ones take the `__rho_corrected` suffix. Renaming both would have been
+more symmetrical, but the observed tables already feed the dashboard, and breaking
+every consumer to gain symmetry is a bad trade when the `DATASET` column already
+makes confusion impossible.
+
+**Decision — the correction itself is exported, not just its result.** Four
+tables go out beside the matrices: the plan cell by cell, the city-level deficit
+for every pair-year including the ones left alone, the reference ρ and
+composition per pair, and the people-per-party rates per actor type. The
+correction is an estimate, and an estimate that cannot be audited is a number
+someone has to take on faith.

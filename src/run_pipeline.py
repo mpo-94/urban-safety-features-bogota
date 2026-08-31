@@ -7,6 +7,7 @@ resolution should not have to rebuild fifty-seven figures first.
 
     python -m src.run_pipeline                 # full pipeline, and says so
     python -m src.run_pipeline matrix          # the same, named explicitly
+    python -m src.run_pipeline corrected       # the observed and corrected matrices, side by side
     python -m src.run_pipeline parties         # stop after party resolution
     python -m src.run_pipeline loading         # sources only
     python -m src.run_pipeline rho             # the rho(t) diagnostic
@@ -28,7 +29,18 @@ from typing import Callable
 
 import pandas as pd
 
-from src import completeness, config, integration, loading, maps, matrix, parties, predictors, rho
+from src import (
+    completeness,
+    config,
+    correction,
+    integration,
+    loading,
+    maps,
+    matrix,
+    parties,
+    predictors,
+    rho,
+)
 from src.provenance import RunLog
 
 
@@ -179,6 +191,88 @@ def run_matrix(log: RunLog) -> None:
     matrix.report(long_table, log)
 
 
+def run_corrected(log: RunLog) -> None:
+    """Both datasets: the observed matrix and the one corrected for the practice change.
+
+    The correction never replaces the observed data, so this route produces the
+    two side by side, in one run directory, from one reading of the sources. That
+    is the only way the two can be compared cell by cell, which is what the
+    verification does.
+
+    The corrected set gets the same tables, the same matrices and the same figures
+    as the observed one, in the same style: it is going into a presentation, and
+    something that has to be read differently from the original would not survive
+    the trip. What separates them is the name of every file and a column on every
+    row, never the shape.
+    """
+    units, casualties, vehicles = load_sources(log)
+
+    # The universe before the parties without casualties are dropped. Both
+    # datasets are built from it, so they differ by the correction and by nothing
+    # else — not by a second reading of the sources.
+    universe = parties.party_universe(casualties, vehicles, log)
+    crash_attrs = parties.crash_attributes(casualties)
+
+    observed_affected = parties.emit_rows(
+        parties.to_internal(universe), casualties, log, label=config.OBSERVED_DATASET.lower()
+    )
+    observed = matrix.build(observed_affected, units, log)
+    observed_paths = matrix.export(observed, log)
+    matrix.render_heatmaps(observed_paths, log)
+
+    corrected_universe, tables = correction.apply(universe, crash_attrs, log)
+    corrected_affected = parties.emit_rows(
+        parties.to_internal(corrected_universe), casualties, log,
+        label=config.CORRECTED_DATASET.lower(),
+    )
+
+    # 2007 leaves here rather than at the grid, so the funnel says why it went.
+    years = correction.corrected_years()
+    kept = corrected_affected[corrected_affected[config.YEAR_COL].isin(years)]
+    log.record(
+        "drop the years the corrected set cannot cover",
+        rows_in=len(corrected_affected),
+        rows_out=len(kept),
+        changes=[
+            (
+                -(len(corrected_affected) - len(kept)),
+                f"affected parties of {', '.join(str(y) for y in config.CORRECTION_EXCLUDED_YEARS)}, "
+                "a year that does not distinguish the two parties of a vehicle-vehicle crash "
+                "and so cannot support an inter-mode matrix, corrected or not (D18, D30)",
+            )
+        ],
+    )
+
+    corrected = matrix.build(
+        kept, units, log, years=years, dataset=config.CORRECTED_DATASET,
+        dump_name="08_matrix_long_corrected",
+    )
+    corrected_paths = matrix.export(corrected, log, years=years, suffix=config.CORRECTION_FILE_SUFFIX)
+    matrix.render_heatmaps(corrected_paths, log, years=years, suffix=config.CORRECTION_FILE_SUFFIX)
+
+    correction.export(tables["plan"], tables["city"], tables["reference"], tables["persons"], log)
+
+    log.table("record funnel:", log.funnel())
+
+    if not matrix.verify(observed, observed_affected, units, log):
+        raise RouteFailed("the observed matrix does not agree with what entered it")
+    if not matrix.verify(corrected, kept, units, log, years=years):
+        raise RouteFailed("the corrected matrix does not agree with what entered it")
+
+    # Rebuilt from the corrected universe rather than taken from the plan, so the
+    # check is against the data and not against the arithmetic that produced it.
+    corrected_outcomes = correction.crash_outcomes(
+        corrected_universe, crash_attrs, correction.QuietLog(log)
+    )
+    if not correction.verify(
+        tables["city"], corrected_outcomes, observed, corrected, tables["promotions"], log
+    ):
+        raise RouteFailed("the corrected dataset does not satisfy the correction's own checks")
+
+    correction.report(tables["city"], tables["plan"], tables["promotions"], log)
+    matrix.report(corrected, log)
+
+
 # ---------------------------------------------------------------------------
 # Registry
 # ---------------------------------------------------------------------------
@@ -198,6 +292,11 @@ class Route:
 # predictors route as they are written, rather than adding a route of their own.
 ROUTES: tuple[Route, ...] = (
     Route("matrix", "full pipeline up to the casualty matrix, with tables and figures", run_matrix),
+    Route(
+        "corrected",
+        "both datasets: the observed matrix and the one corrected for the recording change",
+        run_corrected,
+    ),
     Route("parties", "up to party resolution: one row per affected party", run_parties),
     Route("loading", "sources only: read them, locate them, verify the counts", run_loading),
     Route("predictors", "the static urban predictors, with histograms and their correlation", run_predictors),

@@ -42,12 +42,25 @@ except ImportError:  # executed as a plain script from inside src/
 
 def _grid_keys() -> list[str]:
     return [
+        config.DATASET_COL,
         config.SCALE_COL,
         config.AREA_CODE_COL,
         config.YEAR_COL,
         config.PARTY_TYPE_COL,
         config.COUNTERPART_TYPE_COL,
     ]
+
+
+def grid_years(years: tuple[int, ...] | None = None) -> list[int]:
+    """The years the grid is materialised over.
+
+    The observed dataset spans the whole study period. The corrected one cannot
+    include 2007, because that year does not distinguish the two parties of a
+    vehicle-vehicle crash, so it is built over a shorter span and the grid has to
+    follow — otherwise 2007 would come back as a row of zeros and read as a year
+    in which nobody was hurt.
+    """
+    return list(years) if years is not None else list(config.STUDY_YEARS)
 
 
 # ---------------------------------------------------------------------------
@@ -60,10 +73,13 @@ def build_long_table(
     units: pd.DataFrame,
     log: RunLog,
     scale: config.TerritorialScale | None = None,
+    years: tuple[int, ...] | None = None,
+    dataset: str = config.OBSERVED_DATASET,
 ) -> pd.DataFrame:
     """Aggregate affected parties onto the complete grid."""
     scale = scale or config.active_scale()
     count_columns = list(config.MATRIX_COUNTS.values())
+    year_range = grid_years(years)
 
     located = affected[affected[config.AREA_CODE_COL].notna()]
     unlocated = affected[affected[config.AREA_CODE_COL].isna()]
@@ -99,7 +115,7 @@ def build_long_table(
     grid = pd.DataFrame(
         itertools.product(
             units[config.AREA_CODE_COL].tolist(),
-            list(config.STUDY_YEARS),
+            year_range,
             config.MATRIX_ROW_ORDER,
             config.MATRIX_COLUMN_ORDER,
         ),
@@ -134,7 +150,11 @@ def build_long_table(
     filled = int(long_table[count_columns].isna().all(axis=1).sum())
     long_table[count_columns] = long_table[count_columns].fillna(0).astype(int)
 
+    # The dataset label travels in the table itself, not only in the file name, so
+    # a model handed the corrected set instead of the observed one is not relying
+    # on whoever moved the file to have read its name. See D31.
     long_table.insert(0, config.SCALE_COL, scale.label)
+    long_table.insert(0, config.DATASET_COL, dataset)
     long_table = long_table.merge(
         units[[config.AREA_CODE_COL, config.AREA_NAME_COL]], on=config.AREA_CODE_COL, how="left"
     )
@@ -151,9 +171,11 @@ def build_long_table(
             (filled, "grid cells with no observation, materialised as zero rather than left absent"),
         ],
         notes=[
-            f"grid = {len(units)} units x {len(config.STUDY_YEARS)} years x "
+            f"grid = {len(units)} units x {len(year_range)} years x "
             f"{len(config.MATRIX_ROW_ORDER)} actor types x {len(config.MATRIX_COLUMN_ORDER)} counterparts",
             f"scale recorded as {scale.label} on every row",
+            f"dataset recorded as {dataset} on every row; "
+            f"years {min(year_range)}-{max(year_range)}",
         ],
     )
     return long_table
@@ -178,33 +200,46 @@ def crosstab(long_table: pd.DataFrame, count_name: str, year: int | None = None)
 # ---------------------------------------------------------------------------
 
 
-def export(long_table: pd.DataFrame, log: RunLog) -> dict[str, Path]:
-    """Write the analysis table and every presentation table, and return the paths."""
+def export(
+    long_table: pd.DataFrame,
+    log: RunLog,
+    years: tuple[int, ...] | None = None,
+    suffix: str = "",
+) -> dict[str, Path]:
+    """Write the analysis table and every presentation table, and return the paths.
+
+    The suffix names the dataset in the file name. It is empty for the observed
+    set, which keeps the names it has always had so nothing reading them breaks,
+    and set for the corrected one, whose files are new.
+    """
     data_dir = log.run_dir / config.DATA_SUBDIR
     year_dir = data_dir / config.BY_YEAR_SUBDIR
     year_dir.mkdir(parents=True, exist_ok=True)
+    tag = f"__{suffix}" if suffix else ""
+    year_range = grid_years(years)
 
     paths: dict[str, Path] = {}
 
-    long_path = data_dir / f"{config.ANALYSIS_PREFIX}__matrix_long.csv"
+    long_path = data_dir / f"{config.ANALYSIS_PREFIX}__matrix_long{tag}.csv"
     long_table.to_csv(long_path, index=False, encoding="utf-8")
     long_table.to_parquet(long_path.with_suffix(".parquet"))
     paths["long"] = long_path
 
     for count_name in config.MATRIX_COUNTS:
-        path = data_dir / f"{config.PRESENTATION_PREFIX}__crosstab_{count_name}__all_years.csv"
+        path = data_dir / f"{config.PRESENTATION_PREFIX}__crosstab_{count_name}__all_years{tag}.csv"
         crosstab(long_table, count_name).to_csv(path, encoding="utf-8")
         paths[f"crosstab_{count_name}"] = path
 
-        for year in config.STUDY_YEARS:
-            year_path = year_dir / f"{config.PRESENTATION_PREFIX}__crosstab_{count_name}__{year}.csv"
+        for year in year_range:
+            year_path = year_dir / f"{config.PRESENTATION_PREFIX}__crosstab_{count_name}__{year}{tag}.csv"
             crosstab(long_table, count_name, year).to_csv(year_path, encoding="utf-8")
             paths[f"crosstab_{count_name}_{year}"] = year_path
 
     log.info(
-        "exported 1 analysis table and %d presentation tables to %s/",
+        "exported 1 analysis table and %d presentation tables to %s/ (%s)",
         len(paths) - 1,
         config.DATA_SUBDIR,
+        suffix or config.OBSERVED_DATASET.lower(),
     )
     return paths
 
@@ -257,18 +292,30 @@ def _draw_heatmap(table: pd.DataFrame, title: str, vmin: float, vmax: float, out
     plt.close(fig)
 
 
-def render_heatmaps(paths: dict[str, Path], log: RunLog) -> int:
+def render_heatmaps(
+    paths: dict[str, Path],
+    log: RunLog,
+    years: tuple[int, ...] | None = None,
+    suffix: str = "",
+) -> int:
     """Draw one heatmap per count and year, plus an aggregate one per count.
 
     Every figure is drawn from the exported table read back from disk, so what is
     seen and what is analysed are the same numbers by construction.
+
+    The corrected set gets the same figures in the same style, in a directory of
+    its own and with the dataset named in every title: a heatmap that has been
+    saved out of its folder must still say which of the two it shows.
     """
     written = 0
+    year_range = grid_years(years)
+    tag = f"__{suffix}" if suffix else ""
+    titled = f" [{suffix}]" if suffix else ""
     for count_name in config.MATRIX_COUNTS:
-        figures_dir = log.run_dir / config.FIGURES_SUBDIR / count_name
+        figures_dir = log.run_dir / config.FIGURES_SUBDIR / f"{count_name}{tag}"
         figures_dir.mkdir(parents=True, exist_ok=True)
 
-        yearly = {year: _read_crosstab(paths[f"crosstab_{count_name}_{year}"]) for year in config.STUDY_YEARS}
+        yearly = {year: _read_crosstab(paths[f"crosstab_{count_name}_{year}"]) for year in year_range}
 
         # One colour scale for all years of this count. Per-year scaling would
         # make two heatmaps look comparable while being drawn to different rulers.
@@ -282,10 +329,10 @@ def render_heatmaps(paths: dict[str, Path], log: RunLog) -> int:
         for year, table in yearly.items():
             _draw_heatmap(
                 table,
-                f"Casualty matrix — {count_name} — {year} ({config.active_scale().label})",
+                f"Casualty matrix — {count_name} — {year} ({config.active_scale().label}){titled}",
                 vmin,
                 vmax,
-                figures_dir / f"heatmap_{count_name}__{year}.png",
+                figures_dir / f"heatmap_{count_name}__{year}{tag}.png",
             )
             written += 1
 
@@ -296,11 +343,11 @@ def render_heatmaps(paths: dict[str, Path], log: RunLog) -> int:
         agg_positive = agg_values[agg_values > 0]
         _draw_heatmap(
             aggregate,
-            f"Casualty matrix — {count_name} — {config.FIRST_YEAR}-{config.LAST_YEAR} "
-            f"({config.active_scale().label})",
+            f"Casualty matrix — {count_name} — {min(year_range)}-{max(year_range)} "
+            f"({config.active_scale().label}){titled}",
             float(agg_positive.min()) if agg_positive.size else 1.0,
             float(agg_positive.max()) if agg_positive.size else 2.0,
-            figures_dir / f"heatmap_{count_name}__all_years.png",
+            figures_dir / f"heatmap_{count_name}__all_years{tag}.png",
         )
         written += 1
 
@@ -313,9 +360,16 @@ def render_heatmaps(paths: dict[str, Path], log: RunLog) -> int:
 # ---------------------------------------------------------------------------
 
 
-def verify(long_table: pd.DataFrame, affected: pd.DataFrame, units: pd.DataFrame, log: RunLog) -> bool:
+def verify(
+    long_table: pd.DataFrame,
+    affected: pd.DataFrame,
+    units: pd.DataFrame,
+    log: RunLog,
+    years: tuple[int, ...] | None = None,
+) -> bool:
     """Check the matrix against what entered it, and against its own definition."""
     located = affected[affected[config.AREA_CODE_COL].notna()]
+    year_range = grid_years(years)
     checks: list[tuple[str, bool, str]] = []
 
     for name, column in config.MATRIX_COUNTS.items():
@@ -336,12 +390,12 @@ def verify(long_table: pd.DataFrame, affected: pd.DataFrame, units: pd.DataFrame
     checks.append(("every unit of the layer is in the grid", expected_units == present_units,
                    f"{len(present_units)} of {len(expected_units)}"))
 
-    expected_years = set(config.STUDY_YEARS)
+    expected_years = set(year_range)
     present_years = set(long_table[config.YEAR_COL].dropna().astype(int))
-    checks.append(("every year of the study period is in the grid", expected_years == present_years,
+    checks.append(("every year of the dataset's span is in the grid", expected_years == present_years,
                    f"{len(present_years)} of {len(expected_years)}"))
 
-    expected_rows = len(units) * len(config.STUDY_YEARS) * len(config.MATRIX_ROW_ORDER) * len(config.MATRIX_COLUMN_ORDER)
+    expected_rows = len(units) * len(year_range) * len(config.MATRIX_ROW_ORDER) * len(config.MATRIX_COLUMN_ORDER)
     checks.append(("grid has exactly the declared number of cells", len(long_table) == expected_rows,
                    f"{len(long_table):,} of {expected_rows:,}"))
 
@@ -451,7 +505,14 @@ def report(long_table: pd.DataFrame, log: RunLog) -> None:
 # ---------------------------------------------------------------------------
 
 
-def build(affected: pd.DataFrame, units: pd.DataFrame, log: RunLog) -> pd.DataFrame:
-    long_table = build_long_table(affected, units, log)
-    log.dump(long_table, "06_matrix_long")
+def build(
+    affected: pd.DataFrame,
+    units: pd.DataFrame,
+    log: RunLog,
+    years: tuple[int, ...] | None = None,
+    dataset: str = config.OBSERVED_DATASET,
+    dump_name: str = "06_matrix_long",
+) -> pd.DataFrame:
+    long_table = build_long_table(affected, units, log, years=years, dataset=dataset)
+    log.dump(long_table, dump_name)
     return long_table

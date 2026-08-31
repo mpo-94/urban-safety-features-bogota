@@ -346,14 +346,7 @@ def party_universe(casualties: pd.DataFrame, vehicles: pd.DataFrame, log: RunLog
     """
     parties = build_parties(casualties, vehicles, log)
     kept = resolve_pairs(parties, log)
-    return kept.rename(
-        columns={
-            _PARTY_KEY: config.PARTY_ID_COL,
-            _PARTY_TYPE: config.PARTY_TYPE_COL,
-            "_injured": config.PERSONS_INJURED_COL,
-            "_killed": config.PERSONS_KILLED_COL,
-        }
-    )[
+    return kept.rename(columns=_PUBLIC_NAMES)[
         [
             config.CRASH_ID_COL,
             config.PARTY_ID_COL,
@@ -365,8 +358,36 @@ def party_universe(casualties: pd.DataFrame, vehicles: pd.DataFrame, log: RunLog
     ].reset_index(drop=True)
 
 
-def emit_rows(kept: pd.DataFrame, casualties: pd.DataFrame, log: RunLog) -> pd.DataFrame:
-    """Keep the parties that suffered casualties and attach the crash attributes."""
+# The one place the internal working names and the public ones are tied together.
+# party_universe renames in this direction; to_internal renames back.
+_PUBLIC_NAMES = {
+    _PARTY_KEY: config.PARTY_ID_COL,
+    _PARTY_TYPE: config.PARTY_TYPE_COL,
+    "_injured": config.PERSONS_INJURED_COL,
+    "_killed": config.PERSONS_KILLED_COL,
+}
+
+
+def to_internal(universe: pd.DataFrame) -> pd.DataFrame:
+    """Rename a public party universe back to the working names emit_rows expects.
+
+    A caller that changed the universe — the correction promotes parties that took
+    part without a recorded casualty — hands it back through here, so the rest of
+    the pipeline runs on it unmodified instead of growing a second path.
+    """
+    return universe.rename(columns={public: internal for internal, public in _PUBLIC_NAMES.items()})
+
+
+def emit_rows(
+    kept: pd.DataFrame, casualties: pd.DataFrame, log: RunLog, label: str = ""
+) -> pd.DataFrame:
+    """Keep the parties that suffered casualties and attach the crash attributes.
+
+    The label names the dataset in the funnel. A run that builds both the observed
+    and the corrected sets passes through here twice, and two identically named
+    stages in one funnel would be unreadable.
+    """
+    tag = f" ({label})" if label else ""
     affected = kept[kept[["_injured", "_killed"]].sum(axis=1) > 0].copy()
 
     # The study universe is crashes with at least one casualty, so a crash that
@@ -388,7 +409,7 @@ def emit_rows(kept: pd.DataFrame, casualties: pd.DataFrame, log: RunLog) -> pd.D
         )
 
     log.record(
-        "keep the parties that suffered casualties",
+        f"keep the parties that suffered casualties{tag}",
         rows_in=len(kept),
         rows_out=len(affected),
         changes=[(-(len(kept) - len(affected)), "parties that took part without casualties")],

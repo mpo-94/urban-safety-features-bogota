@@ -511,6 +511,74 @@ RHO_PGFPLOTS_MISSING = "nan"
 RHO_PGFPLOTS_DECIMALS = 6
 
 # ---------------------------------------------------------------------------
+# The correction for the change in recording practice
+# ---------------------------------------------------------------------------
+# rho showed that before 2018 the source recorded one casualty per crash, and that
+# from 2018 it records every affected party. The crash entered the system either
+# way: what was missing was the casualty of the second party, almost always the
+# protected one. So the correction does not inflate a pair's cell as a whole. It
+# reclassifies crashes that today carry a single affected party into crashes with
+# two, and promotes the party that was already in the universe without casualties.
+#
+# See D28 (the mechanism and the reference window), D29 (how the deficit is split
+# between the two sides) and D30 (why 2007 cannot be corrected).
+
+# The reference window: the years rho has been measured to have settled in. It is
+# not 2022-2024. 2022 is the last year of the climb -- every pair rises into it,
+# seven of nine rise out of it into 2023, and only from 2023 does the series go
+# flat. Including it would drag the reference below the level the practice
+# actually reached, and would do so in the pairs that had already arrived as well.
+# The full argument, with the tests that were run and the ones that cannot settle
+# it, is in D28.
+CORRECTION_REFERENCE_YEARS: tuple[int, ...] = (2023, 2024)
+
+# 2007 is out of the corrected set entirely. Not because rho cannot be computed
+# for it, but because that year does not distinguish the two parties of a
+# vehicle-vehicle crash at all (see D18), so it cannot support an inter-mode
+# matrix, corrected or otherwise.
+CORRECTION_EXCLUDED_YEARS: tuple[int, ...] = (2007,)
+
+# The two datasets a run produces. The label travels in a column of every exported
+# table, so a model fed the wrong one is not reading a filename to find out.
+DATASET_COL = "DATASET"
+OBSERVED_DATASET = "OBSERVED"
+CORRECTED_DATASET = "RHO_CORRECTED"
+
+# The suffix that separates the corrected files from the observed ones. The
+# observed files keep the names they already have, so nothing downstream that
+# reads them breaks; the corrected ones are new files with a name that says what
+# they are.
+CORRECTION_FILE_SUFFIX = "rho_corrected"
+
+# Columns of the correction plan, which is exported so the correction can be
+# audited cell by cell rather than believed.
+CORRECTION_SIDE_COL = "PROMOTED_SIDE"          # which side of the pair was added
+CORRECTION_POOL_COL = "RECLASSIFIED_FROM"      # the outcome the crash was recorded as
+CORRECTION_DEFICIT_COL = "CRASHES_RECLASSIFIED"
+CORRECTION_PARTIES_COL = "PARTIES_ADDED"
+CORRECTION_INJURED_COL = "PERSONS_INJURED_ADDED"
+CORRECTION_KILLED_COL = "PERSONS_KILLED_ADDED"
+CORRECTION_RHO_OBSERVED_COL = "RHO_OBSERVED"
+CORRECTION_RHO_REFERENCE_COL = "RHO_REFERENCE"
+CORRECTION_RHO_CORRECTED_COL = "RHO_CORRECTED"
+
+# The three outcomes a two-party crash can have once the two sides keep their own
+# affected flag instead of being reduced to their conjunction. A is the less
+# protected side of the pair, B the more protected, in the canonical order rho
+# already uses.
+OUTCOME_COL = "OUTCOME"
+OUTCOME_ONLY_A = "ONLY_A"
+OUTCOME_ONLY_B = "ONLY_B"
+OUTCOME_BOTH = "BOTH"
+OUTCOME_NEITHER = "NEITHER"
+
+# rho of the corrected set has to land on the reference by construction. It cannot
+# land on it exactly, because the target is a whole number of crashes and the
+# reference is a ratio, so the check allows the rounding of one crash: a deviation
+# above 1/n means an error, not a rounded target.
+CORRECTION_RHO_TOLERANCE_CRASHES = 1.0
+
+# ---------------------------------------------------------------------------
 # Urban predictors
 # ---------------------------------------------------------------------------
 # The other half of the study: the features of a unit that the casualty rates are
