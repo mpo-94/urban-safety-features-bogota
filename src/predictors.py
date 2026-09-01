@@ -13,7 +13,12 @@ and reported in the funnel like any other loss of records.
 The four layers that carry an annual series — cycleways and the three signage
 layers — are not here yet. Nothing in this module is shaped around the absence of
 a time dimension: the long table carries a YEAR column already, null for a
-snapshot, and a series slots into it without a schema change.
+snapshot, and a series slots into it without a schema change. All four are line
+layers, and the measurement they will use is written and registered: what they
+need beyond it is the year, not a way of being measured.
+
+The line splitting is also what the exposure module builds on, which is why it is
+a function of its own rather than a step inside the line measurement.
 
 Every variable is declared in the configuration — its source layer as the data
 names it, its file, its geometry, what it measures and by which method — and the
@@ -64,6 +69,11 @@ except ImportError:  # executed as a plain script from inside src/
 # table, so they are named apart from the configured ones to make that obvious.
 _FEATURE_COL = "_FEATURE"
 _FRAGMENT_AREA_COL = "_FRAGMENT_AREA_KM2"
+
+# The one exception to the rule above: this column is part of what
+# `split_lines_by_unit` returns, so the exposure module reads it by name. It is
+# still working data and still never reaches an exported table.
+FRAGMENT_LENGTH_COL = "_FRAGMENT_LENGTH_KM"
 
 
 # ---------------------------------------------------------------------------
@@ -207,18 +217,20 @@ def _read_source(predictor: config.StaticPredictor, log: RunLog) -> gpd.GeoDataF
     the data dictionary from drifting: it is not a description of the pipeline,
     it is what the pipeline reads.
     """
-    if not predictor.path.exists():
+    try:
+        path = config.resolve_source_path(predictor.path)
+    except FileNotFoundError as missing:
         raise FileNotFoundError(
             f"{predictor.name}: the declared source {predictor.path} does not exist; "
             f"layer {predictor.source_layer!r}, file {predictor.source_file!r}"
-        )
+        ) from missing
 
     # Only the geometry and, where there is a selection rule, the one column that
     # rule reads. The measurements use no other attribute, and the tree census
     # carries fifteen columns over 1.5 million rows, so reading the lot would cost
     # a few hundred megabytes to throw them away immediately.
     wanted = [predictor.source_filter.column] if predictor.source_filter else []
-    layer = gpd.read_file(predictor.path, columns=wanted)
+    layer = gpd.read_file(path, columns=wanted)
     read = len(layer)
 
     if predictor.source_filter is not None:
@@ -365,6 +377,109 @@ def measure_point_layer(
     return measured.rename(config.PREDICTOR_MEASURE_COL).reset_index()
 
 
+def usable_lines(layer: gpd.GeoDataFrame, name: str, log: RunLog) -> tuple[gpd.GeoDataFrame, int]:
+    """Drop the lines with no geometry, and say how many went.
+
+    Deliberately not the repair the polygon layers get. That repair is
+    `make_valid` followed by `buffer(0)`, and the second step reduces a geometry
+    to its areal part — which for a line is nothing at all, so the operation that
+    rescues a self-touching polygon would silently delete every line it touched.
+    There is also nothing for it to fix: a LineString is valid under the OGC rules
+    however it crosses itself, so the invalid branch would never fire and would
+    destroy the layer on the one occasion it did.
+    """
+    usable = layer[layer.geometry.notna() & ~layer.geometry.is_empty]
+    dropped = len(layer) - len(usable)
+    if dropped:
+        log.warn("%s: %d line(s) have no usable geometry and cannot be measured", name, dropped)
+    return usable, dropped
+
+
+def split_lines_by_unit(
+    lines: gpd.GeoDataFrame,
+    units: gpd.GeoDataFrame,
+    id_column: str,
+) -> gpd.GeoDataFrame:
+    """Cut every line at the unit boundaries and measure each piece, in kilometres.
+
+    One row per (line, unit) pair, carrying the length of that line inside that
+    unit. A line crossing three units yields three rows, and a line that leaves
+    the study area and comes back yields one row per unit with the parts summed
+    by the caller, not one row per part.
+
+    This is the operation both callers need and the reason it lives here rather
+    than in either of them. A cycleway variable wants the kilometres; the exposure
+    module wants the same kilometres as a fraction of the whole line, so it can
+    split a trip count between the units the trip crosses. Measuring the two
+    slightly differently would be the kind of divergence nobody finds.
+
+    The length is read straight off each fragment's geometry rather than filtering
+    the fragments by type first. An intersection of a line with a polygon can come
+    back as a point where the line only grazes a boundary, or as a collection of a
+    line and a point; in both cases `length` already returns the length of the
+    line part and nothing for the point, which is exactly the wanted answer.
+    """
+    projected = lines[[id_column, "geometry"]].to_crs(epsg=config.PROJECTED_CRS)
+    fragments = gpd.overlay(
+        projected,
+        units[[config.AREA_CODE_COL, "geometry"]],
+        how="intersection",
+        keep_geom_type=False,
+    )
+    fragments[FRAGMENT_LENGTH_COL] = fragments.geometry.length / 1000.0
+    # A fragment of no length is a line touching a boundary at a point. It is not
+    # a piece of the line inside the unit and would otherwise be counted as one
+    # more unit reached.
+    return fragments[fragments[FRAGMENT_LENGTH_COL] > 0].reset_index(drop=True)
+
+
+def measure_line_layer(
+    predictor: config.StaticPredictor,
+    units: gpd.GeoDataFrame,
+    log: RunLog,
+) -> pd.DataFrame:
+    """Length of the layer inside each unit, in kilometres.
+
+    The line counterpart of the area measurement, and it accounts for itself the
+    same way: a feature straddling a boundary contributes its own part to each
+    unit it reaches, and what falls outside every unit is counted rather than
+    lost. The four layers with an annual series — cycleways and the three signage
+    layers — are line layers and will be measured by this.
+    """
+    raw = _read_source(predictor, log)
+    usable, dropped = usable_lines(raw, predictor.name, log)
+
+    lines = usable[["geometry"]].to_crs(epsg=config.PROJECTED_CRS).reset_index(drop=True)
+    lines[_FEATURE_COL] = np.arange(len(lines))
+    total_km = float(lines.geometry.length.sum() / 1000.0)
+
+    fragments = split_lines_by_unit(lines, units, _FEATURE_COL)
+
+    reached = int(fragments[_FEATURE_COL].nunique())
+    outside = len(lines) - reached
+    split = len(fragments) - reached
+    captured_km = float(fragments[FRAGMENT_LENGTH_COL].sum())
+
+    log.record(
+        f"measure {predictor.name}",
+        rows_in=len(raw),
+        rows_out=len(fragments),
+        changes=[
+            (-dropped, "features with no usable geometry, which cannot be measured"),
+            (-outside, "features falling outside every unit, contributing to no unit"),
+            (split, "fragments gained where a feature crosses a unit boundary and is split between units"),
+        ],
+        notes=[
+            f"source={predictor.source_layer}/{predictor.source_file}, {predictor.measures}",
+            f"{captured_km:,.4f} km captured inside the units of {total_km:,.4f} km in the layer "
+            f"({100 * captured_km / total_km:.2f}%)" if total_km > 0 else "layer has no length",
+        ],
+    )
+
+    measured = fragments.groupby(config.AREA_CODE_COL)[FRAGMENT_LENGTH_COL].sum()
+    return measured.rename(config.PREDICTOR_MEASURE_COL).reset_index()
+
+
 # The method a variable declares is the key that selects the function which runs.
 # A method described in the configuration and bound to nothing here fails at the
 # variable that declares it, which is the point: the sentence in the dictionary
@@ -372,6 +487,7 @@ def measure_point_layer(
 MEASUREMENTS: dict[str, Callable[[config.StaticPredictor, gpd.GeoDataFrame, RunLog], pd.DataFrame]] = {
     config.AREA_SHARE_METHOD: measure_area_layer,
     config.POINT_DENSITY_METHOD: measure_point_layer,
+    config.LINE_LENGTH_METHOD: measure_line_layer,
 }
 
 

@@ -28,6 +28,52 @@ RESULTS_DIR = PROJECT_ROOT / "results"
 CRASH_DATA_DIR = DATA_DIR / "data_siniestros_bogota"
 GEO_DATA_DIR = DATA_DIR / "geo"
 
+
+def resolve_source_path(declared: Path) -> Path:
+    """The delivered file, found even where its name is spelled decomposed.
+
+    The desire lines arrive in a folder called "Líneas de deseo Matriz Origen
+    Destino", and the filesystem stores that í as an i followed by a combining
+    acute, while a Python source file spells it as the single precomposed
+    character. The two are one name to a reader and two different byte strings to
+    `exists`, so a path copied faithfully out of the delivered data can be right
+    and still not open.
+
+    The alternative — pasting decomposed characters into the declarations — hides
+    the problem in a character nobody can see and invites the next reader to
+    "correct" it back. So the lookup is made insensitive to that difference and to
+    nothing else: case, spacing and every other character still have to match, and
+    an ambiguous match is an error rather than a guess.
+
+    Only the four line layers with accented names need this today. It is applied
+    to every source path anyway, because a rule that runs on one path and not the
+    others is a rule waiting to be forgotten.
+    """
+    if declared.exists():
+        return declared
+
+    parts = declared.parts
+    resolved = Path(parts[0])
+    for part in parts[1:]:
+        candidate = resolved / part
+        if candidate.exists():
+            resolved = candidate
+            continue
+
+        wanted = unicodedata.normalize("NFC", part)
+        siblings = sorted(resolved.iterdir()) if resolved.is_dir() else []
+        matches = [
+            entry for entry in siblings if unicodedata.normalize("NFC", entry.name) == wanted
+        ]
+        if len(matches) != 1:
+            found = "nothing" if not matches else f"{len(matches)} entries"
+            raise FileNotFoundError(
+                f"{declared} does not exist: looking for {part!r} inside {resolved}, "
+                f"exact match failed and normalising the accents matched {found}"
+            )
+        resolved = matches[0]
+    return resolved
+
 # ---------------------------------------------------------------------------
 # Source files
 # ---------------------------------------------------------------------------
@@ -590,14 +636,12 @@ CORRECTION_RHO_TOLERANCE_CRASHES = 1.0
 # shaped so they slot into it without a schema change: every row already carries a
 # YEAR column, null for a snapshot and filled for a series.
 #
-# The eleventh snapshot, the origin-destination desire lines, is deliberately out.
-# Its length column is not in kilometres: the legacy code multiplies the length of
-# each line by the survey expansion factor of its own record and writes the result
-# back over the kilometres under the same name. Because the factor varies from
-# record to record that is a transformation and not a rescaling, so the variable
-# is neither kilometres nor trips, and its row of the correlation matrix could not
-# be interpreted. It stays out until my advisor says what it was meant to measure.
-# See D21.
+# The eleventh snapshot, the origin-destination desire lines, is not a predictor
+# at all and is declared further down, under Exposure. It describes how the city
+# is used rather than what it is built of, which puts it on the other side of the
+# model: it is a candidate offset, not a covariate. Keeping it out of this list is
+# what keeps it out of the correlation matrix and the figure sets, where a row for
+# it would suggest it competes with the thirteen. See D21 and D35.
 PREDICTORS_DIR = DATA_DIR / "shp_properties_sorted"
 
 # -- the geometry of a source layer -----------------------------------------
@@ -653,6 +697,13 @@ GEOMETRY_FAMILIES: dict[str, str] = {
 # cell described an ordering rule the code never implemented.
 AREA_SHARE_METHOD = "area_share"
 POINT_DENSITY_METHOD = "point_density"
+# The first line method. No static predictor declares it yet: it exists because
+# the four layers with an annual series are line layers, and because the exposure
+# module needs the same splitting of a line by unit for a different purpose. One
+# implementation, two callers, so the kilometres of a cycleway inside a unit and
+# the kilometres of a desire line inside a unit cannot end up measured two
+# slightly different ways.
+LINE_LENGTH_METHOD = "line_length"
 
 
 @dataclass(frozen=True)
@@ -687,6 +738,17 @@ MEASUREMENT_METHODS: dict[str, MeasurementMethod] = {
             "explode multi-part features into one point each, keep the points contained "
             "in the unit in EPSG:3116, count them, and divide the count by the area of "
             "the unit"
+        ),
+    ),
+    LINE_LENGTH_METHOD: MeasurementMethod(
+        name=LINE_LENGTH_METHOD,
+        geometry=LINE_GEOMETRY,
+        measure_unit="km",
+        value_unit="line km per km2",
+        computation=(
+            "repair unusable geometries, intersect the layer with the unit in EPSG:3116, "
+            "add the length of every fragment falling inside the unit, and divide those "
+            "kilometres by the area of the unit"
         ),
     ),
 }
@@ -1308,6 +1370,368 @@ ZERO_IMPLAUSIBLE_COL = "ZERO_IS_IMPLAUSIBLE"
 # are indistinguishable in the legacy output, where an absent row means either.
 MEASURED_STATUS = "MEASURED"
 NOT_MEASURED_STATUS = "NOT_MEASURED"
+
+
+# ---------------------------------------------------------------------------
+# Exposure
+# ---------------------------------------------------------------------------
+# How much travel of a given mode passes through a unit. This is not an urban
+# predictor and is deliberately not declared as one: a predictor says what the
+# street is like, and exposure says how much traffic there is to be hurt. In a
+# rate model the two go on opposite sides, so putting exposure in the predictor
+# correlation matrix would invite a reader to compare it with variables it does
+# not compete with. See D35.
+#
+# The source is the origin-destination desire lines of the mobility survey. Each
+# line runs from the centroid of an origin zone to the centroid of a destination
+# zone and carries the survey's own expansion of that trip. Two expansions
+# arrive on every record and they are not the same quantity:
+#
+#   f_exp         the expansion factor: how many real trips one surveyed trip
+#                 stands for on a day. Almost every record is made five days a
+#                 week, so the sum over the layer is a working day's trips.
+#   ResultadoExp  f_exp multiplied by the number of days per week the trip is
+#                 made, which the day flags of the record confirm. It is a count
+#                 of trips per week, and it is the quantity the layer is built
+#                 around.
+#
+# The distinction is the whole reason this section is written the way it is. The
+# legacy pipeline multiplied a length by f_exp and wrote the product back over a
+# column called len_km, so a sum of kilometre-trips was exported and read as
+# kilometres of infrastructure. Nothing here can repeat that: every quantity has
+# its own column, the unit and the period are in the column's name, and no column
+# is ever overwritten by something derived from it.
+@dataclass(frozen=True)
+class SurveyLineLayer:
+    """A line layer whose records carry a survey expansion factor.
+
+    Declared with the same discipline as a predictor: the path is built from the
+    declaration, the columns are read through it, and the run checks the file
+    against it rather than trusting either. The column names are spelled the way
+    the delivered .dbf spells them, truncation included, because that is what
+    has to match at read time; the untruncated name is in the comment beside it.
+    """
+
+    name: str
+    label: str  # short form in English, for the code and the logs
+    label_es: str  # short form in Spanish, for the figures and the documents
+    source_layer: str
+    source_file: str
+    mode: str  # the travel mode this layer covers, as the exported tables label it
+    mode_column: str  # the column that states the mode on every record
+    mode_value: str  # the one value that column is allowed to hold
+    weekly_weight_column: str  # trips per week represented by the record
+    daily_weight_column: str  # trips per day represented by the record
+    origin_x_column: str
+    origin_y_column: str
+    destination_x_column: str
+    destination_y_column: str
+    measures: str  # one line: what the variable is, for the log and the dictionary
+    time_coverage: str
+    geometry: str = LINE_GEOMETRY
+
+    @property
+    def path(self) -> Path:
+        return PREDICTORS_DIR / GEOMETRY_FOLDERS[self.geometry] / self.source_layer / self.source_file
+
+    def column(self, suffix: str) -> str:
+        """The name one measured quantity takes in the exported table.
+
+        The mode leads, so two exposure layers measured against the same units
+        produce two sets of columns that sit side by side without colliding and
+        without either having to be read from a separate file. It also means a
+        column cannot exist without saying which mode it counts, which is the
+        failure this naming exists to prevent: `TRIPS_PER_WEEK` was correct only
+        for as long as there was one layer.
+        """
+        return f"{self.mode}_{suffix}"
+
+    @property
+    def attribute_columns(self) -> tuple[str, ...]:
+        """Every attribute the measurement reads, and nothing else."""
+        return (
+            self.mode_column,
+            self.weekly_weight_column,
+            self.daily_weight_column,
+            self.origin_x_column,
+            self.origin_y_column,
+            self.destination_x_column,
+            self.destination_y_column,
+        )
+
+
+BICYCLE_DESIRE_LINES = SurveyLineLayer(
+    name="BICYCLE_TRIPS",
+    label="Bicycle trips",
+    label_es="Viajes en bicicleta",
+    source_layer="Líneas de deseo Matriz Origen Destino",
+    source_file="Líneas de deseo viajes en bicicleta.shp",
+    mode="BICYCLE",
+    # The .dbf truncates every name to ten characters. modo_principal, ResultadoExp,
+    # zat_destino and the rest arrive shortened, and the untruncated names survive
+    # only in the ESRI metadata that ships beside the shapefile.
+    mode_column="modo_princ",  # modo_principal
+    mode_value="Bicicleta",
+    weekly_weight_column="ResultadoE",  # ResultadoExp
+    daily_weight_column="f_exp",
+    origin_x_column="Xo",
+    origin_y_column="Yo",
+    destination_x_column="Xd",
+    destination_y_column="Yd",
+    measures="bicycle trips per week apportioned to the unit by the share of the line's length inside it",
+    # The layer declares no year anywhere, and the file dates its own export in
+    # ArcGIS rather than the survey behind it. Treated as a snapshot of unknown
+    # date until my advisor says which survey it is. See D35.
+    time_coverage=SNAPSHOT_COVERAGE,
+)
+
+# -- what the exposure table holds ------------------------------------------
+# One row per unit, and every quantity in its own column with three things in the
+# name: the mode, what is counted, and over what period. Nothing is called
+# "trips" on its own — a column that does not say whether it counts a day or a
+# week is the same mistake as a column called len_km holding kilometre-trips —
+# and nothing is called "trips per week" on its own either, because the next
+# exposure layer would want that name for a different mode and one of the two
+# would have to lose.
+#
+# So a column name is built, not written down: the quantity declares the part
+# that describes it and the layer contributes the mode. A second layer therefore
+# cannot collide with this one, and it cannot be added without saying which mode
+# it is. The table stays one row per unit and gains a column per quantity per
+# mode, which is the shape a panel joins against.
+@dataclass(frozen=True)
+class ExposureQuantity:
+    """One number the exposure measurement produces, per mode.
+
+    `means` is a template rather than a sentence because the two expansion
+    columns are named by the layer, not by this module. Filling it from the
+    declaration is what makes the exported dictionary name the column the number
+    actually came out of, instead of a name that was true of the first layer.
+    """
+
+    suffix: str
+    unit: str
+    means: str  # formatted with the layer, so it names that layer's own columns
+    # True for the allocations exported beside the variable to be compared with
+    # it. They are never model variables, and the dictionary says so.
+    is_alternative: bool = False
+
+    def describe(self, layer: SurveyLineLayer) -> str:
+        return self.means.format(
+            weekly=layer.weekly_weight_column,
+            daily=layer.daily_weight_column,
+            mode=layer.mode.lower(),
+        )
+
+
+EXPOSURE_QUANTITIES: tuple[ExposureQuantity, ...] = (
+    ExposureQuantity(
+        suffix="TRIPS_PER_WEEK_BY_LENGTH_SHARE",
+        unit="trips per week",
+        means="the variable: each line's {weekly} apportioned to the unit by the share of "
+              "the line's length falling inside it",
+    ),
+    ExposureQuantity(
+        suffix="TRIPS_PER_DAY_BY_LENGTH_SHARE",
+        unit="trips per day",
+        means="the same apportionment applied to {daily}, which expands one surveyed trip "
+              "to a day rather than to a week",
+    ),
+    ExposureQuantity(
+        suffix="TRIPS_PER_WEEK_AT_ORIGIN",
+        unit="trips per week",
+        means="alternative allocation: the whole of a line's {weekly} counted in the unit "
+              "containing its origin",
+        is_alternative=True,
+    ),
+    ExposureQuantity(
+        suffix="TRIPS_PER_WEEK_AT_DESTINATION",
+        unit="trips per week",
+        means="alternative allocation: the whole of a line's {weekly} counted in the unit "
+              "containing its destination",
+        is_alternative=True,
+    ),
+    ExposureQuantity(
+        suffix="LINE_KM_INSIDE",
+        unit="km",
+        means="alternative allocation: the length of {mode} desire line inside the unit, "
+              "carrying no trip count at all",
+        is_alternative=True,
+    ),
+    ExposureQuantity(
+        suffix="LINES_TOUCHING",
+        unit="count",
+        means="how many lines of the layer reach the unit, whatever share of them it holds",
+    ),
+    ExposureQuantity(
+        suffix="TRIPS_PER_WEEK_PER_KM2",
+        unit="trips per week per km2",
+        means="the variable over the area of the unit",
+    ),
+    ExposureQuantity(
+        suffix="TRIPS_PER_WEEK_PER_INHABITANT",
+        unit="trips per week per inhabitant",
+        means="the variable over the population of the unit; null wherever the population is",
+    ),
+)
+
+EXPOSURE_QUANTITIES_BY_SUFFIX: dict[str, ExposureQuantity] = {
+    quantity.suffix: quantity for quantity in EXPOSURE_QUANTITIES
+}
+
+# The four the module refers to by name, so a rename is caught by the interpreter
+# rather than by a column that silently stops existing.
+TRIPS_WEEKLY_SUFFIX = "TRIPS_PER_WEEK_BY_LENGTH_SHARE"
+TRIPS_DAILY_SUFFIX = "TRIPS_PER_DAY_BY_LENGTH_SHARE"
+TRIPS_WEEKLY_AT_ORIGIN_SUFFIX = "TRIPS_PER_WEEK_AT_ORIGIN"
+TRIPS_WEEKLY_AT_DESTINATION_SUFFIX = "TRIPS_PER_WEEK_AT_DESTINATION"
+LINE_KM_INSIDE_SUFFIX = "LINE_KM_INSIDE"
+LINES_TOUCHING_SUFFIX = "LINES_TOUCHING"
+TRIPS_WEEKLY_PER_KM2_SUFFIX = "TRIPS_PER_WEEK_PER_KM2"
+TRIPS_WEEKLY_PER_PERSON_SUFFIX = "TRIPS_PER_WEEK_PER_INHABITANT"
+
+# The two columns of the table that belong to the unit and not to a mode. The
+# population of a unit is the same number whichever mode is being measured
+# against it, and the status says whether the unit could be measured at all, so
+# neither takes a mode prefix.
+POPULATION_COL = "POPULATION"
+
+# Every exposure layer the pipeline measures. Adding one means adding it here and
+# nothing else: the columns, the dictionary, the figures and the checks all
+# follow from the declaration. See docs/adding-an-exposure-layer.md.
+EXPOSURE_LAYERS: tuple[SurveyLineLayer, ...] = (BICYCLE_DESIRE_LINES,)
+
+
+def exposure_columns(layers: tuple[SurveyLineLayer, ...] | None = None) -> tuple[str, ...]:
+    """The exported table's columns, in order, for the declared layers.
+
+    Identity first, then every quantity of every layer in declaration order, then
+    the status. Built rather than listed so that a run of two layers cannot come
+    out with the columns of one of them.
+    """
+    layers = EXPOSURE_LAYERS if layers is None else layers
+    return (
+        SCALE_COL,
+        AREA_CODE_COL,
+        AREA_NAME_COL,
+        AREA_UNIT_KM2_COL,
+        YEAR_COL,
+        POPULATION_COL,
+        *(
+            layer.column(quantity.suffix)
+            for layer in layers
+            for quantity in EXPOSURE_QUANTITIES
+        ),
+        PREDICTOR_STATUS_COL,
+    )
+
+# What every apportioned total is checked against. The shares of one line over
+# the units it crosses add to less than one whenever part of it leaves the study
+# area, so the check is not that the apportioned total equals the layer total but
+# that the apportioned part plus the part falling outside does. Floating point
+# over a few hundred fragments needs a tolerance, and a relative one is the only
+# kind that means the same thing on a count of trips and on a length in km.
+EXPOSURE_BALANCE_RTOL = 1e-9
+
+# How much of a line the units may account for before it counts as double
+# counting. The shares of one line cannot exceed the whole of it, so anything
+# above one means two unit polygons overlap and a trip is being given to both.
+#
+# The threshold is not machine epsilon and must not be: a line is split into as
+# many as ten fragments whose lengths are summed and then divided by the whole,
+# and that arithmetic lands a few parts per billion above one on this layer
+# without anything being wrong. What the check is looking for is a unit boundary
+# genuinely overlapping another, which shows up as percentage points and not as
+# the ninth decimal. A millionth of a line's length is far below any overlap that
+# could exist in a cadastral layer and far above the noise of the sum.
+EXPOSURE_MAX_OVER_COVERAGE = 1e-6
+
+# A line of zero length has no shares to compute and would divide by zero. None
+# exists in the delivered layer; the guard is here because the failure would
+# otherwise be a silent NaN in one unit rather than a message.
+EXPOSURE_MIN_LINE_LENGTH_M = 1e-9
+
+# -- population, which the study does not have yet --------------------------
+# Trips per inhabitant is the normalisation a measure of travel asks for, and it
+# cannot be computed from anything in data/. The unit layer carries AREA_HA and
+# no population, and the only population in the delivered data is the poblacion_
+# column of the UPZ layer, which is a different set of 111 polygons that do not
+# nest inside the 30 UPL. Apportioning it from UPZ to UPL would be an assumption
+# about how population is distributed inside a UPZ, and that is a methodological
+# choice rather than a lookup, so it is not made here.
+#
+# What is here instead is the socket. Drop a CSV at the declared path with the
+# two declared columns and the two population columns fill in on the next run;
+# until then they are null, the status of the run says so loudly, and nothing
+# downstream sees a fabricated number. See D35.
+@dataclass(frozen=True)
+class PopulationSource:
+    """Where the population of each unit would be read from, if it existed."""
+
+    path: Path
+    code_column: str  # must hold the same unit codes as the unit layer
+    population_column: str
+    describes: str
+
+
+POPULATION_SOURCE = PopulationSource(
+    path=GEO_DATA_DIR / "population_upl.csv",
+    code_column=AREA_CODE_COL,
+    population_column=POPULATION_COL,
+    describes=(
+        "one row per territorial unit, its code exactly as the unit layer spells it "
+        "and its resident population as a whole number"
+    ),
+)
+
+# -- the choropleth ---------------------------------------------------------
+EXPOSURE_FIGURES_SUBDIR = "exposure"
+
+# Sequential and single-hue, because the quantity has a floor at zero and no
+# meaningful midpoint: a diverging ramp would invent one. Deliberately neither
+# the viridis of the casualty heatmaps nor the Blues of the master table, so the
+# three figures do not look like each other at a glance. ColorBrewer YlGnBu is
+# ordered by lightness as well as by hue, which is what makes it readable in
+# greyscale and to a colour-blind reader.
+MAP_CHOROPLETH_COLORMAP = "YlGnBu"
+
+# Zero is an observation here, not an absence: Torca receives no desire line at
+# all, and that is a fact about cycling in Torca. So it keeps the bottom of the
+# ramp — it is a value and belongs on the scale — and is marked with a hatch on
+# top of that fill.
+#
+# The hatch is what the fill alone cannot do. At the bottom of a ramp covering
+# nought to sixty thousand, an exact zero and a unit with two thousand trips are
+# the same pale yellow, so a legend patch showing that colour would claim the
+# colour means zero when six other units share it. The hatch belongs to the zero
+# and to nothing else, which is what makes the legend entry true.
+#
+# A unit that could not be measured is a different case again and must never look
+# like either: it leaves the ramp altogether for a grey of its own, with a hatch
+# that is coarser and diagonal so the two are told apart in greyscale as well as
+# in colour. Both entries are drawn only when a unit is actually in them.
+MAP_CHOROPLETH_ZERO_HATCH = "....."
+MAP_CHOROPLETH_MISSING_COLOR = "#d9d9d9"
+MAP_CHOROPLETH_MISSING_HATCH = "////"
+
+# Above this share of the ramp the number printed inside a unit switches from
+# dark to light. Measured against the fill's own luminance rather than fixed per
+# figure, so it holds wherever the ramp is changed.
+MAP_CHOROPLETH_LIGHT_TEXT_BELOW_LUMINANCE = 0.55
+MAP_CHOROPLETH_LIGHT_LABEL_COLOR = "#f7f7f7"
+
+# The legend of the choropleth, in Spanish because the figure goes into the
+# thesis. The colour bar carries the scale; these two entries carry the cases the
+# bar cannot express, and each is drawn only when a unit is actually in it.
+MAP_CHOROPLETH_ZERO_LABEL_ES = "Cero observado"
+MAP_CHOROPLETH_MISSING_LABEL_ES = "Sin dato"
+
+# Width of the colour bar relative to the map, and where it sits. Horizontal and
+# under the map: the city's footprint is taller than it is wide, so a vertical
+# bar beside it would stretch the figure into a shape no page wants.
+MAP_COLORBAR_LOCATION = "bottom"
+MAP_COLORBAR_SIZE = "3.5%"
+MAP_COLORBAR_PAD = 0.18
 
 
 # ---------------------------------------------------------------------------

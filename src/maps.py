@@ -22,6 +22,14 @@ Everything else follows from that. With the fill doing the separating, the
 borders can be hairlines of a single colour. Identity is carried by the number
 inside each unit, not by its colour.
 
+The module also draws the one thematic map the pipeline produces, the exposure
+choropleth, and that is why it lives here rather than in the module that computes
+the value: the two figures share a projection, a border treatment, a way of
+labelling a unit and a north arrow, and they appear a few pages apart. Sharing
+the code is what keeps them looking like two views of one territory. Only the
+things that must differ do — the fill carries a value, so it takes a sequential
+ramp and the figure gains a colour bar to say what the ramp means.
+
 Run it:
 
     python -m src.run_pipeline map
@@ -39,8 +47,11 @@ import matplotlib
 
 matplotlib.use("Agg")  # figures are written to disk, never displayed
 import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
 from matplotlib_map_utils.core.north_arrow import north_arrow
 from matplotlib_scalebar.scalebar import ScaleBar
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 from shapely.geometry import box
 from shapely.ops import polylabel
 
@@ -289,6 +300,219 @@ def render(
     out_path.parent.mkdir(parents=True, exist_ok=True)
     # Transparent, so the figure carries no white rectangle of its own onto a
     # slide or a page that has a background of its own.
+    figure.savefig(out_path, bbox_inches="tight", pad_inches=0.02, transparent=True)
+    plt.close(figure)
+    return overflowing
+
+
+def _readable_label_color(rgba: tuple[float, ...]) -> str:
+    """Dark or light text, decided by the luminance of the fill underneath it.
+
+    A choropleth runs from a pale corner of the ramp to a dark one, so one label
+    colour cannot serve the whole map: the dark grey that reads on the pale end
+    disappears at the dark end. The threshold is applied to relative luminance
+    computed the sRGB way rather than to the mean of the channels, because green
+    contributes about ten times what blue does to how bright a colour looks and
+    an average would call a saturated blue light.
+
+    Computed per unit rather than fixed per figure, so changing the ramp in the
+    configuration cannot leave a run with unreadable numbers on it.
+    """
+
+    def linear(channel: float) -> float:
+        return channel / 12.92 if channel <= 0.04045 else ((channel + 0.055) / 1.055) ** 2.4
+
+    red, green, blue = (linear(component) for component in rgba[:3])
+    luminance = 0.2126 * red + 0.7152 * green + 0.0722 * blue
+    if luminance < config.MAP_CHOROPLETH_LIGHT_TEXT_BELOW_LUMINANCE:
+        return config.MAP_CHOROPLETH_LIGHT_LABEL_COLOR
+    return config.MAP_LABEL_COLOR
+
+
+def _thousands(value: float, _position: int = 0) -> str:
+    """A number on the colour bar, punctuated the way the document punctuates it.
+
+    Spanish separates thousands with a point, and the figure is read by a
+    Colombian jury beside a text that does the same. Left to itself matplotlib
+    prints 12500 as 12500 on a bar whose whole job is to be read at a glance.
+    """
+    return f"{value:,.0f}".replace(",", ".")
+
+
+def render_choropleth(
+    units: gpd.GeoDataFrame,
+    values: pd.Series,
+    out_path: Path,
+    legend_label: str,
+    scalebar: bool,
+) -> list[int]:
+    """Draw the thirty units shaded by a value, and return the labels that spill.
+
+    The cartography is the reference map's — same projection, same hairline
+    borders, same numbers inside the units, same north arrow — because the two
+    figures appear in the same document and a reader should not have to work out
+    whether they show the same territory. What differs is the one thing that has
+    to: the fill carries a value here, so it takes a sequential ramp and the
+    figure carries a colour bar to say what the ramp means.
+
+    `values` is indexed by unit code. A unit whose value is null could not be
+    measured and is drawn outside the ramp, in its own colour and with a hatch, so
+    that it cannot be read as the bottom of the scale. A unit whose value is zero
+    was measured and found to have none, which is an observation and takes the
+    bottom of the ramp like any other number; the legend names both cases when
+    they occur, which is the only way a reader can tell them apart.
+    """
+    metric = units.to_crs(epsg=config.PROJECTED_CRS)
+    ordered = values.reindex(metric[config.AREA_CODE_COL]).to_numpy(dtype=float)
+
+    observed = ordered[np.isfinite(ordered)]
+    if observed.size == 0:
+        raise ValueError("the choropleth has no measured unit to set its colour scale from")
+    colormap = matplotlib.colormaps[config.MAP_CHOROPLETH_COLORMAP]
+    normalise = matplotlib.colors.Normalize(vmin=float(observed.min()), vmax=float(observed.max()))
+
+    minx, miny, maxx, maxy = metric.total_bounds
+    height = config.MAP_FIGURE_HEIGHT_IN
+    width = height * (maxx - minx) / (maxy - miny)
+
+    figure, axis = plt.subplots(figsize=(width, height))
+
+    missing = ~np.isfinite(ordered)
+    fills = [
+        matplotlib.colors.to_rgba(config.MAP_CHOROPLETH_MISSING_COLOR)
+        if absent
+        else colormap(normalise(value))
+        for value, absent in zip(ordered, missing)
+    ]
+    metric.plot(
+        ax=axis,
+        color=fills,
+        edgecolor=config.MAP_BOUNDARY_COLOR,
+        linewidth=config.MAP_BOUNDARY_WIDTH,
+    )
+    # Both marks are drawn over the fill rather than instead of it, so a unit
+    # keeps the colour its value earns and the hatch says which of the two cases
+    # it is. A reader printing the figure in greyscale keeps the distinction.
+    zero = np.isfinite(ordered) & (ordered == 0)
+    for selection, hatch in ((zero, config.MAP_CHOROPLETH_ZERO_HATCH),
+                             (missing, config.MAP_CHOROPLETH_MISSING_HATCH)):
+        if selection.any():
+            metric[selection].plot(
+                ax=axis,
+                facecolor="none",
+                edgecolor=config.MAP_BOUNDARY_COLOR,
+                linewidth=config.MAP_BOUNDARY_WIDTH,
+                hatch=hatch,
+            )
+
+    labels = unit_labels(units)
+    texts = []
+    for position, geometry in enumerate(metric.geometry):
+        anchor = label_anchor(geometry)
+        texts.append(
+            axis.text(
+                anchor.x,
+                anchor.y,
+                labels[position],
+                ha="center",
+                va="center",
+                fontsize=config.MAP_LABEL_FONT_PT,
+                color=_readable_label_color(fills[position]),
+            )
+        )
+
+    axis.set_aspect("equal")
+    axis.set_axis_off()
+
+    north_arrow(
+        axis,
+        location=config.MAP_NORTH_ARROW_LOCATION,
+        scale=config.MAP_NORTH_ARROW_SCALE,
+        base={"facecolor": config.MAP_LABEL_COLOR, "edgecolor": config.MAP_LABEL_COLOR, "linewidth": 0.4},
+        fancy=False,
+        label={
+            "text": "N",
+            "position": "bottom",
+            "ha": "center",
+            "fontsize": config.MAP_LABEL_FONT_PT + 1,
+            "color": config.MAP_LABEL_COLOR,
+            "fontweight": "normal",
+            "stroke_width": 0,
+        },
+        shadow=False,
+    )
+    if scalebar:
+        axis.add_artist(
+            ScaleBar(
+                1,
+                units="m",
+                location=config.MAP_SCALEBAR_LOCATION,
+                length_fraction=config.MAP_SCALEBAR_LENGTH_FRACTION,
+                frameon=False,
+                color=config.MAP_LABEL_COLOR,
+                font_properties={"size": config.MAP_LABEL_FONT_PT},
+            )
+        )
+
+    # Taken off the map's own axes rather than placed by figure coordinates, so
+    # the bar is exactly as wide as the city however the footprint's aspect ratio
+    # comes out.
+    divider = make_axes_locatable(axis)
+    bar_axis = divider.append_axes(
+        config.MAP_COLORBAR_LOCATION,
+        size=config.MAP_COLORBAR_SIZE,
+        pad=config.MAP_COLORBAR_PAD,
+        axes_class=matplotlib.axes.Axes,
+    )
+    bar = figure.colorbar(
+        matplotlib.cm.ScalarMappable(norm=normalise, cmap=colormap),
+        cax=bar_axis,
+        orientation="horizontal",
+    )
+    bar.set_label(legend_label, fontsize=config.MAP_LABEL_FONT_PT + 1, color=config.MAP_LABEL_COLOR)
+    bar.ax.xaxis.set_major_formatter(matplotlib.ticker.FuncFormatter(_thousands))
+    bar.ax.tick_params(labelsize=config.MAP_LABEL_FONT_PT, colors=config.MAP_LABEL_COLOR)
+    bar.outline.set_linewidth(0.4)
+    bar.outline.set_edgecolor(config.MAP_BOUNDARY_COLOR)
+
+    # Only the cases that actually occur. A legend entry for a category no unit
+    # is in tells a reader to go looking for something that is not on the map.
+    entries = []
+    if zero.any():
+        entries.append(
+            matplotlib.patches.Patch(
+                facecolor=colormap(normalise(0.0)),
+                edgecolor=config.MAP_BOUNDARY_COLOR,
+                linewidth=config.MAP_BOUNDARY_WIDTH,
+                hatch=config.MAP_CHOROPLETH_ZERO_HATCH,
+                label=config.MAP_CHOROPLETH_ZERO_LABEL_ES,
+            )
+        )
+    if missing.any():
+        entries.append(
+            matplotlib.patches.Patch(
+                facecolor=config.MAP_CHOROPLETH_MISSING_COLOR,
+                edgecolor=config.MAP_BOUNDARY_COLOR,
+                linewidth=config.MAP_BOUNDARY_WIDTH,
+                hatch=config.MAP_CHOROPLETH_MISSING_HATCH,
+                label=config.MAP_CHOROPLETH_MISSING_LABEL_ES,
+            )
+        )
+    if entries:
+        axis.legend(
+            handles=entries,
+            loc="lower left",
+            frameon=False,
+            fontsize=config.MAP_LABEL_FONT_PT,
+            labelcolor=config.MAP_LABEL_COLOR,
+            handlelength=1.4,
+            handleheight=1.0,
+            borderpad=0.0,
+        )
+
+    overflowing = _labels_that_do_not_fit(figure, axis, metric, texts)
+
+    out_path.parent.mkdir(parents=True, exist_ok=True)
     figure.savefig(out_path, bbox_inches="tight", pad_inches=0.02, transparent=True)
     plt.close(figure)
     return overflowing

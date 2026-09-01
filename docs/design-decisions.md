@@ -47,7 +47,7 @@ carried, so the second is larger for the same underlying records.
 | D18 | The 2007 vehicle table does not distinguish the two parties of a vehicle–vehicle crash | Methodological | **Open** | Detection only |
 | D19 | The most recent extract prevails, whole year at a time | Methodological | Closed | Yes |
 | D20 | The sources are checked for coverage, not only for arithmetic | Implementation | Closed | Yes |
-| D21 | The desire lines are out until it is settled what they measure | Methodological | **Open** | No, excluded |
+| D21 | The desire lines are out until it is settled what they measure | Methodological | Closed; superseded by D35 | No, superseded |
 | D22 | A predictor is measured against every unit, and a zero is an observation | Methodological | Closed | Yes, for the ten static ones |
 | D23 | The histogram bins and the correlation scale are declared, not inferred | Implementation | Closed; bin rule revised | Yes |
 | D24 | The master table is one figure, shaded column by column | Implementation | Closed | Yes |
@@ -61,8 +61,9 @@ carried, so the second is larger for the same underlying records.
 | D32 | The tree census enters whole, with two narrower variants measured beside it | Methodological | Closed on what is measured; which variant the models use is **open** | Yes |
 | D33 | The tables the deliverables print are emitted as LaTeX, not transcribed | Implementation | Closed | Yes |
 | D34 | The predictor figures come in two sets, and two variables are in neither | Implementation | Closed | Yes |
+| D35 | The desire lines enter as exposure, apportioned by share of length | Methodological | Closed on the rule; the year and the selection are **open** | Yes |
 
-Methodological decisions: D1-D7, D9, D10, D11, D15, D17, D18, D19, D21, D22, D32.
+Methodological decisions: D1-D7, D9, D10, D11, D15, D17, D18, D19, D21, D22, D32, D35.
 Implementation decisions: D8, D12, D13, D14, D16, D20, D23, D24, D25, D26, D27, D33, D34.
 
 ---
@@ -1252,11 +1253,14 @@ that reason.
 
 **Kind:** Methodological. It decides whether a variable enters the study at all.
 
-**Status:** **Open.** To settle with my advisor.
+**Status:** Closed. Superseded by **D35**, which answers the question this entry
+left open and puts the layer in. The entry stays as written because the reasoning
+for keeping it out was right at the time and the exclusion has to be explicable:
+a reader comparing two runs will find the variable absent from one of them.
 
-**Built:** No. The layer is not read, and it is absent from the predictor list
-rather than present and filtered out later, so nothing downstream can pick it up
-by accident.
+**Built:** No, and now superseded. The layer is read by the exposure module, not
+by the predictor module, and it is still absent from the predictor list — for a
+different reason, which D35 gives.
 
 **Context.** The origin-destination desire lines are one of the eleven single
 snapshots, and on the face of it they are the most interesting of them: they are
@@ -1311,6 +1315,15 @@ is producing the third and labelling it the first.
 **Open.** Which of the three is the variable of interest. Once that is answered the
 layer takes about as much code as any of the other line variables, and it joins the
 module with the annual series.
+
+**Resolved by D35.** My advisor settled it: the variable is the trips, apportioned
+by share of length, and it is exposure rather than a predictor. Two things this
+entry got wrong are worth recording. The trips are **weekly** and not daily —
+`ResultadoExp` is `f_exp` multiplied by the days per week the trip is made, which
+the day-of-week flags confirm — so "the sum of `f_exp`" named the daily quantity
+and the layer is built around the weekly one. And the fourth option this entry did
+not list, counting the trip at its endpoints, turned out to be the one that does
+not depend on a geometry the survey never measured.
 
 ---
 
@@ -2418,3 +2431,198 @@ The emitted table was also compared against the copy inside the informe de
 avance, which is the file the presentation includes. The two are identical apart
 from the provenance comment naming the run, so no number in the deck needed
 touching.
+
+---
+
+## D35 — The desire lines enter as exposure, apportioned by share of length
+
+**Kind:** Methodological. It decides what the variable measures, how a trip is
+attributed to a unit, and which side of the model the variable sits on.
+
+**Status:** Closed on the allocation rule and on where the variable lives. Two
+things about the source are **open** and neither is mine to close: which survey
+and which year the layer comes from, and by what criterion its 181 lines were
+selected out of a larger table.
+
+**Built:** Yes. `src/exposure.py`, route `exposure`. Run `run_20260901_003409`.
+
+### What the layer turned out to be
+
+D21 left the layer out because its length column was not what its name said. The
+inspection that answered that question also turned up things that change the
+shape of the variable, so they are recorded here rather than left in a
+conversation:
+
+- **181 line records**, one mode only: `modo_principal` reads `Bicicleta` on
+  every row. There is no exposure by mode to be had from this file.
+- **Two expansions, not one.** `f_exp` expands one surveyed trip to a day.
+  `ResultadoExp` is `f_exp` multiplied by `totalViajes`, and `totalViajes` is not
+  a count of trips at all: it equals the number of day-of-week flags set on the
+  record, in all 181 rows. So `ResultadoExp` counts **trips per week** and
+  `f_exp` counts trips per day. The layer sums to 556,997.58 weekly and
+  113,269.31 daily.
+- **No metric length column.** `Shape__Length` is in degrees — it matches the
+  geometry's length in EPSG:4686 to 5e-13 — so the kilometres have to be computed
+  by projecting, which is what the legacy code did.
+- **No year anywhere.** The ESRI metadata dates its own export in ArcGIS
+  (November 2023) and says nothing about the survey behind it.
+- **The layer is a selection.** `ORIG_FID` runs from 156 to 7212 over 181 rows,
+  so it was exported from a parent table of at least 7212 features.
+
+### The allocation rule
+
+**Decision — a line gives each unit it crosses the share of its trips that
+matches the share of its length falling inside that unit.** A line worth 100
+trips lying 50%, 30% and 20% across three units contributes 50, 30 and 20. It is
+the rule the legacy code already applied through `overlay` with `intersection`;
+what changes is that the result is named for what it is and overwrites nothing.
+
+There has to be a rule because the lines are not local: a line crosses three
+units in the median and as many as ten. Attributing the whole trip to one of them
+would be a choice among ten, and any of the ten would be an assumption dressed up
+as a rule — the same objection that removed the alphabetical pair ordering in D1.
+
+**What was rejected, and why it is worth saying, because it is what the exported
+alternatives are for.** Counting the trip whole at its origin, or whole at its
+destination, uses only what the survey recorded and owes nothing to the geometry
+between the two. That is a real advantage here, and it lost anyway: those rules
+say where trips begin and end, which is close to where people live and work, and
+the variable is meant to say how much cycling passes through a place. What the
+casualty matrix is a rate over is traffic in the unit, not residence in it.
+
+### The limitation the number carries
+
+**The lines are straight.** Sinuosity — length over the straight distance between
+the endpoints — is exactly 1.000 on all 181 of them, minimum, median and maximum
+alike. They carry between 2 and 37 vertices, but only because ArcGIS densifies a
+geodesic; the first vertex lands on the declared origin and the last on the
+declared destination with a maximum gap of 0.00 m, which the run checks on every
+execution.
+
+So the kilometres inside a unit are a share of a chord nobody rode. The
+apportionment is defensible as a way of spreading a trip along its corridor, and
+it is not a measurement of distance pedalled in the unit. Any document quoting
+this variable states that.
+
+**That is why the three alternatives are exported beside it.** Trips counted at
+the origin, trips counted at the destination, and kilometres of line inside the
+unit, each in its own column and none of them a model variable. They exist so the
+sensitivity of a result to the rule can be shown rather than asserted. On this
+run they order the units similarly but not identically — Spearman against the
+variable is 0.813 at the origin, 0.798 at the destination and 0.781 on kilometres
+— while origin and destination agree with each other far more closely than either
+agrees with the variable, at 0.973. The rules are different variables, not two
+scales of one, so the choice had to be made on an argument.
+
+### Where the variable lives
+
+**Decision — exposure is not a predictor and stays out of the predictor module,
+the correlation matrix and both figure sets.** Every predictor describes what a
+unit is built like; this one describes how much travel is in it. In a rate model
+they go on opposite sides — exposure is the offset the anteproyecto declared —
+and a row for it in a matrix of built-environment variables would invite a reader
+to compare it with variables it does not compete with.
+
+It gets its own module, its own route, its own table and its own figure. The
+figure is the pipeline's only thematic map, and it reuses the reference map's
+cartography for everything except the one thing that has to differ: the fill
+carries a value, so it takes a sequential ramp and a colour bar.
+
+**Torca is an observed zero.** No desire line reaches UPL07 at all. It comes out
+as `0.0` with the status `MEASURED`, never as a null, and on the map it keeps the
+bottom of the ramp and gains a hatch of its own — at the bottom of a scale
+running to sixty thousand it is the same pale colour as six units that are not
+zero, so the fill alone could not say it. A unit that could not be measured would
+leave the ramp entirely for a grey with a coarser, diagonal hatch. This is D22's
+rule applied to a new table and carried into a figure.
+
+### The mode is part of every column name
+
+**Decision — a column name is built from the layer, not written down: the mode
+leads, then what is counted, then over what period.** The variable is
+`BICYCLE_TRIPS_PER_WEEK_BY_LENGTH_SHARE`.
+
+`TRIPS_PER_WEEK_BY_LENGTH_SHARE` was correct for exactly as long as there was one
+exposure layer. The table is wide over modes — one row per unit, a block of
+columns per layer — because the panel it joins is keyed on unit and year, and an
+exposure table with a row per unit and mode would need a filter before every
+join. In that shape two layers with unprefixed names do not raise: one column
+survives and the other leaves no trace.
+
+So the quantity declares the part that describes it and the layer contributes the
+mode, which means a layer cannot be added without saying which mode it is. A
+check confirms every declared quantity is present under its prefixed name and
+that the table carries exactly the declared columns in order. Two columns belong
+to the unit and take no prefix: `POPULATION`, because a unit has one population
+whichever mode is measured against it, and `VALUE_STATUS`.
+
+The procedure for adding the next layer — what to verify in the file before
+declaring anything, how it is named, which checks it inherits — is written down
+in `docs/adding-an-exposure-layer.md`. It is a procedure and not a note because
+the trap is always the same one: the expansion factor, whether the file has
+already multiplied it out, and what period it expands.
+
+### Normalisation, and the column that is empty
+
+The table carries trips per week per km², which is computed, and trips per week
+per inhabitant, which is not: **the study has no population by unit.** The unit
+layer carries `AREA_HA` and nothing else, and the only population in the
+delivered data is the `poblacion_` column of the UPZ layer — 111 polygons that do
+not nest inside the 30 units. Spreading it from one geometry to the other would
+be an assumption about how population is distributed inside a UPZ, which is a
+methodological choice and not a lookup, so it is not made here.
+
+**Decision — the column exists, is null, and the run says so loudly on every
+execution**, naming the file it would read and the columns it expects:
+`data/geo/population_upl.csv`, one row per unit with its code exactly as the unit
+layer spells it and its resident population. A fabricated denominator would be
+worse than an absent one, because the absent one is visible.
+
+Which normalisation the models use is a separate question and stays open. If the
+variable enters as an offset it goes in as a level and is not normalised at all,
+and normalising it first and then using it as an offset would normalise it twice.
+
+### The line measurement, written for four other layers
+
+There was no way to measure a line layer before this. The method lives in the
+predictor module rather than in the exposure module, and is registered like the
+other two, so the four layers with an annual series — cycleways and the three
+signage layers — are measured by it once their year is resolved. The splitting of
+a line at the unit boundaries is a function of its own that both callers use, so
+the kilometres of a cycleway inside a unit and the kilometres of a desire line
+inside a unit cannot end up measured two slightly different ways.
+
+The repair the polygon layers get is deliberately not applied to lines:
+`make_valid` followed by `buffer(0)` reduces a geometry to its areal part, which
+for a line is nothing, so the step that rescues a self-touching polygon would
+delete every line it touched.
+
+### The balance the run checks
+
+What was allocated to the units plus what fell outside them equals what the file
+holds, for all three quantities, on every run:
+
+| Quantity | Inside the 30 UPL | Outside | Layer |
+|---|---:|---:|---:|
+| Trips per week | 530,018.53 | 26,979.05 | 556,997.58 |
+| Trips per day | 107,844.36 | 5,424.95 | 113,269.31 |
+| Kilometres | 1,087.56 | 131.70 | 1,219.26 |
+
+This is the check the legacy pipeline could not have made, because the quantity
+it exported was not a quantity the file held. Three of the 181 lines fall outside
+every unit; 178 reach at least one.
+
+### What is still open, and it is not small
+
+**Which survey and which year.** Nothing in the file says, and it decides whether
+the variable is contemporary with the casualty series or a fixed value attached
+to eighteen years of it.
+
+**What the 181 lines are a selection of.** They represent about 113 thousand
+daily bicycle trips, far below Bogotá's citywide total, and `ORIG_FID` shows they
+were drawn from a table of at least 7212 features. **If the criterion was volume,
+this variable measures principal corridors and not exposure** — and principal
+corridors correlate with the very infrastructure the predictors measure, which
+would make it the wrong variable in a way no amount of care in the allocation
+could fix. Until that is answered the variable is built, exported and mapped, and
+no result rests on it.

@@ -12,6 +12,7 @@ resolution should not have to rebuild fifty-seven figures first.
     python -m src.run_pipeline loading         # sources only
     python -m src.run_pipeline rho             # the rho(t) diagnostic
     python -m src.run_pipeline predictors      # the static urban predictors
+    python -m src.run_pipeline exposure        # travel exposure from the desire lines
     python -m src.run_pipeline completeness    # do the sources cover every month?
     python -m src.run_pipeline integrate       # rebuild the layers from the updated extract
     python -m src.run_pipeline loading --dump-intermediates
@@ -33,6 +34,7 @@ from src import (
     completeness,
     config,
     correction,
+    exposure,
     integration,
     latex,
     loading,
@@ -164,6 +166,27 @@ def run_predictors(log: RunLog) -> None:
     ):
         raise RouteFailed("the correlation exported for the models is not the model set's")
     predictors.report(long_table, log)
+
+
+def run_exposure(log: RunLog) -> None:
+    """Travel exposure per unit, from the origin-destination desire lines.
+
+    A route of its own rather than a stage of `predictors`, because exposure is
+    not a predictor: it goes on the other side of a rate model, and running it
+    beside the built-environment variables is exactly the confusion the
+    separation exists to prevent. Like that route it reads the unit layer and its
+    own source and nothing else.
+    """
+    units = loading.load_territorial_units(log)
+    table, allocations, lines_by_layer = exposure.build(units, log)
+
+    paths = exposure.export(table, log)
+    exposure.render_figures(table, units, log)
+
+    log.table("record funnel:", log.funnel())
+    if not exposure.verify(table, allocations, lines_by_layer, units, log, paths=paths):
+        raise RouteFailed("the exposure table does not agree with the layers it was built from")
+    exposure.report(table, allocations, log)
 
 
 def run_map(log: RunLog) -> None:
@@ -319,6 +342,7 @@ ROUTES: tuple[Route, ...] = (
     Route("parties", "up to party resolution: one row per affected party", run_parties),
     Route("loading", "sources only: read them, locate them, verify the counts", run_loading),
     Route("predictors", "the static urban predictors, with histograms and their correlation", run_predictors),
+    Route("exposure", "travel exposure per unit, from the origin-destination desire lines", run_exposure),
     Route("rho", "rho(t): share of two-party crashes where both parties were hurt", run_rho),
     Route("map", "the reference map of the territorial units, with and without a scale bar", run_map),
     Route("completeness", "month-by-month coverage of the casualty layers", run_completeness),
