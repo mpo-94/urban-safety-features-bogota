@@ -10,7 +10,9 @@ Section 10 covers the correction for the change in recording practice, which
 produces a second dataset beside the observed one rather than replacing it.
 Section 11 covers the tree variables and the tables the pipeline now emits as
 LaTeX source. Section 12 covers the two sets of predictor figures and the check
-that the printed correlation and the drawn one are the same numbers.
+that the printed correlation and the drawn one are the same numbers. Section 13
+covers travel exposure, which is measured beside the predictors and belongs on
+the other side of a rate model.
 
 | | |
 |---|---|
@@ -907,3 +909,192 @@ printed a small negative correlation as `-0.00` where the LaTeX table already
 printed `0.00`. The two are read side by side, and a signed zero reads as a
 quantity that is not zero. Both now drop the sign of a value that rounds to
 nothing.
+
+---
+
+## 13. Travel exposure
+
+Run `run_20260901_003409`, route `exposure`, command
+`python -m src.run_pipeline exposure`. **Every check passed.** The
+origin-destination desire lines of the mobility survey give each unit a measure
+of how much cycling passes through it. It is not a predictor and is not in the
+predictor grid, the correlation matrix or either figure set: in a rate model it
+sits on the other side. The decision is D35, which also closes D21.
+
+The layer holds **181 lines, all of mode `Bicicleta`**, summing to 556,997.58
+trips per week and 113,269.31 per day. A line gives each unit it crosses the
+share of its trips that matches the share of its length inside that unit.
+
+### Funnel
+
+| Stage | In | Out | Cause of the difference |
+|---|---:|---:|---|
+| load territorial units | 30 | 30 | — |
+| apportion `BICYCLE_TRIPS` over the units | 181 | 579 | −3 lines falling outside every unit, +401 fragments where a line crosses a boundary |
+| assemble the exposure table | 29 | 30 | +1 unit no line reaches, materialised as a measured zero |
+
+**178 of the 181 lines reach a unit.** A line crosses 3 units in the median and
+as many as 10, and only 37 of the 178 stay inside a single unit, which is why the
+apportionment is not optional: attributing a whole trip to one unit would be a
+choice among as many as ten.
+
+1,087.56 km of the layer's 1,219.26 km fall inside the units, 89.20%.
+
+### The balance closes on all three quantities
+
+What the units account for plus what falls outside them equals what the file
+holds. The check is written that way, and not as allocated equals total, because
+part of the layer genuinely leaves the study area: the lines run to municipios
+outside Bogotá.
+
+| Quantity | Allocated to units | Outside every unit | Sum | The layer |
+|---|---:|---:|---:|---:|
+| Trips per week | 530,018.5282 | 26,979.0521 | 556,997.5804 | 556,997.5804 |
+| Trips per day | 107,844.3591 | 5,424.9465 | 113,269.3056 | 113,269.3056 |
+| Kilometres | 1,087.5609 | 131.6974 | 1,219.2583 | 1,219.2583 |
+
+95.2% of the weekly trips fall inside the thirty units.
+
+The opposite failure has its own check. The shares of one line over the units it
+crosses cannot exceed the whole of it, so anything above 1 means two unit
+polygons overlap and a trip is being counted twice. The largest covered share is
+**1.000000004**, against a tolerance of 1.000001. The tolerance is deliberately
+not machine epsilon: a line split into as many as ten fragments, summed and
+divided by its own length, lands a few parts per billion above one without
+anything being wrong, while an overlap between two cadastral polygons would show
+up in percentage points.
+
+### Verdict by check
+
+| Check | Result | Verdict |
+|---|---|---|
+| Every unit of the layer has exactly one row | 30 rows for 30 units | **Pass** |
+| The table carries exactly the declared columns, in the declared order | 15 against 15 declared | **Pass** |
+| Every declared quantity is present under its mode-prefixed name | 0 missing | **Pass** |
+| Trips per week allocated plus outside equals the layer | 530,018.5282 + 26,979.0521 = 556,997.5804 | **Pass** |
+| Trips per day allocated plus outside equals the layer | 107,844.3591 + 5,424.9465 = 113,269.3056 | **Pass** |
+| Kilometres allocated plus outside equals the layer | 1,087.5609 + 131.6974 = 1,219.2583 | **Pass** |
+| No line is allocated more than once over | largest covered share 1.000000004, tolerance 1.000001 | **Pass** |
+| No negative trip count | 0 negative | **Pass** |
+| Weekly over daily lies between 1 and 7 in every unit | observed 4.737 to 5.545 days per week | **Pass** |
+| The declared endpoints are the ends of the geometry | largest gap 0.000000 m | **Pass** |
+| The per-km² column is the variable over the area of its unit | compared to 1 × 10⁻¹² | **Pass** |
+| A unit no line reaches carries a zero and the status `MEASURED` | 1 unit at zero, UPL07 | **Pass** |
+| Every exported file is on disk and none is empty | 2 of 2 | **Pass** |
+
+Two of these are worth naming for what they would catch. **Weekly over daily
+between 1 and 7** is the check that the two expansion columns are what D35 says
+they are: if `ResultadoExp` were not `f_exp` times a number of days in the week,
+the ratio would leave that range. The observed 4.737 to 5.545 is the working-week
+pattern the layer is built around. **The declared endpoints against the
+geometry** compares the `Xo`, `Yo`, `Xd`, `Yd` columns with the first and last
+vertex of each line, because the origin and destination allocations are computed
+from those columns and would otherwise be trusted on their name alone.
+
+### What the exported table holds
+
+One row per unit, 30 rows and 15 columns, `analysis__exposure_by_unit.csv` and
+its parquet twin, with `reference__exposure_dictionary.csv` beside them naming
+every column, its unit and how it was computed. `YEAR` is null on every row: the
+layer is a snapshot and declares no year.
+
+| Column | Unit | What it is |
+|---|---|---|
+| `SCALE`, `AREA_CODE`, `AREA_NAME`, `AREA_UNIT_KM2` | — | identity of the unit, spelled as every other table spells it |
+| `YEAR` | — | null, the layer being a snapshot |
+| `POPULATION` | inhabitants | null; the study has no population source |
+| `BICYCLE_TRIPS_PER_WEEK_BY_LENGTH_SHARE` | trips per week | **the variable** |
+| `BICYCLE_TRIPS_PER_DAY_BY_LENGTH_SHARE` | trips per day | the same apportionment applied to `f_exp` |
+| `BICYCLE_TRIPS_PER_WEEK_AT_ORIGIN` | trips per week | alternative allocation |
+| `BICYCLE_TRIPS_PER_WEEK_AT_DESTINATION` | trips per week | alternative allocation |
+| `BICYCLE_LINE_KM_INSIDE` | km | alternative allocation, carrying no trip count |
+| `BICYCLE_LINES_TOUCHING` | count | how many lines reach the unit |
+| `BICYCLE_TRIPS_PER_WEEK_PER_KM2` | trips per week per km² | the variable over the area of the unit |
+| `BICYCLE_TRIPS_PER_WEEK_PER_INHABITANT` | trips per week per inhabitant | null while `POPULATION` is |
+| `VALUE_STATUS` | — | `MEASURED` on all 30 units |
+
+Every quantity carries its mode in the name, so a second exposure layer adds
+columns instead of colliding with these. The two per-inhabitant columns are null
+on all 30 units and the run says so as a warning: the only population in the
+delivered data is on the UPZ layer, 111 polygons that do not nest inside the 30
+units, and apportioning it would be an assumption rather than a lookup. A CSV at
+the declared path fills both columns with no other change.
+
+| Quantity | Minimum | Median | Maximum |
+|---|---:|---:|---:|
+| Trips per week | 0.00 | 13,198.84 | 61,687.33 |
+| Trips per day | 0.00 | 2,525.58 | 12,940.14 |
+| Line km inside | 0.00 | 27.02 | 88.81 |
+| Lines touching | 0 | 17.5 | 49 |
+| Trips per week per km² | 0.00 | 983.07 | 9,103.10 |
+
+The three most exposed units are **UPL16 Edén** with 61,687 trips per week,
+**UPL28 Rincón de Suba** with 49,058 and **UPL15 Porvenir** with 43,149. Edén is
+also the densest at 9,103 trips per week per km², so the ranking is not an
+artefact of unit size.
+
+### The four allocation rules, compared by rank
+
+Spearman rank correlation over the thirty units, the variable first. The three
+alternatives are exported so that the sensitivity of a result to the rule can be
+shown rather than asserted; none of them is a model variable and the dictionary
+marks each as an alternative.
+
+| | By length share | At origin | At destination | Line km inside |
+|---|---:|---:|---:|---:|
+| **By length share** | 1.000 | 0.813 | 0.798 | 0.781 |
+| **At origin** | 0.813 | 1.000 | 0.973 | 0.498 |
+| **At destination** | 0.798 | 0.973 | 1.000 | 0.525 |
+| **Line km inside** | 0.781 | 0.498 | 0.525 | 1.000 |
+
+Two things follow. **Origin and destination agree with each other at 0.973** and
+disagree with the variable at 0.80, which is what a difference of concept looks
+like rather than a difference of method: both endpoint rules say where trips
+begin and end, close to where people live and work, and the variable says how
+much cycling passes through a place. **The kilometres alone correlate 0.781 with
+the variable and only 0.50 with the endpoint rules**, so the apportionment is not
+merely a restatement of how much line a unit contains: the trip counts carry
+information the geometry does not.
+
+The endpoints are not all inside the study area. 173 of the 181 origins fall in a
+unit (95.6%), carrying 534,638 of the 556,998 weekly trips, and 169 of the
+destinations (93.4%), carrying 523,190. That is a further reason the endpoint
+rules are alternatives and not candidates: each of them discards a different
+handful of lines entirely.
+
+### Torca is an observed zero
+
+**No bicycle desire line reaches UPL07 Torca at all.** It is the only unit at
+zero, it carries `MEASURED` like every other, and it is the largest unit of the
+study at 53.82 km². A zero and a missing value are made to look different in
+every place the number appears: the row says `MEASURED`, and on the choropleth
+the unit keeps the bottom of the ramp — zero is a value and belongs on the
+scale — with a hatch of its own, because at the bottom of a ramp reaching sixty
+thousand an exact zero and a unit with two thousand trips are the same pale
+colour. A unit that could not be measured would leave the ramp for a grey and a
+coarser hatch instead; none exists in this run, so that legend entry is not
+drawn.
+
+### Two limitations the number carries
+
+**The lines are straight.** Sinuosity — length over the straight distance between
+the endpoints — is exactly 1.000 on all 181 lines, at the minimum, the median and
+the maximum. Each line runs from the centroid of an origin zone to the centroid
+of a destination zone in a single segment, so it is not a route: it does not
+follow any street, and the units it is measured as crossing are the units the
+straight line crosses, not the ones a cyclist would ride through. The
+apportionment is exact arithmetic on a geometry that is itself an abstraction of
+the trip.
+
+**The 181 lines are a selection from a table of at least 7,212, and the criterion
+is not known.** `ORIG_FID` runs from 156 to 7,212 with 181 distinct values, so
+the file was exported from a parent table of at least 7,212 features, roughly
+forty times its size. Nothing in the file or in its ESRI metadata says how those
+rows were chosen. If the selection was by volume, the variable measures the
+principal corridors rather than exposure, and the two are not the same quantity.
+The layer also declares no year: the metadata dates its own export in ArcGIS in
+November 2023 and says nothing about the survey behind it.
+
+Both are questions for my advisor and neither is answerable from the delivered
+data. Until they are answered the exposure can be described in the Datos chapter
+with its limits declared, and no result rests on it.
