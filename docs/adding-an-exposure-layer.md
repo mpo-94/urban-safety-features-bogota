@@ -138,19 +138,31 @@ For a layer declaring `mode="BICYCLE"`:
 | `BICYCLE_LINE_KM_INSIDE` | km | alternative allocation |
 | `BICYCLE_LINES_TOUCHING` | count | how many lines reach the unit |
 | `BICYCLE_TRIPS_PER_WEEK_PER_KM2` | trips/week/km² | the variable over the area |
-| `BICYCLE_TRIPS_PER_WEEK_PER_INHABITANT` | trips/week/person | the variable over the population |
+| `BICYCLE_TRIPS_PER_WEEK_PER_INHABITANT_2023` | trips/week/person | the variable over the 2023 population |
 
-`POPULATION` and `VALUE_STATUS` belong to the unit and take no mode prefix: a
-unit has one population whichever mode is measured against it.
+`POPULATION_2023` and `VALUE_STATUS` take no mode prefix. The status belongs to
+the unit; the population belongs to the *year* your layer declares, which is why
+it carries one. Two layers dated differently produce two population columns, and
+a single column called `POPULATION` could only have held one of them.
 
 The naming rule, in one line: **mode, then what is counted, then over what
 period.** A column that does not say whether it counts a day or a week is the
 same defect as a column called `len_km` holding kilometre-trips, and a column
-that does not say which mode is a collision waiting for the next layer.
+that does not say which mode is a collision waiting for the next layer. A rate
+that does not say which year of population it divided by is the same defect
+again, which is what the year on the last two columns is doing there.
 
 The alternative allocations are **never model variables.** They exist so the
 sensitivity of a result to the allocation rule can be shown rather than asserted,
 and the exported dictionary flags them with `IS_ALTERNATIVE_ALLOCATION`.
+
+Neither is the per-inhabitant column, and for a different reason. **Declare
+`population_reference_year` on the layer**: the population is a series and an
+exposure layer is a snapshot, so the rate needs a year named for it, and it should
+be whatever the layer itself is dated — for the desire lines, the ArcGIS export in
+their metadata. The resulting column describes the unit and does not go into a
+model with a time dimension, because a snapshot over a moving denominator would
+vary from year to year on the denominator alone. See D36.
 
 ---
 

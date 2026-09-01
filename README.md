@@ -75,6 +75,7 @@ python -m src.run_pipeline parties    # stop after party resolution
 python -m src.run_pipeline loading    # sources only: read, locate, verify
 python -m src.run_pipeline map        # the reference map of the thirty units
 python -m src.run_pipeline predictors # the static urban predictors and their figures
+python -m src.run_pipeline population # the denominator: one number per unit and per year
 python -m src.run_pipeline exposure   # travel exposure per unit, and its choropleth
 python -m src.run_pipeline rho        # the ρ(t) diagnostic, beside the pipeline
 python -m src.run_pipeline completeness   # does every month of every year have data?
@@ -132,6 +133,30 @@ The exposure columns carry the mode in their names —
 of colliding with the first. Adding one is a declaration and a run;
 `docs/adding-an-exposure-layer.md` is the procedure, starting with what to verify
 in the file before declaring anything.
+
+The one exposure column that divides by the population names the year it divides
+by, `BICYCLE_TRIPS_PER_WEEK_PER_INHABITANT_2023`, and it is descriptive only. The
+trips carry no year of their own, so putting that ratio in a panel would make it
+move with its denominator alone — a change in cycling that is really a change in
+who lives there. The models take their denominator from the population table
+instead, per unit and per year.
+
+`population` builds the denominator. Casualty counts become rates only when
+divided by the people who were there to be hurt, and that number is a panel:
+**30 units by 18 years, 540 cells, and a missing cell stops the run.** It is
+keyed on the year and not on the unit alone because a denominator that does not
+move within a unit is collinear with that unit's fixed effect and drops out of
+the model — and because the movement is large, from −28.5 % to +557.9 % between
+2007 and 2024 depending on the unit.
+
+The route also measures what the study leaves out. The source covers the 33 UPL
+of Decreto 555 de 2021 and the delivered cartography carries 30; the three it
+adds are the rural units, and they are **0.33 % of the city in 2024**. That
+figure is reported on every run and exported year by year, because it is the
+measured answer to why the universe is 30 units rather than 33.
+
+Which of the file's years are measured and which are projected or backcast is not
+in the file, and the run says so rather than guessing.
 
 `corrected` produces **two datasets in one run**: the observed matrix and one
 corrected for the change in recording practice that ρ revealed. The correction

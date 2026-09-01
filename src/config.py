@@ -1373,6 +1373,119 @@ NOT_MEASURED_STATUS = "NOT_MEASURED"
 
 
 # ---------------------------------------------------------------------------
+# Population
+# ---------------------------------------------------------------------------
+# The denominator of every rate the study will estimate: one number per unit and
+# per year. It arrives as a demographic file with one row per unit, year, sex and
+# single year of age, and the pipeline adds it up to (unit, year) and to nothing
+# coarser.
+#
+# **Keyed on the year and not on the unit alone**, which is a modelling decision
+# and not a convenience. A denominator constant within a unit is collinear with
+# that unit's fixed effect and drops out of the model, taking the normalisation
+# with it. The variation it would discard is not noise: between 2007 and 2024 a
+# unit's population moves by anything from -28.5% to +557.9%. And the series is a
+# superset of the snapshot — it can always be collapsed to one number per unit,
+# and one number per unit can never be expanded into a series. See D36.
+#
+# **What is measured and what is estimated is not in the file.** The years run
+# from 2005 to 2035, which is wider than any census, so some of them are
+# projections and some are probably backcasts. Which is which cannot be read off
+# the file, and reading it off the shape of the series would be inference dressed
+# as provenance. It is an open question for my advisor and nothing here assumes
+# an answer. See D36.
+POPULATION_COL = "POPULATION"
+
+
+@dataclass(frozen=True)
+class PopulationSource:
+    """The population file, declared column by column and read through it.
+
+    Same discipline as a predictor layer: the columns are named here, the reader
+    holds the file to that declaration, and a delivery that renames one fails at
+    the read rather than measuring something else. The names are spelled as the
+    file spells them, accents and all.
+    """
+
+    path: Path
+    separator: str
+    # The file is delivered with a byte order mark, which utf-8-sig strips and
+    # plain utf-8 leaves glued to the first column name.
+    encoding: str
+    year_column: str
+    code_column: str
+    name_column: str
+    count_column: str
+    # The columns the count is broken down by, and which the aggregation adds
+    # away. Declared rather than implied so the funnel can say how many rows one
+    # unit-year was assembled from, and so a delivery that gains a third
+    # breakdown is a visible change rather than a silently different total.
+    breakdown_columns: tuple[str, ...]
+    # The file numbers its units 1 to 33; the unit layer spells them UPL01 to
+    # UPL33. The rule is written out because a raw 7 and a UPL07 are the same
+    # unit, and a join on the wrong one of them matches nothing at all rather
+    # than matching wrongly, which is the failure that hides longest.
+    code_prefix: str
+    code_digits: int
+    describes: str
+
+    def unit_code(self, raw: int) -> str:
+        return f"{self.code_prefix}{int(raw):0{self.code_digits}d}"
+
+
+POPULATION_SOURCE = PopulationSource(
+    path=DATA_DIR / "osb_demografia-poblacion-upl.csv",
+    separator=";",
+    encoding="utf-8-sig",
+    year_column="ANO",
+    code_column="CODIGO_UPL",
+    name_column="NOMBRE_UPL",
+    count_column="POBLACION",
+    breakdown_columns=("SEXO", "EDAD"),
+    code_prefix="UPL",
+    code_digits=2,
+    describes=(
+        "one row per territorial unit, year, sex and single year of age, with the "
+        "unit numbered as an integer and the population as a whole number"
+    ),
+)
+
+# The units the file carries that the study does not. Decreto 555 de 2021 defines
+# 33 UPL and the delivered cartography holds 30; the three missing ones are the
+# rural units, where the urban predictors are undefined. They are named here so
+# the run can report what the study leaves out in people rather than in polygons,
+# which is the measured confirmation that the universe is 30 and not a shortfall.
+# A delivery whose extra units differ from these is reported rather than passed
+# over: it would mean the file and the cartography no longer describe the same
+# division of the city.
+POPULATION_UNITS_OUTSIDE_STUDY: tuple[str, ...] = ("UPL01", "UPL02", "UPL06")
+
+# One row per unit and year, in this order. Identity, then the count. There is no
+# status column: a unit-year is either in the file or the run fails, because a
+# denominator that is quietly absent for one cell of the panel would take that
+# cell out of every model without saying so.
+POPULATION_TABLE_COLUMNS: tuple[str, ...] = (
+    SCALE_COL,
+    AREA_CODE_COL,
+    AREA_NAME_COL,
+    YEAR_COL,
+    POPULATION_COL,
+)
+
+
+def population_column(year: int) -> str:
+    """The name one year of population takes outside the population table.
+
+    In that table the year is a column and the count is `POPULATION`, which is
+    the right shape for a panel. Anywhere the year is not a column — the exposure
+    table, which is one row per unit — the count has to carry its year in its
+    name instead, or it becomes a population of nowhere in particular. This is
+    the same rule the trip columns follow, applied to the denominator.
+    """
+    return f"{POPULATION_COL}_{year}"
+
+
+# ---------------------------------------------------------------------------
 # Exposure
 # ---------------------------------------------------------------------------
 # How much travel of a given mode passes through a unit. This is not an urban
@@ -1428,6 +1541,14 @@ class SurveyLineLayer:
     destination_y_column: str
     measures: str  # one line: what the variable is, for the log and the dictionary
     time_coverage: str
+    # The year of population the per-inhabitant column divides by. The layer
+    # itself carries no year, so the rate has to name the year of its denominator
+    # or it says nothing: dividing an undated numerator by a population that
+    # moves would make the rate change with the denominator alone. 2023 is the
+    # only date attached to this file — the ArcGIS export in its metadata — and
+    # it is a property of the layer rather than a setting of the module, because
+    # a second layer would come with a date of its own. See D36.
+    population_reference_year: int = LAST_YEAR
     geometry: str = LINE_GEOMETRY
 
     @property
@@ -1443,8 +1564,14 @@ class SurveyLineLayer:
         column cannot exist without saying which mode it counts, which is the
         failure this naming exists to prevent: `TRIPS_PER_WEEK` was correct only
         for as long as there was one layer.
+
+        A suffix may also ask for the layer's own population year, which is how
+        the per-inhabitant column ends up naming the year it divides by instead
+        of leaving a reader to assume one. Filling it here rather than at each
+        call site means the column name and the number underneath it come from
+        the same declaration and cannot drift apart.
         """
-        return f"{self.mode}_{suffix}"
+        return f"{self.mode}_{suffix.format(population_year=self.population_reference_year)}"
 
     @property
     def attribute_columns(self) -> tuple[str, ...]:
@@ -1483,6 +1610,10 @@ BICYCLE_DESIRE_LINES = SurveyLineLayer(
     # ArcGIS rather than the survey behind it. Treated as a snapshot of unknown
     # date until my advisor says which survey it is. See D35.
     time_coverage=SNAPSHOT_COVERAGE,
+    # November 2023 is what that ArcGIS export is dated, and it is the closest
+    # thing to a date the layer has. It fixes the denominator of the
+    # per-inhabitant column and appears in that column's name. See D36.
+    population_reference_year=2023,
 )
 
 # -- what the exposure table holds ------------------------------------------
@@ -1521,6 +1652,7 @@ class ExposureQuantity:
             weekly=layer.weekly_weight_column,
             daily=layer.daily_weight_column,
             mode=layer.mode.lower(),
+            population_year=layer.population_reference_year,
         )
 
 
@@ -1569,15 +1701,13 @@ EXPOSURE_QUANTITIES: tuple[ExposureQuantity, ...] = (
         means="the variable over the area of the unit",
     ),
     ExposureQuantity(
-        suffix="TRIPS_PER_WEEK_PER_INHABITANT",
+        suffix="TRIPS_PER_WEEK_PER_INHABITANT_{population_year}",
         unit="trips per week per inhabitant",
-        means="the variable over the population of the unit; null wherever the population is",
+        means="descriptive only: the variable over the {population_year} population of the unit. "
+              "The trips carry no year, so this is a ratio of a snapshot to one year's residents "
+              "and never a series; see D36",
     ),
 )
-
-EXPOSURE_QUANTITIES_BY_SUFFIX: dict[str, ExposureQuantity] = {
-    quantity.suffix: quantity for quantity in EXPOSURE_QUANTITIES
-}
 
 # The four the module refers to by name, so a rename is caught by the interpreter
 # rather than by a column that silently stops existing.
@@ -1588,13 +1718,7 @@ TRIPS_WEEKLY_AT_DESTINATION_SUFFIX = "TRIPS_PER_WEEK_AT_DESTINATION"
 LINE_KM_INSIDE_SUFFIX = "LINE_KM_INSIDE"
 LINES_TOUCHING_SUFFIX = "LINES_TOUCHING"
 TRIPS_WEEKLY_PER_KM2_SUFFIX = "TRIPS_PER_WEEK_PER_KM2"
-TRIPS_WEEKLY_PER_PERSON_SUFFIX = "TRIPS_PER_WEEK_PER_INHABITANT"
-
-# The two columns of the table that belong to the unit and not to a mode. The
-# population of a unit is the same number whichever mode is being measured
-# against it, and the status says whether the unit could be measured at all, so
-# neither takes a mode prefix.
-POPULATION_COL = "POPULATION"
+TRIPS_WEEKLY_PER_PERSON_SUFFIX = "TRIPS_PER_WEEK_PER_INHABITANT_{population_year}"
 
 # Every exposure layer the pipeline measures. Adding one means adding it here and
 # nothing else: the columns, the dictionary, the figures and the checks all
@@ -1616,7 +1740,11 @@ def exposure_columns(layers: tuple[SurveyLineLayer, ...] | None = None) -> tuple
         AREA_NAME_COL,
         AREA_UNIT_KM2_COL,
         YEAR_COL,
-        POPULATION_COL,
+        # One population column per distinct reference year among the layers, and
+        # not one called POPULATION: the year a layer divides by belongs to that
+        # layer, so two layers dated differently need two denominators and a
+        # single undated column could only hold one of them.
+        *exposure_population_columns(layers),
         *(
             layer.column(quantity.suffix)
             for layer in layers
@@ -1624,6 +1752,19 @@ def exposure_columns(layers: tuple[SurveyLineLayer, ...] | None = None) -> tuple
         ),
         PREDICTOR_STATUS_COL,
     )
+
+
+def exposure_population_years(layers: tuple[SurveyLineLayer, ...] | None = None) -> tuple[int, ...]:
+    """The population years the declared layers divide by, ascending and distinct."""
+    layers = EXPOSURE_LAYERS if layers is None else layers
+    return tuple(sorted({layer.population_reference_year for layer in layers}))
+
+
+def exposure_population_columns(
+    layers: tuple[SurveyLineLayer, ...] | None = None,
+) -> tuple[str, ...]:
+    """The population columns of the exposure table, one per distinct year."""
+    return tuple(population_column(year) for year in exposure_population_years(layers))
 
 # What every apportioned total is checked against. The shares of one line over
 # the units it crosses add to less than one whenever part of it leaves the study
@@ -1650,39 +1791,6 @@ EXPOSURE_MAX_OVER_COVERAGE = 1e-6
 # exists in the delivered layer; the guard is here because the failure would
 # otherwise be a silent NaN in one unit rather than a message.
 EXPOSURE_MIN_LINE_LENGTH_M = 1e-9
-
-# -- population, which the study does not have yet --------------------------
-# Trips per inhabitant is the normalisation a measure of travel asks for, and it
-# cannot be computed from anything in data/. The unit layer carries AREA_HA and
-# no population, and the only population in the delivered data is the poblacion_
-# column of the UPZ layer, which is a different set of 111 polygons that do not
-# nest inside the 30 UPL. Apportioning it from UPZ to UPL would be an assumption
-# about how population is distributed inside a UPZ, and that is a methodological
-# choice rather than a lookup, so it is not made here.
-#
-# What is here instead is the socket. Drop a CSV at the declared path with the
-# two declared columns and the two population columns fill in on the next run;
-# until then they are null, the status of the run says so loudly, and nothing
-# downstream sees a fabricated number. See D35.
-@dataclass(frozen=True)
-class PopulationSource:
-    """Where the population of each unit would be read from, if it existed."""
-
-    path: Path
-    code_column: str  # must hold the same unit codes as the unit layer
-    population_column: str
-    describes: str
-
-
-POPULATION_SOURCE = PopulationSource(
-    path=GEO_DATA_DIR / "population_upl.csv",
-    code_column=AREA_CODE_COL,
-    population_column=POPULATION_COL,
-    describes=(
-        "one row per territorial unit, its code exactly as the unit layer spells it "
-        "and its resident population as a whole number"
-    ),
-)
 
 # -- the choropleth ---------------------------------------------------------
 EXPOSURE_FIGURES_SUBDIR = "exposure"

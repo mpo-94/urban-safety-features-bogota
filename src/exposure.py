@@ -56,11 +56,12 @@ import pandas as pd
 from shapely.geometry import Point
 
 try:  # regular package import
-    from src import config, maps, predictors
+    from src import config, maps, population, predictors
     from src.provenance import RunLog
 except ImportError:  # executed as a plain script from inside src/
     import config  # type: ignore[no-redef]
     import maps  # type: ignore[no-redef]
+    import population  # type: ignore[no-redef]
     import predictors  # type: ignore[no-redef]
     from provenance import RunLog  # type: ignore[no-redef]
 
@@ -339,53 +340,29 @@ def endpoint_totals(
 # ---------------------------------------------------------------------------
 
 
-def load_population(units: gpd.GeoDataFrame, log: RunLog) -> pd.Series | None:
-    """The population of each unit, or nothing at all and a loud message.
+def population_by_year(
+    units: gpd.GeoDataFrame,
+    log: RunLog,
+    scale: config.TerritorialScale | None = None,
+    layers: tuple[config.SurveyLineLayer, ...] | None = None,
+) -> dict[int, pd.Series]:
+    """The population of every unit, for each year a declared layer divides by.
 
-    Trips per inhabitant is the normalisation a measure of travel asks for, and
-    the study does not have the number. The unit layer carries an area and no
-    population; the only population in the delivered data is on the UPZ layer,
-    which is a different set of 111 polygons that do not nest inside the 30 units,
-    and spreading it from one to the other would be an assumption about how people
-    are distributed inside a UPZ rather than a lookup.
+    Exposure is a snapshot and population is a series, so the two only meet at a
+    year somebody has to name. Each layer names its own — the one date attached to
+    the file it came from — and this returns exactly those years, so the module can
+    never divide by a year no layer asked for. See D36.
 
-    So the column is left null and the run says so, every time, naming the file it
-    would read and the columns it expects. A fabricated denominator would be worse
-    than an absent one: the absent one is visible.
+    The panel itself is built by the population module and not read here. Two
+    readers of one file would be two chances to sum it differently, and the
+    checks that say the sum is right live with the module that does it.
     """
-    source = config.POPULATION_SOURCE
-    if not source.path.exists():
-        log.warn(
-            "no population source at %s, so %s and the per-inhabitant column of every mode "
-            "come out null on every unit. To fill them, put a CSV there with %s",
-            source.path,
-            config.POPULATION_COL,
-            source.describes,
-        )
-        return None
-
-    table = pd.read_csv(source.path, encoding="utf-8")
-    for column in (source.code_column, source.population_column):
-        if column not in table.columns:
-            raise ValueError(
-                f"{source.path} does not carry {column!r}; it needs {source.describes}"
-            )
-
-    population = table.set_index(source.code_column)[source.population_column].astype(float)
-    expected = set(units[config.AREA_CODE_COL])
-    missing = sorted(expected - set(population.index))
-    unknown = sorted(set(population.index) - expected)
-    if missing or unknown:
-        log.warn(
-            "%s covers %d of the %d units; missing %s, unknown %s",
-            source.path.name,
-            len(expected & set(population.index)),
-            len(expected),
-            missing or "none",
-            unknown or "none",
-        )
-    log.info("population read from %s for %d unit(s)", source.path.name, len(population))
-    return population.rename(config.POPULATION_COL)
+    layers = layers or config.EXPOSURE_LAYERS
+    panel, _, _ = population.build(units, log, scale=scale)
+    return {
+        year: population.for_year(panel, year)
+        for year in config.exposure_population_years(tuple(layers))
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -475,22 +452,21 @@ def build(
         table[touching] = table[touching].fillna(0).astype(int)
         counted_columns.extend(measured)
 
-    population = load_population(projected, log)
-    if population is None:
-        table[config.POPULATION_COL] = np.nan
-    else:
-        table[config.POPULATION_COL] = table[config.AREA_CODE_COL].map(population)
+    residents_by_year = population_by_year(projected, log, scale=scale, layers=tuple(layers))
+    for year, residents in residents_by_year.items():
+        table[config.population_column(year)] = table[config.AREA_CODE_COL].map(residents)
 
     area = table[config.AREA_UNIT_KM2_COL]
     unusable_area = ~(area > 0)
-    residents = table[config.POPULATION_COL]
     for layer in layers:
         weekly = layer.column(config.TRIPS_WEEKLY_SUFFIX)
         table[layer.column(config.TRIPS_WEEKLY_PER_KM2_SUFFIX)] = (
             table[weekly] / area.where(area > 0)
         )
-        # Null wherever the denominator is, which is every unit until a population
-        # source exists. Never a zero: a rate with no denominator is not zero.
+        # Each layer divides by its own year, which is the year its column name
+        # carries. Null rather than zero wherever the denominator is missing: a
+        # rate with no denominator is not a rate of nought.
+        residents = table[config.population_column(layer.population_reference_year)]
         table[layer.column(config.TRIPS_WEEKLY_PER_PERSON_SUFFIX)] = (
             table[weekly] / residents.where(residents > 0)
         )
@@ -561,23 +537,26 @@ def dictionary_table(layers: tuple[config.SurveyLineLayer, ...] | None = None) -
         for quantity in config.EXPOSURE_QUANTITIES
     ]
 
-    # The two columns that belong to the unit rather than to a mode. Population
-    # names the file it would come from: a dictionary row pointing it at the
-    # desire lines would state, in the one document meant to make provenance
-    # checkable, that a mobility survey counts residents.
-    rows.append({
-        "COLUMN": config.POPULATION_COL,
-        "MODE": "",
-        "UNIT": "inhabitants",
-        "MEANS": (
-            f"resident population of the unit, read from {config.POPULATION_SOURCE.path.name} "
-            "and not from any exposure layer; null while the study has no population source"
-        ),
-        "IS_ALTERNATIVE_ALLOCATION": False,
-        "SOURCE_LAYER": config.POPULATION_SOURCE.path.parent.name,
-        "SOURCE_FILE": config.POPULATION_SOURCE.path.name,
-        "TIME_COVERAGE": "",
-    })
+    # The columns that belong to the unit rather than to a mode. Population names
+    # the file it comes from: a dictionary row pointing it at the desire lines
+    # would state, in the one document meant to make provenance checkable, that a
+    # mobility survey counts residents.
+    for year in config.exposure_population_years(tuple(layers)):
+        rows.append({
+            "COLUMN": config.population_column(year),
+            "MODE": "",
+            "UNIT": "inhabitants",
+            "MEANS": (
+                f"resident population of the unit in {year}, read from "
+                f"{config.POPULATION_SOURCE.path.name} and not from any exposure layer. It is "
+                f"here because a layer dated {year} divides by it; the population of every year "
+                "is in the population table"
+            ),
+            "IS_ALTERNATIVE_ALLOCATION": False,
+            "SOURCE_LAYER": config.POPULATION_SOURCE.path.parent.name,
+            "SOURCE_FILE": config.POPULATION_SOURCE.path.name,
+            "TIME_COVERAGE": str(year),
+        })
     rows.append({
         "COLUMN": config.PREDICTOR_STATUS_COL,
         "MODE": "",
@@ -825,6 +804,24 @@ def verify(
             "compared to 1e-12",
         ))
 
+        # The denominator is a year of a series and the numerator has no year at
+        # all, so the one thing that can be checked is that the division is the
+        # division the column name states. It is checked against the population
+        # column of the same year in the same table, which is what a reader would
+        # recompute it from.
+        residents_column = config.population_column(layer.population_reference_year)
+        residents = measured[residents_column]
+        checks.append((
+            f"{tag}: the per-inhabitant column is the variable over {residents_column}",
+            bool(np.allclose(
+                (measured[weekly] / residents.where(residents > 0)).to_numpy(),
+                measured[layer.column(config.TRIPS_WEEKLY_PER_PERSON_SUFFIX)].to_numpy(),
+                rtol=1e-12,
+                equal_nan=True,
+            )),
+            f"compared to 1e-12 against {residents_column}",
+        ))
+
         # A zero is a measurement here and a null is not. Confusing them is what
         # this pipeline exists to make impossible, so it is checked rather than
         # assumed.
@@ -936,10 +933,26 @@ def report(
             ranks.to_string(float_format=lambda value: f"{value:.3f}"),
         )
 
-    if table[config.POPULATION_COL].isna().all():
+    for layer in layers:
+        year = layer.population_reference_year
+        rate = table[layer.column(config.TRIPS_WEEKLY_PER_PERSON_SUFFIX)]
+        if rate.notna().any():
+            log.info(
+                "%s per inhabitant of %d: %.2f to %.2f trips per week, median %.2f",
+                layer.mode.lower(),
+                year,
+                rate.min(),
+                rate.max(),
+                rate.median(),
+            )
+        # Said on every run, because a column that looks like a rate will be used
+        # as one. This one is a snapshot of unknown date over the residents of a
+        # single year, so it describes and it does not model: put it in a panel and
+        # it would move with its denominator alone. See D36.
         log.warn(
-            "%s is null on every unit, so the per-inhabitant column of every mode could not "
-            "be computed. It is the normalisation a measure of travel asks for, and the study "
-            "has no population source; see D35",
-            config.POPULATION_COL,
+            "%s is descriptive only. The trips carry no year, so dividing them by a population "
+            "that does gives a ratio for %d and never a series; the models take their "
+            "denominator from the population table, per unit and per year. See D36",
+            layer.column(config.TRIPS_WEEKLY_PER_PERSON_SUFFIX),
+            year,
         )

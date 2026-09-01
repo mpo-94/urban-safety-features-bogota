@@ -12,6 +12,7 @@ resolution should not have to rebuild fifty-seven figures first.
     python -m src.run_pipeline loading         # sources only
     python -m src.run_pipeline rho             # the rho(t) diagnostic
     python -m src.run_pipeline predictors      # the static urban predictors
+    python -m src.run_pipeline population      # the denominator, per unit and per year
     python -m src.run_pipeline exposure        # travel exposure from the desire lines
     python -m src.run_pipeline completeness    # do the sources cover every month?
     python -m src.run_pipeline integrate       # rebuild the layers from the updated extract
@@ -41,6 +42,7 @@ from src import (
     maps,
     matrix,
     parties,
+    population,
     predictors,
     rho,
 )
@@ -166,6 +168,25 @@ def run_predictors(log: RunLog) -> None:
     ):
         raise RouteFailed("the correlation exported for the models is not the model set's")
     predictors.report(long_table, log)
+
+
+def run_population(log: RunLog) -> None:
+    """The resident population of every unit in every year of the study.
+
+    A route of its own because the population is nobody's variable: it is the
+    denominator every rate divides by, and it belongs to the study rather than to
+    the module that happens to use it first. Like the predictor and exposure
+    routes it reads the unit layer and its own source and nothing else.
+    """
+    units = loading.load_territorial_units(log)
+    table, totals, raw = population.build(units, log)
+
+    paths = population.export(table, totals, units, log)
+
+    log.table("record funnel:", log.funnel())
+    if not population.verify(table, totals, raw, units, log, paths=paths):
+        raise RouteFailed("the population panel does not agree with the file it was built from")
+    population.report(table, totals, units, log)
 
 
 def run_exposure(log: RunLog) -> None:
@@ -342,6 +363,7 @@ ROUTES: tuple[Route, ...] = (
     Route("parties", "up to party resolution: one row per affected party", run_parties),
     Route("loading", "sources only: read them, locate them, verify the counts", run_loading),
     Route("predictors", "the static urban predictors, with histograms and their correlation", run_predictors),
+    Route("population", "the resident population of every unit, in every year of the study", run_population),
     Route("exposure", "travel exposure per unit, from the origin-destination desire lines", run_exposure),
     Route("rho", "rho(t): share of two-party crashes where both parties were hurt", run_rho),
     Route("map", "the reference map of the territorial units, with and without a scale bar", run_map),

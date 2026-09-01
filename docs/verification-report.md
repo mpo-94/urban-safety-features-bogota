@@ -12,7 +12,8 @@ Section 11 covers the tree variables and the tables the pipeline now emits as
 LaTeX source. Section 12 covers the two sets of predictor figures and the check
 that the printed correlation and the drawn one are the same numbers. Section 13
 covers travel exposure, which is measured beside the predictors and belongs on
-the other side of a rate model.
+the other side of a rate model. Section 14 covers the population panel, which is
+what both of them and the casualty counts are divided by.
 
 | | |
 |---|---|
@@ -914,7 +915,7 @@ nothing.
 
 ## 13. Travel exposure
 
-Run `run_20260901_003409`, route `exposure`, command
+Run `run_20260901_091802`, route `exposure`, command
 `python -m src.run_pipeline exposure`. **Every check passed.** The
 origin-destination desire lines of the mobility survey give each unit a measure
 of how much cycling passes through it. It is not a predictor and is not in the
@@ -979,6 +980,7 @@ up in percentage points.
 | Weekly over daily lies between 1 and 7 in every unit | observed 4.737 to 5.545 days per week | **Pass** |
 | The declared endpoints are the ends of the geometry | largest gap 0.000000 m | **Pass** |
 | The per-km² column is the variable over the area of its unit | compared to 1 × 10⁻¹² | **Pass** |
+| The per-inhabitant column is the variable over `POPULATION_2023` | compared to 1 × 10⁻¹² | **Pass** |
 | A unit no line reaches carries a zero and the status `MEASURED` | 1 unit at zero, UPL07 | **Pass** |
 | Every exported file is on disk and none is empty | 2 of 2 | **Pass** |
 
@@ -1002,7 +1004,7 @@ layer is a snapshot and declares no year.
 |---|---|---|
 | `SCALE`, `AREA_CODE`, `AREA_NAME`, `AREA_UNIT_KM2` | — | identity of the unit, spelled as every other table spells it |
 | `YEAR` | — | null, the layer being a snapshot |
-| `POPULATION` | inhabitants | null; the study has no population source |
+| `POPULATION_2023` | inhabitants | the denominator of the column below, from the population panel |
 | `BICYCLE_TRIPS_PER_WEEK_BY_LENGTH_SHARE` | trips per week | **the variable** |
 | `BICYCLE_TRIPS_PER_DAY_BY_LENGTH_SHARE` | trips per day | the same apportionment applied to `f_exp` |
 | `BICYCLE_TRIPS_PER_WEEK_AT_ORIGIN` | trips per week | alternative allocation |
@@ -1010,15 +1012,22 @@ layer is a snapshot and declares no year.
 | `BICYCLE_LINE_KM_INSIDE` | km | alternative allocation, carrying no trip count |
 | `BICYCLE_LINES_TOUCHING` | count | how many lines reach the unit |
 | `BICYCLE_TRIPS_PER_WEEK_PER_KM2` | trips per week per km² | the variable over the area of the unit |
-| `BICYCLE_TRIPS_PER_WEEK_PER_INHABITANT` | trips per week per inhabitant | null while `POPULATION` is |
+| `BICYCLE_TRIPS_PER_WEEK_PER_INHABITANT_2023` | trips per week per inhabitant | descriptive only, never a series |
 | `VALUE_STATUS` | — | `MEASURED` on all 30 units |
 
 Every quantity carries its mode in the name, so a second exposure layer adds
-columns instead of colliding with these. The two per-inhabitant columns are null
-on all 30 units and the run says so as a warning: the only population in the
-delivered data is on the UPZ layer, 111 polygons that do not nest inside the 30
-units, and apportioning it would be an assumption rather than a lookup. A CSV at
-the declared path fills both columns with no other change.
+columns instead of colliding with these.
+
+The two population columns were null when this route was first built and are not
+any more: the census integrated in section 14 fills them. They carry **2023** in
+their names because that is the year the layer declares — the ArcGIS export in
+its metadata, the only date the desire lines have — and because the population is
+a series while the trips are a snapshot, so the rate has to name the year of its
+denominator. Bicycle trips per inhabitant of 2023 run from 0.00 to 0.21 per week,
+median 0.05. **The column is descriptive and enters no model with a time
+dimension**, and the run says so as a warning on every execution: a snapshot over
+a moving denominator would vary from year to year on the denominator alone. The
+models take their denominator from the population panel instead. See D36.
 
 | Quantity | Minimum | Median | Maximum |
 |---|---:|---:|---:|
@@ -1098,3 +1107,141 @@ November 2023 and says nothing about the survey behind it.
 Both are questions for my advisor and neither is answerable from the delivered
 data. Until they are answered the exposure can be described in the Datos chapter
 with its limits declared, and no result rests on it.
+
+---
+
+## 14. The population panel
+
+Run `run_20260901_092902`, route `population`, command
+`python -m src.run_pipeline population`. **Every check passed.** This is the
+denominator: a casualty count becomes a rate only when it is divided by the
+people who were there to be hurt. The decision is D36, which fills the socket D35
+declared and changes its key from the unit to the unit and the year.
+
+The source is `osb_demografia-poblacion-upl.csv`, one row per unit, year, sex and
+single year of age. **175,956 rows, no nulls, no duplicates on that key**, over
+the 33 units of Decreto 555 de 2021 and the years 2005 to 2035.
+
+### Funnel
+
+| Stage | In | Out | Cause of the difference |
+|---|---:|---:|---|
+| load territorial units | 30 | 30 | — |
+| read the population file | 175,956 | 175,956 | the declared columns only; the life-course and age-band labels are groupings of the age already read |
+| add the population over sex and age | 175,956 | 1,023 | −174,933 rows to the sum: one row per unit and year in place of one per sex and age within it |
+| restrict the population to the study | 1,023 | 540 | −483 unit-years outside the study: 3 units the cartography does not carry, and the years outside 2007–2024 |
+
+The file as delivered holds 233,245,334 person-years over its 33 units and 31
+years. The study's window over its 30 units holds 132,448,396 of them.
+
+### The grid is full, and a hole would stop the run
+
+**30 units × 18 years = 540 cells, every one of them filled.** The panel is built
+as the complete grid first and the file joined onto it, so a unit-year the file
+did not cover would arrive as a null the check can see rather than as a row that
+is simply absent.
+
+That it is a failure and not a warning is deliberate, and the asymmetry with the
+predictors is the point: a predictor missing for one unit-year leaves a hole a
+reader notices, while a denominator missing for one unit-year silently removes
+that cell from every model built on it, and nothing in the output would say which
+cell went.
+
+### Verdict by check
+
+| Check | Result | Verdict |
+|---|---|---|
+| The table carries exactly the declared columns, in the declared order | 5 against 5 declared | **Pass** |
+| One row per unit and year, with no unit and no year missing | 540 rows against 30 units × 18 years | **Pass** |
+| Every unit-year of the study has a population | 0 cells with none | **Pass** |
+| No population is zero or negative | 0 cells at or below zero | **Pass** |
+| The table holds exactly the people the file holds for those units and years | 132,448,396 against 132,448,396 | **Pass** |
+| The file has one row per unit, year, sex and age | 0 duplicate rows | **Pass** |
+| Every unit name in the file matches the cartography character for character | 30 of 30 matched | **Pass** |
+| The units the file adds to the study are the declared ones | UPL01, UPL02, UPL06 against the three declared | **Pass** |
+| Every exported file is on disk and none is empty | 2 of 2 | **Pass** |
+
+Two of these carry more than they look like. **The balance** is what says the sum
+over sex and age neither dropped a row nor counted one twice: every person in a
+study cell of the file is in the table exactly once. **The name check** is what
+says the join is right at all. The join runs on the code, so the code cannot be
+the evidence for it — the file numbers its units 1 to 33 and the cartography
+spells them `UPL01` to `UPL33`, and a mapping that is merely well-formed would
+still join the wrong places together. The names were delivered independently of
+the cartography and all thirty agree character for character, accents included.
+Any one of them disagreeing stops the run.
+
+### What the denominator looks like
+
+| | 2007 | 2024 |
+|---|---:|---:|
+| The 30 units together | 6,869,136 | 7,892,809 |
+| Smallest unit | — | 120,770 (UPL07 Torca) |
+| Largest unit | — | 440,572 (UPL11 Engativá) |
+| Median unit | — | 261,151 |
+
+The city of the study grows 14.9 % across the period. **What the units do
+individually is the argument for keeping the year**, and it is not a summary of
+that 14.9 %:
+
+| | Change 2007 → 2024 |
+|---|---|
+| Smallest | **−28.5 %**, UPL33 Barrios Unidos (189,810 → 135,762) |
+| Largest | **+557.9 %**, UPL07 Torca (18,357 → 120,770) |
+| Median | +16.5 % |
+| Units that lost population | 7 of 30 |
+
+A denominator averaged into one number per unit would put the same figure under a
+2008 casualty count and a 2024 one in a place where six times as many people now
+live, and it would do it while being collinear with the unit effect and dropping
+out of the model altogether. Torca is also the unit no bicycle desire line
+reaches and the largest of the thirty by area, so it is the unit where every
+choice of this kind lands hardest.
+
+### The three units the study does not have, in people
+
+The file covers the 33 UPL of Decreto 555 de 2021 and the delivered cartography
+covers 30. The three it adds are the rural units, where the urban predictors are
+largely undefined. **This is the first place the study universe can be measured
+in people rather than in polygons.**
+
+| Unit | 2007 | 2024 |
+|---|---:|---:|
+| UPL01 Sumapáz | 4,947 | 3,305 |
+| UPL02 Cuenca del Tunjuelo | 9,188 | 19,888 |
+| UPL06 Cerros Orientales | 1,298 | 2,658 |
+| **Together** | **15,433** | **25,851** |
+| **Share of the city the file describes** | **0.224 %** | **0.326 %** |
+
+Across 2007–2024 the three never exceed **0.33 %** of the city. The study covers
+99.7 % of Bogotá's population, and it is exported year by year in
+`presentation__population_outside_the_study.csv`. It confirms the universe rather
+than qualifying it.
+
+The warning is raised where the file is read and not where the summary is
+printed, so a route that only borrows one year of the population — `exposure`
+does — carries it too. The same applies to the open question below. A caveat that
+appears only when somebody asks for the summary is a caveat that stops being
+seen.
+
+The file spells the first of them `Sumapáz`, with an accent the official name
+does not carry. It is reported as the file spells it.
+
+### What is open, and it is not answerable from the file
+
+**Which years are measured and which are projected or backcast.** The file spans
+2005 to 2035. No census covers that, so some of those years are projections, and
+the ones before 2018 are probably backcasts of one. Nothing in the file or
+shipped beside it says which is which.
+
+**The shape of the series is not evidence for it.** A smooth curve is what a
+projection and an interpolated census both look like, and reading provenance off
+one would be inference presented as fact. The run says so on every execution
+rather than letting the panel look more solid than it is.
+
+It matters for the study period rather than for the arithmetic. If 2007–2017 is
+backcast from the 2018 census, the denominator of the first eleven years is a
+model and not a count, and that belongs in the same paragraph as the ρ
+correction: both are places where the data before 2018 are of a different kind
+from the data after it. To be confirmed against the source before any document
+says which years are which.

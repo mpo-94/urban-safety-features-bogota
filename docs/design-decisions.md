@@ -62,6 +62,7 @@ carried, so the second is larger for the same underlying records.
 | D33 | The tables the deliverables print are emitted as LaTeX, not transcribed | Implementation | Closed | Yes |
 | D34 | The predictor figures come in two sets, and two variables are in neither | Implementation | Closed | Yes |
 | D35 | The desire lines enter as exposure, apportioned by share of length | Methodological | Closed on the rule; the year and the selection are **open** | Yes |
+| D36 | The population enters as a panel, one number per unit and per year | Methodological | Closed on the shape; which years are measured and which modelled is **open** | Yes |
 
 Methodological decisions: D1-D7, D9, D10, D11, D15, D17, D18, D19, D21, D22, D32, D35.
 Implementation decisions: D8, D12, D13, D14, D16, D20, D23, D24, D25, D26, D27, D33, D34.
@@ -2562,21 +2563,30 @@ in `docs/adding-an-exposure-layer.md`. It is a procedure and not a note because
 the trap is always the same one: the expansion factor, whether the file has
 already multiplied it out, and what period it expands.
 
-### Normalisation, and the column that is empty
+### Normalisation, and the column that was empty
+
+*Superseded in part by D36, which filled this socket and changed its key. What
+follows is what was decided here; what the population is now is D36.*
 
 The table carries trips per week per km², which is computed, and trips per week
-per inhabitant, which is not: **the study has no population by unit.** The unit
-layer carries `AREA_HA` and nothing else, and the only population in the
-delivered data is the `poblacion_` column of the UPZ layer — 111 polygons that do
-not nest inside the 30 units. Spreading it from one geometry to the other would
-be an assumption about how population is distributed inside a UPZ, which is a
-methodological choice and not a lookup, so it is not made here.
+per inhabitant, which at the time was not: **the study had no population by
+unit.** The unit layer carries `AREA_HA` and nothing else, and the only
+population in the delivered data was the `poblacion_` column of the UPZ layer —
+111 polygons that do not nest inside the 30 units. Spreading it from one geometry
+to the other would be an assumption about how population is distributed inside a
+UPZ, which is a methodological choice and not a lookup, so it was not made.
 
 **Decision — the column exists, is null, and the run says so loudly on every
-execution**, naming the file it would read and the columns it expects:
-`data/geo/population_upl.csv`, one row per unit with its code exactly as the unit
-layer spells it and its resident population. A fabricated denominator would be
-worse than an absent one, because the absent one is visible.
+execution**, naming the file it would read and the columns it expects. A
+fabricated denominator would be worse than an absent one, because the absent one
+is visible.
+
+**What that socket assumed turned out to be wrong, and D36 says why.** It was
+keyed on the unit alone, and a denominator that does not move within a unit is
+collinear with that unit's fixed effect and drops out of the model. The census
+file that fills it is keyed on the unit and the year, and it enters that way.
+The per-inhabitant column here is now computed against a single declared year,
+2023, which its name carries; it describes and it is not a model variable.
 
 Which normalisation the models use is a separate question and stays open. If the
 variable enters as an offset it goes in as a level and is not normalised at all,
@@ -2626,3 +2636,153 @@ corridors correlate with the very infrastructure the predictors measure, which
 would make it the wrong variable in a way no amount of care in the allocation
 could fix. Until that is answered the variable is built, exported and mapped, and
 no result rests on it.
+
+---
+
+## D36 — The population enters as a panel, one number per unit and per year
+
+**Kind:** Methodological. It decides what every rate in the study divides by, and
+what that denominator is allowed to be used for.
+
+**Status:** Closed on the shape of the denominator and on where it comes from.
+**One thing about the file is open** and it is not mine to close: which of its
+years are measured and which are projected or backcast.
+
+**Built:** Yes. `src/population.py`, route `population`. Run
+`run_20260901_091844`.
+
+### The socket D35 left, and why it changed shape
+
+D35 declared a place for a population and left it empty, because nothing in the
+delivered data carried one at the scale of the unit. The file
+`osb_demografia-poblacion-upl.csv` fills it, and filling it changed the key: the
+socket was keyed on the unit, and the source is keyed on the unit and the year.
+
+**Decision — the denominator is (unit, year) and never (unit).** Three reasons,
+and the first is the one that matters.
+
+**A constant denominator disappears into the model.** Every specification the
+study will estimate carries a unit effect. A population that does not move within
+a unit is collinear with that effect: the model absorbs it, the normalisation
+goes with it, and nothing fails while it happens. A denominator that cannot
+survive the model it was built for is not a denominator.
+
+**The variation is not noise.** Between 2007 and 2024 a unit's population moves by
+anything from **−28.5 %** in Barrios Unidos to **+557.9 %** in Torca, with a
+median of +16.5 % and seven of the thirty units losing population. Torca is the
+unit the exposure layer never reaches and the largest of the thirty; it also
+sextupled. Averaging that into one number per unit would put the same denominator
+under a 2008 casualty count and a 2024 one in a place where six times as many
+people now live.
+
+**The panel is a superset of the snapshot.** A series collapses to one number per
+unit whenever a fixed denominator is wanted, and one number per unit can never be
+expanded into a series. Choosing the shape that can become the other one costs
+nothing and keeps the choice open.
+
+### What the file is
+
+One row per unit, year, sex and single year of age. **175,956 rows, no nulls, no
+duplicates** on that key. It covers the **33 units of Decreto 555 de 2021** and
+the years **2005 to 2035**, so both the study's 30 units and its 2007–2024 window
+sit inside it with room to spare.
+
+The pipeline adds sex and age away and keeps nothing coarser than (unit, year).
+The file also carries the life-course and age-band labels each row belongs to;
+those are groupings of the same single year of age and are read past, because
+summing them alongside would count everybody twice.
+
+**The unit numbers arrive as integers, 1 to 33, and the cartography spells them
+`UPL01` to `UPL33`.** The rule that bridges the two is declared rather than
+inlined, because a join on the wrong one of them matches nothing at all instead of
+matching wrongly, and a join that matches nothing is the failure that hides
+longest.
+
+**The join is checked on the names and not only on the codes.** All thirty names
+agree with the cartography character for character, accents included. Two files
+can agree on a code and disagree about which place it is; agreeing on the name as
+well is what says they divide the city the same way. The run stops if any of the
+thirty disagrees.
+
+### The grid is required to be full
+
+**Decision — 30 units × 18 years = 540 cells, and a missing cell stops the run.**
+The panel is built as the full grid first and the file joined onto it, so a
+unit-year the file does not cover arrives as a null the check can see rather than
+as a row that is simply absent. It is D22's rule applied to the denominator, and
+the reason it is a hard failure rather than a warning is specific: a predictor
+missing for one unit-year leaves a hole a reader notices, while a denominator
+missing for one unit-year silently removes that cell from every model built on
+it, and nothing in the output says which cell went.
+
+All 540 are present. The balance closes exactly: **132,448,396 person-years** in
+the table against the same figure in the file, over the study's units and years.
+
+### The three units the study does not have, measured
+
+The file carries 33 units and the delivered cartography carries 30. The three it
+adds are **UPL01 Sumapaz, UPL02 Cuenca del Tunjuelo and UPL06 Cerros
+Orientales** — the rural units, where the urban predictors are largely undefined.
+
+**This is the first time that decision can be measured in people rather than in
+polygons.** In 2024 the three hold 3,305, 19,888 and 2,658 residents: **25,851
+between them, 0.33 % of the city the file describes**, and between 0.22 % and
+0.33 % across 2007–2024. The run reports it as a warning on every execution and
+exports it year by year, because it is the answer to the question a jury asks
+about 33 becoming 30. It confirms the universe rather than qualifying it: the
+study covers 99.7 % of Bogotá's population.
+
+Note that the file spells the first of them `Sumapáz`, with an accent the official
+name does not carry. It is reported as the file spells it.
+
+### The per-inhabitant column of the exposure table stays descriptive
+
+**Decision — `BICYCLE_TRIPS_PER_WEEK_PER_INHABITANT_2023` is a description and
+enters no model with a time dimension**, and the column name says which year's
+inhabitants it divides by.
+
+The trips are a snapshot with no year at all. The population moves. Divide one by
+the other inside a panel and the rate would vary from year to year entirely
+because of its denominator — a change in cycling that is really a change in who
+lives there. That is a worse failure than not normalising, because it produces a
+number that looks like a trend.
+
+So the year is nailed down and made visible. **2023**, because the ArcGIS export
+in the layer's metadata is the only date the layer has, and it is declared on the
+layer rather than as a setting of the module, since a second exposure layer would
+arrive with a date of its own. The column carries that year in its name for the
+same reason `TRIPS_PER_WEEK` carries its period: a rate that does not say what its
+denominator was is the same class of mistake as a length column holding
+kilometre-trips. The exposure table carries `POPULATION_2023` beside it so the
+division can be recomputed from the table it appears in, the run checks that the
+quotient is the quotient the name states, and the run warns on every execution
+that the column describes and does not model.
+
+**The models take their denominator from the population table, per unit and per
+year.** That is the whole point of the panel, and it is why the two live in
+separate tables.
+
+### The route
+
+`population` is a route of its own rather than a stage of another. The population
+is nobody's variable: it is not a predictor, because it says nothing about what a
+place is built like, and it is not exposure, because it counts residents and not
+travel. It is what both of those and the casualty counts are divided by, so it
+belongs to the study rather than to the module that happens to read it first. The
+exposure module asks it for one year and does not read the file itself: two
+readers of one file are two chances to sum it differently.
+
+### What is still open
+
+**Which years are measured and which are modelled.** The file spans 2005 to 2035.
+No census covers that, so some years are projections and, before 2018, probably
+backcasts of one. The file does not say which, and neither does anything shipped
+with it. **The shape of the series is not evidence**: a smooth curve is what both
+a projection and an interpolated census look like, and reading provenance off it
+would be inference presented as fact. To be confirmed against the source before
+any document says which years are which.
+
+It matters for the study period. If 2007–2017 is backcast from the 2018 census,
+then the denominator of the first eleven years is a model rather than a count, and
+that belongs in the same paragraph as the ρ correction — both are places where the
+data before 2018 are of a different kind from the data after it.
