@@ -59,8 +59,8 @@ data/
 │   └── bog_loc_urbanarea/bog_loc_urbanarea.shp                localities, the legacy footprint
 ├── incoming/
 │   ├── afectados_2024.csv                the updated 2024 extract, already integrated
-│   └── encuestas_movilidad/              mobility surveys 2011/2015/2019/2023, delivered
-│       └── <year>/                       2026-09-05, inspected only for shape, not read
+│   └── encuestas_movilidad/              the four mobility survey publications, 2026-09-05,
+│       └── <year>/                       inspected for shape only; 1.8 GB, 546 files
 ├── integrated/                           written by `integrate`, read by everything else
 │   ├── fatalities__2024_updated_extract.parquet
 │   └── injuries__2024_updated_extract.parquet
@@ -156,33 +156,52 @@ control, so nothing else can catch the two drifting apart.
 
 ## Known and provisional
 
-**The mobility survey delivery of 2026-09-05 is in `incoming/` and unread.** It
-is meant to replace the single bicycle layer now used for exposure, and its shape
-is not the shape of what it replaces. It holds **survey trip tables and the zoning
-they are keyed on, and no desire lines at all**: a spreadsheet of trips per year
-(`.xlsx` in 2015, 2019 and 2023; in 2011 a workbook plus eight aggregated matrices
-in `.in` form, split by mode and by peak or off-peak), beside the ZAT or UTAM
-polygons for that year. The desire lines the pipeline reads today were derived
-from material of exactly this kind — each line runs between two zone centroids and
-its records carry `zat_origen` and `zat_destin` — so the geometry would have to be
-built here rather than declared.
+**The mobility survey publications are in `incoming/` and unread.** They are the
+four complete publications from the Alcaldía de Bogotá, placed on 2026-09-05,
+replacing an earlier partial delivery. They are meant to replace the single
+bicycle layer now used for exposure, and their shape is not the shape of what
+they replace: they hold **survey trip records and the zoning those records are
+keyed on, and no desire lines at all.**
 
-Three things about it are already visible from the file listing alone and will
-need answers:
+The desire lines the pipeline reads today were derived from material of exactly
+this kind — each line runs between two zone centroids and its records carry
+`zat_origen` and `zat_destin` — so the geometry has to be built here rather than
+declared. That is a stage of the pipeline that does not exist yet.
 
-- **The zoning changes between years.** `ZATs_2012_MAG` in 2011 and 2015 —
-  byte-identical in both, same MD5 — then `ZONAS.zip` in 2019, then `ZAT2023` and
-  `UTAM2023` in 2023. Trips are keyed on zones, and the zones are not the same set
-  across the four years.
-- **2011 may have no walking.** Its eight matrix files name four modes — bicycle,
-  motorcycle, public transport and private vehicle — and none of them is on foot.
-- **A technical sheet is filed under the wrong year.** The `2011/ZATs/` folder
-  carries "Ficha Técnica de la Encuesta de Movilidad **2015**", and its shapefile
-  is dated 2012. Either a misfile in the delivery or a reused zoning, and it has
-  to be settled before any year label is trusted.
+What each year holds for that purpose, out of everything published:
 
-Where the files will finally live follows from all of that and is not decided.
-Until then `EXPOSURE_DIR` still points into the predictor bundle.
+| Year | Household trip records | Zoning |
+|---|---|---|
+| 2011 | `120927_ConsultaEODH2011_DiaTipico (1).accdb`, 122 MB | **none delivered** |
+| 2015 | `VIAJES_ANONIMIZADOS.csv`, 35 MB | `ZATs_2012_MAG.shp` |
+| 2019 | `ViajesEODH2019.csv`, 23 MB | `ZONAS.zip`, holding UTAM and ZAT |
+| 2023 | `05_Base datos procesada/CSV/d. Modulo viajes.csv`, 59 MB | two zips, `ZAT2023` and `UTAM2023` |
+
+Everything else published alongside — the EMME model of 2011, the intercept
+surveys, the reports, the forms, the indicator annexes — is out of scope and
+stays where it is.
+
+Five things are visible from the listing alone and are settled by inspection, not
+in advance:
+
+- **2011 carries no zoning of any kind.** No shapefile, no `.dbf`, nothing named
+  for a zone. Trips keyed on ZAT codes cannot become centroids without it. The
+  2015 folder carries `ZATs_2012_MAG`, which is plausibly the zoning the 2011
+  survey used, but that has to be shown against the codes and not assumed.
+- **2011 is an Access database**, where every other year is CSV. The 64-bit Access
+  ODBC driver is installed on this machine and the environment's Python is 64-bit,
+  so it is readable, but only with a dependency the project does not have yet.
+- **The zoning is a different set of zones each year.** Per-year apportionment to
+  the units is unaffected; reading one zone across years is not the same zone.
+- **Each year publishes the same records twice**, as CSV and as XLSX, and 2023
+  publishes both a raw and a processed database. Which one is read has to be
+  declared rather than picked at the moment of reading.
+- **Walking has to be confirmed for every year.** The four modes the study wants
+  are on foot, bicycle, motorcycle and car, and the trip records are the only
+  place all four could be.
+
+Where the files will finally live follows from all of that. Until then
+`EXPOSURE_DIR` still points into the predictor bundle.
 
 **The current desire-lines layer is quoted in finished work** — D35, section 13 of
 the verification report, and `deliverables/plan.md` all carry figures measured on
