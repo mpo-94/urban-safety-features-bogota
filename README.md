@@ -50,6 +50,12 @@ Raw crash and geospatial data are not distributed here. They come from public
 sources published by the Secretaría Distrital de Movilidad de Bogotá and the
 Distrital spatial data infrastructure.
 
+Because `data/` is not distributed, **`docs/data-layout.md` is the record of what
+it must contain and where** — one root per role the data plays, what each layer
+is read by, and which delivered layers are deliberately read by nothing. It is
+updated in the same commit as any move, since nothing else can catch a document
+and a folder drifting apart.
+
 ## Installation
 
 Requires Python 3.12; part of the geospatial stack has no wheels for later

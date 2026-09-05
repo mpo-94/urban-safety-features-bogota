@@ -63,6 +63,7 @@ carried, so the second is larger for the same underlying records.
 | D34 | The predictor figures come in two sets, and two variables are in neither | Implementation | Closed | Yes |
 | D35 | The desire lines enter as exposure, apportioned by share of length | Methodological | Closed on the rule; the year and the selection are **open** | Yes |
 | D36 | The population enters as a panel, one number per unit and per year | Methodological | Closed on the shape; which years are measured and which modelled is **open** | Yes |
+| D37 | `data/` is filed by the role the data plays, and every root is declared | Implementation | Closed on the roots; where the exposure layers finally live is **open** | Yes |
 
 Methodological decisions: D1-D7, D9, D10, D11, D15, D17, D18, D19, D21, D22, D32, D35.
 Implementation decisions: D8, D12, D13, D14, D16, D20, D23, D24, D25, D26, D27, D33, D34.
@@ -2786,3 +2787,113 @@ It matters for the study period. If 2007–2017 is backcast from the 2018 census
 then the denominator of the first eleven years is a model rather than a count, and
 that belongs in the same paragraph as the ρ correction — both are places where the
 data before 2018 are of a different kind from the data after it.
+
+---
+
+## D37 — `data/` is filed by the role the data plays, and every root is declared
+
+**Kind:** Implementation. It changes where files sit and how a path is built, and
+it changes no measurement: every route produces the same numbers before and after.
+
+**Status:** Closed for the roots and for what has moved. The final location of the
+exposure layers is **deliberately left open** until the replacement delivery has
+been inspected.
+
+**Built:** Yes. `src/config.py`, and `docs/data-layout.md` records the result.
+
+### The defect this fixes
+
+The pipeline separates predictors from exposure with some care — separate module,
+separate route, separate table, and D35 spends several paragraphs on why they sit
+on opposite sides of a rate model. And then `SurveyLineLayer.path` built the path
+to the desire lines out of `PREDICTORS_DIR`.
+
+That is not a cosmetic inconsistency. The configuration is the one place where a
+column can be traced back to a file, and it was saying that exposure is a
+predictor. It happened because the desire lines were delivered inside the bundle
+of predictor layers, which is a fact about how the data arrived and not about what
+it is.
+
+**Decision — every source path is built from a root named for the role its data
+plays, and never from another role's root.** Cartography, casualties, predictors,
+exposure, population, and the two folders for deliveries in transit. The roots are
+declared together at the top of `config.py` rather than scattered through it.
+
+`PREDICTORS_DIR` and `EXPOSURE_DIR` point at the same folder today and are still
+two constants. That is the whole point: the physical location is a delivery
+artefact and the role is not, so the day the exposure files move it is one line.
+`GEO_DATA_DIR` and `CRASH_DATA_DIR` were renamed to `CARTOGRAPHY_DIR` and
+`CASUALTIES_DIR` in the same pass, because "geo" is a format and "crash data" is a
+folder name, and neither is a role.
+
+### What moved, and what did not
+
+**The census moved to `data/population/`.** It was the only loose file under
+`data/`, and unlike every other source it did not arrive inside a bundle, so there
+was no delivered arrangement to preserve by leaving it where it landed.
+
+**Two undeclared layers moved into `areas/`.** The bundle had filed
+`luminarias_upz` beside the geometry folders, as a layer among them, and
+`indiceseguridadnocturna` under a folder called `mean` — which is not a geometry
+at all, but the measurement the delivery implied for it. Both are polygon layers.
+Filing them by geometry makes `shp_properties_sorted/` hold exactly the three
+folders `GEOMETRY_FOLDERS` declares, for the first time, and it means either could
+be declared later without moving anything.
+
+**Nothing else moved.** The delivered bundles keep their names and their internal
+arrangement, including names that are not mine — `shp_properties_sorted`,
+`data_siniestros_bogota`, `Líneas de deseo Matriz Origen Destino`. Being able to
+say "this is the file I was given, where I was given it" is worth more than a
+tidier tree, and the organisation the study needs lives in the declarations rather
+than in the filesystem.
+
+### Delivered and not read is now a recorded fact
+
+`luminarias_upz` and `indiceseguridadnocturna` had sat in the bundle for months
+with nothing pointing at them, and nothing anywhere said whether they had been
+rejected or forgotten. **Decision — a delivered layer that no variable reads is
+declared as such, with what it holds and what would have to be settled before it
+could become a variable.** `config.UNDECLARED_PREDICTOR_LAYERS`, printed by the
+`predictors` route on every run, which also says whether each is still on disk.
+
+It is the same argument as D10. A zero and an absence are different facts and the
+grid must not confuse them; delivered-and-rejected and never-delivered are
+different facts and a folder cannot tell them apart.
+
+Neither layer is rejected on its merits. Lighting is counted over the 111 UPZ,
+which do not nest inside the 30 units, so using it would need the apportionment
+decision D36 declined to make for the UPZ population. The safety index is
+perceived safety, which is closer to an outcome than to a cause and would need an
+argument of its own before sitting beside the thirteen.
+
+### `data/integrated/` is the declared exception
+
+It is the one place under `data/` that the pipeline writes. That is deliberate —
+the `integrate` route rebuilds the casualty layers there and every other route
+reads them as an input, which makes it an input by the time anything else runs —
+but the arrangement was undeclared, and `data/` is described everywhere else as
+raw. It is now written down rather than left to be inferred.
+
+### `docs/data-layout.md`
+
+`data/` is not in version control, so nothing in the repository said what it must
+contain for the pipeline to run. **Decision — the layout is documented, and the
+document is updated in the same commit as any move.** Nothing else can catch the
+two drifting apart: a stale path in the code fails loudly on the next run, and a
+stale sentence about a folder fails silently for as long as nobody checks.
+
+The document also carries the rule for a new delivery: it lands in
+`data/incoming/` in a folder of its own and nothing existing is overwritten in
+place. A delivery written over a folder keeps every route running and quietly
+changes what they produce, which is the failure that leaves nothing out of place
+to notice.
+
+### What is left open
+
+**Where the exposure layers finally live.** The replacement delivery — four survey
+years and four travel modes, against one year and one mode today — is in
+`data/incoming/encuestas_movilidad/` and has not been read. Whether it wants
+`exposure/<year>/`, `exposure/<year>/<mode>/` or something flatter follows from
+how the delivery is actually shaped, and deciding it before inspecting the files
+would be deciding it against an assumption. `EXPOSURE_DIR` still points into the
+predictor bundle until then, which is exactly what having the constant is for.

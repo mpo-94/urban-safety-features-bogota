@@ -1717,6 +1717,40 @@ def report(long_table: pd.DataFrame, log: RunLog) -> None:
             config.CORRELATION_HIGH_THRESHOLD,
         )
 
+    report_undeclared_layers(log)
+
+
+def report_undeclared_layers(log: RunLog) -> None:
+    """The delivered layers no variable reads, said out loud on every run.
+
+    A record nothing prints is a record nobody reads. Saying it here also means
+    the run notices a folder that has gone missing, which a comment could not.
+    """
+    if not config.UNDECLARED_PREDICTOR_LAYERS:
+        return
+
+    lines = []
+    for layer in config.UNDECLARED_PREDICTOR_LAYERS:
+        present = "on disk" if layer.path.exists() else "MISSING FROM DISK"
+        lines.append(
+            f"{layer.folder:<26}  {layer.geometry:<6}  keyed on {layer.keyed_on:<12}  {present}\n"
+            f"{'':<26}  holds {layer.holds}\n"
+            f"{'':<26}  not declared because: {layer.open_question}"
+        )
+    log.table(
+        f"delivered in the predictor bundle and read by no variable "
+        f"({len(config.UNDECLARED_PREDICTOR_LAYERS)}):",
+        "\n".join(lines),
+    )
+
+    absent = [layer.folder for layer in config.UNDECLARED_PREDICTOR_LAYERS if not layer.path.exists()]
+    if absent:
+        log.warn(
+            "recorded as delivered but not on disk: %s. Either the delivery changed or the "
+            "record is stale, and both are worth knowing before a later session goes looking",
+            ", ".join(absent),
+        )
+
 
 # ---------------------------------------------------------------------------
 # Stage

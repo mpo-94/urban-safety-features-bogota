@@ -25,8 +25,30 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = PROJECT_ROOT / "data"
 RESULTS_DIR = PROJECT_ROOT / "results"
 
-CRASH_DATA_DIR = DATA_DIR / "data_siniestros_bogota"
-GEO_DATA_DIR = DATA_DIR / "geo"
+# -- one root per role the data plays ---------------------------------------
+# Every source path in this file is built from one of these and never from
+# another role's root. The roles are the study's own vocabulary — cartography,
+# casualties, predictors, exposure, population — so a path says what its file is
+# for before anyone opens it.
+#
+# Two of them point at the same folder today, and that is the point of declaring
+# them apart. The desire lines were delivered inside the bundle of predictor
+# layers, which is a fact about the delivery and not about the data: exposure is
+# not a predictor (D35), and a path that reached it through PREDICTORS_DIR said
+# the opposite of what the rest of the pipeline takes care to say. Separating the
+# declaration costs nothing now and makes moving the files a one-line change.
+CARTOGRAPHY_DIR = DATA_DIR / "geo"
+CASUALTIES_DIR = DATA_DIR / "data_siniestros_bogota"
+PREDICTORS_DIR = DATA_DIR / "shp_properties_sorted"
+EXPOSURE_DIR = DATA_DIR / "shp_properties_sorted"
+POPULATION_DIR = DATA_DIR / "population"
+
+# Deliveries not yet merged into the sources above, and what is rebuilt from
+# them. These two are the one place under data/ that is not raw: `integrated`
+# holds what the `integrate` route writes, and it is there rather than under
+# results/ because every other route reads it as an input.
+INCOMING_DIR = DATA_DIR / "incoming"
+INTEGRATED_DIR = DATA_DIR / "integrated"
 
 
 def resolve_source_path(declared: Path) -> Path:
@@ -84,9 +106,9 @@ def resolve_source_path(declared: Path) -> Path:
 #
 # The RAW_ paths are the extract this work started from and are never written to
 # by anything here.
-RAW_FATALITIES_PATH = CRASH_DATA_DIR / "MUERTO" / "MUERTO.shp"
-RAW_INJURIES_PATH = CRASH_DATA_DIR / "LESIONADO" / "LESIONADO.shp"
-VEHICLES_PATH = CRASH_DATA_DIR / "vehiculo.csv"
+RAW_FATALITIES_PATH = CASUALTIES_DIR / "MUERTO" / "MUERTO.shp"
+RAW_INJURIES_PATH = CASUALTIES_DIR / "LESIONADO" / "LESIONADO.shp"
+VEHICLES_PATH = CASUALTIES_DIR / "vehiculo.csv"
 
 # ---------------------------------------------------------------------------
 # Updated 2024 extract
@@ -99,8 +121,7 @@ VEHICLES_PATH = CRASH_DATA_DIR / "vehiculo.csv"
 # The general criterion, which will apply again the next time an update arrives:
 # where two extracts describe the same record, the more recent one prevails. See
 # D19.
-INCOMING_2024_PATH = DATA_DIR / "incoming" / "afectados_2024.csv"
-INTEGRATED_DIR = DATA_DIR / "integrated"
+INCOMING_2024_PATH = INCOMING_DIR / "afectados_2024.csv"
 INTEGRATED_FATALITIES_PATH = INTEGRATED_DIR / "fatalities__2024_updated_extract.parquet"
 INTEGRATED_INJURIES_PATH = INTEGRATED_DIR / "injuries__2024_updated_extract.parquet"
 
@@ -153,7 +174,7 @@ SCALES: dict[str, TerritorialScale] = {
     "locality": TerritorialScale(
         key="locality",
         label="Localidad",
-        shapefile=GEO_DATA_DIR / "bog_loc_urbanarea" / "bog_loc_urbanarea.shp",
+        shapefile=CARTOGRAPHY_DIR / "bog_loc_urbanarea" / "bog_loc_urbanarea.shp",
         code_column="Identifica",
         name_column="Nombre_de_",
         expected_units=19,
@@ -161,7 +182,7 @@ SCALES: dict[str, TerritorialScale] = {
     "upz": TerritorialScale(
         key="upz",
         label="UPZ",
-        shapefile=GEO_DATA_DIR / "bog_upz" / "bog_upz.shp",
+        shapefile=CARTOGRAPHY_DIR / "bog_upz" / "bog_upz.shp",
         code_column="cod_upz",
         name_column="nom_upz",
         expected_units=111,
@@ -169,7 +190,7 @@ SCALES: dict[str, TerritorialScale] = {
     "upl": TerritorialScale(
         key="upl",
         label="UPL",
-        shapefile=GEO_DATA_DIR / "unidadplaneamientolocal" / "UnidadPlaneamientoLocal.shp",
+        shapefile=CARTOGRAPHY_DIR / "unidadplaneamientolocal" / "UnidadPlaneamientoLocal.shp",
         code_column="CODIGO_UPL",
         name_column="NOMBRE",
         # The study universe is the 30 UPL this layer carries. Decreto 555 de 2021
@@ -631,7 +652,7 @@ CORRECTION_RHO_TOLERANCE_CRASHES = 1.0
 # to be regressed against. Fifteen layers exist; eleven are a single snapshot with
 # no year and four carry an annual series.
 #
-# What is implemented here are the ten static ones. The four with a series
+# What is implemented here are the eleven static ones. The four with a series
 # (cycleways and the three signage layers) come later, and the long table below is
 # shaped so they slot into it without a schema change: every row already carries a
 # YEAR column, null for a snapshot and filled for a series.
@@ -642,7 +663,7 @@ CORRECTION_RHO_TOLERANCE_CRASHES = 1.0
 # model: it is a candidate offset, not a covariate. Keeping it out of this list is
 # what keeps it out of the correlation matrix and the figure sets, where a row for
 # it would suggest it competes with the thirteen. See D21 and D35.
-PREDICTORS_DIR = DATA_DIR / "shp_properties_sorted"
+# The root itself is declared at the top of this file, with the other roles.
 
 # -- the geometry of a source layer -----------------------------------------
 # The code is in English and the delivered data is in Spanish, so there is no way
@@ -1372,6 +1393,72 @@ MEASURED_STATUS = "MEASURED"
 NOT_MEASURED_STATUS = "NOT_MEASURED"
 
 
+# -- delivered and not declared ---------------------------------------------
+# Two layers arrived in the predictor bundle and no variable reads either of
+# them. They are recorded here because "delivered and not used" and "never
+# delivered" are different facts and a folder cannot tell them apart — the same
+# reason D10 materialises a zero rather than leaving a row out. Without this
+# record a later session finds two folders nothing points at and has to guess
+# whether they were rejected or forgotten.
+#
+# Neither is rejected. Both are candidates that have not been through the
+# argument a variable has to survive, and both would need a decision about scale
+# before they could be: one is keyed on UPZ, which does not nest inside the 30
+# units, and the other is a perception index rather than a count of anything.
+#
+# Both were moved into `areas` on 2026-09-05, from the two places the bundle put
+# them: `luminarias_upz` sat beside the geometry folders as a layer among them,
+# and `indiceseguridadnocturna` sat under `mean`, which is not a geometry at all
+# but the measurement the advisor had in mind for it. That hint is kept here,
+# where it can be read, instead of in a folder name that contradicts the scheme
+# the code dispatches on.
+@dataclass(frozen=True)
+class UndeclaredLayer:
+    """A delivered layer that no variable reads, and what would have to be settled first."""
+
+    folder: str
+    geometry: str
+    holds: str
+    keyed_on: str
+    delivered_at: str  # where the bundle put it, before it was filed by geometry
+    suggested_measure: str  # what the delivery implies, where it implies anything
+    open_question: str  # what has to be decided before it could become a variable
+
+    @property
+    def path(self) -> Path:
+        return PREDICTORS_DIR / GEOMETRY_FOLDERS[self.geometry] / self.folder
+
+
+UNDECLARED_PREDICTOR_LAYERS: tuple[UndeclaredLayer, ...] = (
+    UndeclaredLayer(
+        folder="luminarias_upz",
+        geometry=AREA_GEOMETRY,
+        holds="street lighting counted by lamp technology (LED, Mh, Na) and in total",
+        keyed_on="CODIGO_UPZ",
+        delivered_at="shp_properties_sorted/luminarias_upz",
+        suggested_measure="",
+        open_question=(
+            "counted over the 111 UPZ, which do not nest inside the 30 units; using it "
+            "would need the same apportionment decision the UPZ population needed and "
+            "did not get. See D36"
+        ),
+    ),
+    UndeclaredLayer(
+        folder="indiceseguridadnocturna",
+        geometry=AREA_GEOMETRY,
+        holds="a night-time safety perception index, with its component scores",
+        keyed_on="UPlCodigo",
+        delivered_at="shp_properties_sorted/mean/indiceseguridadnocturna",
+        suggested_measure="mean over the unit, which is what the delivered folder name says",
+        open_question=(
+            "it is perceived safety and not built environment, so it measures something "
+            "closer to an outcome than to a cause and would need an argument of its own "
+            "before it could sit beside the thirteen"
+        ),
+    ),
+)
+
+
 # ---------------------------------------------------------------------------
 # Population
 # ---------------------------------------------------------------------------
@@ -1434,7 +1521,7 @@ class PopulationSource:
 
 
 POPULATION_SOURCE = PopulationSource(
-    path=DATA_DIR / "osb_demografia-poblacion-upl.csv",
+    path=POPULATION_DIR / "osb_demografia-poblacion-upl.csv",
     separator=";",
     encoding="utf-8-sig",
     year_column="ANO",
@@ -1553,7 +1640,7 @@ class SurveyLineLayer:
 
     @property
     def path(self) -> Path:
-        return PREDICTORS_DIR / GEOMETRY_FOLDERS[self.geometry] / self.source_layer / self.source_file
+        return EXPOSURE_DIR / GEOMETRY_FOLDERS[self.geometry] / self.source_layer / self.source_file
 
     def column(self, suffix: str) -> str:
         """The name one measured quantity takes in the exported table.
