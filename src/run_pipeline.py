@@ -190,24 +190,39 @@ def run_population(log: RunLog) -> None:
 
 
 def run_exposure(log: RunLog) -> None:
-    """Travel exposure per unit, from the origin-destination desire lines.
+    """Travel exposure per unit, from the mobility surveys and from the delivered layer.
 
     A route of its own rather than a stage of `predictors`, because exposure is
     not a predictor: it goes on the other side of a rate model, and running it
     beside the built-environment variables is exactly the confusion the
     separation exists to prevent. Like that route it reads the unit layer and its
-    own source and nothing else.
+    own sources and nothing else.
+
+    Both measurements run and both are checked, in that order. The surveys
+    produce the study's exposure; the delivered layer produces the reference
+    table the finished figures were measured on. Running the second is not
+    optional maintenance — it is what keeps a quoted figure reproducible after
+    the variable underneath it changed.
     """
     units = loading.load_territorial_units(log)
-    table, allocations, lines_by_layer = exposure.build(units, log)
 
-    paths = exposure.export(table, log)
-    exposure.render_figures(table, units, log)
+    table, apportionments = exposure.build_from_surveys(units, log)
+    paths = exposure.export_from_surveys(table, log)
+    exposure.render_survey_figures(table, units, log)
+
+    delivered, allocations, lines_by_layer = exposure.build(units, log)
+    paths.update(exposure.export(delivered, log))
+    exposure.render_figures(delivered, units, log)
 
     log.table("record funnel:", log.funnel())
-    if not exposure.verify(table, allocations, lines_by_layer, units, log, paths=paths):
-        raise RouteFailed("the exposure table does not agree with the layers it was built from")
-    exposure.report(table, allocations, log)
+
+    survey_ok = exposure.verify_from_surveys(table, apportionments, units, log, paths=paths)
+    delivered_ok = exposure.verify(delivered, allocations, lines_by_layer, units, log)
+    if not (survey_ok and delivered_ok):
+        raise RouteFailed("the exposure tables do not agree with the sources they were built from")
+
+    exposure.report_from_surveys(table, apportionments, log)
+    exposure.report(delivered, allocations, log)
 
 
 def run_map(log: RunLog) -> None:

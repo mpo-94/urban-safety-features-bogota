@@ -1,5 +1,18 @@
 # Adding an exposure layer
 
+> **This is not the procedure for adding a survey year.** The study's exposure is
+> now built from the mobility surveys, and adding 2019, 2015 or 2011 means one
+> `config.MobilitySurvey` plus, where the year needs it, a day-type rule in
+> `src/surveys.py`. D38 has the design and
+> `docs/mobility-surveys-inventory.md` has what each remaining year still needs.
+>
+> What follows is the procedure for a **delivered line layer** — a file that
+> arrives with the geometry already drawn and a survey expansion factor on each
+> record. The pipeline still measures one, and section 1 below is the part worth
+> reading whatever the source: the trap it describes is the same one that made
+> the delivered layer take three passes to understand, and it is what the survey
+> reader was built to avoid repeating.
+
 Exposure is how much travel of a given mode passes through a unit. The pipeline
 measures one such layer today — bicycle desire lines from the mobility survey —
 and the module is written so that a second one is a declaration plus a run,
@@ -66,10 +79,25 @@ it, and it is the reason the alternative allocations exist.
 **What year the layer is.** If nothing in the file says, that is an open question
 for the advisor and not something to infer from the file's modification date.
 
+*What eventually answered it for the desire lines, and it is a method worth
+reusing: match the layer's records against the candidate sources themselves.* All
+181 rows turned out to carry an exact `(zat_origen, zat_destino, f_exp)` triple
+from the 2019 survey, and their endpoints sit on the 2019 zoning's centroids at a
+median 0.046 m against 2.148 m for 2023. The ArcGIS export date in the metadata
+said November 2023 and was four years out. A file's own metadata dates the export
+and not the data.
+
 **Whether the layer is complete or a selection.** Look for an identifier that
 betrays a parent table — the desire lines carry `ORIG_FID` running to 7212 over
 181 rows, which is how it became clear the delivered file is a subset. A selected
 subset may not measure what the whole would.
+
+*And check whether the selection preserves the ranking, which is the thing that
+actually matters.* The delivered layer is 9.6 % of its parent and was not
+selected by volume, which sounded reassuring until it was compared: it orders the
+thirty units at Spearman 0.377 against the full survey. A subset can be unbiased
+in its total and useless in its ordering, and the ordering is what a panel model
+uses.
 
 ---
 

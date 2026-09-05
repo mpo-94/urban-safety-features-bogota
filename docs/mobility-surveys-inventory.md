@@ -11,6 +11,14 @@ which days each survey covers. No geometry was built, nothing was declared in
 `config.py`, and no result here has been through a pipeline check. Every figure
 was computed from the delivered file in the session of 2026-09-05.
 
+**2023 has since been built and is no longer a structural note.** It is declared
+in `config.SURVEY_2023`, read by `src/surveys.py`, measured by `src/exposure.py`
+and checked on run `run_20260905_055939`; the decisions are D38. What that pass
+resolved is marked below where it lands, and the entries for 2011, 2015 and 2019
+are unchanged and still unverified. Two of the things this document listed as
+unresolved were answered by it and one of its statements turned out to be wrong,
+which is said in full in section 5.
+
 **What the study needs from them.** Four modes — on foot, bicycle, motorcycle and
 car — as **trips per day apportioned to each UPL**, for 2011, 2015, 2019 and 2023.
 The pipeline currently measures one of those sixteen combinations, from a
@@ -65,18 +73,37 @@ walking came from its eight aggregated EMME matrices, which name only bicycle,
 motorcycle, public transport and private vehicle. The household database does not
 have that gap: `Pie` is its largest mode by far.
 
-Three things about the mapping that are decisions and not lookups:
+Three things about the mapping that are decisions and not lookups. All three are
+now taken, and D38 carries the reasoning:
 
 - **2023 splits walking in two**, over and under fifteen minutes, and both are
   walking. Adding them is the obvious reading and it is still a choice, because a
   study could reasonably exclude the very short trips.
+  *Decided: both are in.* The short ones are 2,059,528 trips a day of the
+  6,098,788. Excluding them would leave 2023 at 4.04 M against 2019's 6.94 M, and
+  48.3 % of 2019's walking — 3,351,414 trips a day — lasts under fifteen minutes
+  once its durations are computed from the reported times. The gap would be the
+  category and not the city.
 - **Bicycle includes the motorised bicycle** in 2011 (codes 18 and 19 of
   `Aux_Modos`) and in 2015 (`BICICLETA, BICICLETA CON MOTOR`). 2023 lists
   `Bicicleta con motor como conductor` separately, 341 records, so there it is a
   choice rather than an inheritance.
+  *Decided: it is in.* With the passenger category it is 364 records and 71,277
+  trips a day, 6.39 % of 2023's bicycle travel; 2019 separates it too, at 1.15 %.
+  Two arguments agree: 2011 and 2015 cannot offer the narrower category at all,
+  and neither can the numerator — the crash source has only `BICICLETA` and
+  `BICITAXI`, so a rider hurt on a motorised bicycle is recorded as a cyclist or
+  a motorcyclist with no way to tell which.
 - **Car is driver and passenger together** everywhere. In 2011 `Privado`
   aggregates codes 22 and 23; in 2023 `AUTO` covers `Vehículo privado como
   conductor` and `como pasajero`, plus `Auto compartido` and `Auto alquilado`.
+  *Unchanged: they stay together.*
+
+**Public transport is not a fifth mode, and that is a decision too.** The
+matrix's `PUBLIC_TRANSPORT` counts the occupants of a bus in a crash; the survey's
+counts the passengers of a system. Pairing them would look like a rate. In the
+declaration it sits in `modes_not_measured` rather than simply being left out, so
+that a label in neither list stops the run instead of vanishing in a groupby.
 
 The mode taxonomies are not otherwise comparable across years. 2019 has sixteen
 labels and 2011 twelve; TransMilenio, SITP and the feeder services are split
@@ -116,6 +143,15 @@ ones.
 The same argument holds with less force for bicycles, and is nearly irrelevant
 for cars and motorcycles.
 
+*Built for 2023, and the measured cost of the decision is larger than the table
+above suggests.* Over the four modes together the intra-zonal trips are
+**1,841,452 a day, 18.1 %** of what the survey measures, and they are apportioned
+by area share over the units covering their zone. On a typical weekday
+**1,055,074** of the pedestrian exposure inside the thirty units arrives that
+way, against 31,036 for cars, 29,180 for bicycles and 8,048 for motorcycles.
+Discarding them would have taken a quarter of the walking out of the study and
+taken more of it from the units built of large zones.
+
 ---
 
 ## 4. Days of the week
@@ -135,10 +171,26 @@ the same way:
   weekday-reported trip also happens on Saturdays; it does not report a Saturday
   the respondent lived through.
 - **2023 — the survey ran on all seven days.** Household interview dates run from
-  2023-03-29 to 2023-10-20, with 2,876 households on Saturdays and 2,990 on
-  Sundays. The day type has to be derived by joining the trips to the household's
-  `fecha`, and the technical sheet has to say whether the trips reported are for
-  the interview day or the day before.
+  2023-03-29 to 2023-10-20, with 2,876 households interviewed on Saturdays and
+  2,990 on Sundays. The day type has to be derived by joining the trips to the
+  household's `fecha`.
+
+  **Resolved: the trips are those of the day before the interview.** The
+  technical sheet gives the reference period as the mobility "del día
+  inmediatamente anterior al que se realiza la encuesta", so an interview on a
+  Sunday reports a Saturday and the interview dates above are shifted back one
+  day. What comes out is **17,554 weekday households, 2,990 Saturday and 2,211
+  Sunday** — note that the Saturday count is the Sunday interviews and not the
+  Saturday ones, which is exactly the error this would have been.
+
+  **And the expansion factor does not expand one day type.** The household
+  factors sum to 3,623,413 against the 3,667,331 households the technical sheet
+  declares, over all seven reference days together. So summing the trip factor
+  within one day type gives that day type's share of an average day and not the
+  trips of one such day, and the share of the universe its households cover is
+  what converts between them: 77.2 %, 13.2 % and 9.6 %. Both readings are
+  exported. See D38 for what the rescaled figures then say, which is not
+  credible and is a property of the survey.
 
 **2011's Saturday is too thin to carry a UPL-level estimate and should be
 expected to fail.** Its 4,035 records expand to 14,022,328 trips, so one record
@@ -180,24 +232,38 @@ assumed**, and if they do not, 2011 has no geometry at all.
 `ZAT_ORIG` is also null on 21,515 records, 17.6 % of them — by far the worst zone
 coverage of the four years, and enough to matter.
 
-### 2023 — the delivered desire lines carry a tenth of the trips
+### ~~2023 — the delivered desire lines carry a tenth of the trips~~ Resolved, and against the wrong year
 
-The layer the pipeline uses today reports **113,269.31 bicycle trips per day**
-over its 181 lines. The 2023 survey expands to **1,115,685 bicycle trips per
-day**. The delivered lines therefore carry about **10 % of the bicycle travel the
-survey measured**.
+*This section was written before the comparison was made and its central guess
+was wrong. Kept because the reasoning is what led to the test that disproved it.*
 
-That is the strongest evidence yet on D35's open question — what the 181 lines
-were a selection of. A tenth of the trips concentrated in 181 origin-destination
-pairs is what selecting the largest pairs looks like, and if that is what
-happened, the current exposure variable measures principal corridors and not
-exposure. **It is not proof.** Confirming it means matching the 181 pairs against
-the survey's own pairs and checking whether they are the largest ones, which is
-work for the session that builds 2023.
+What it said: the delivered layer's **113,269.31 bicycle trips per day** against
+2023's **1,115,685** made the layer about 10 % of the survey, and a tenth of the
+trips concentrated in 181 pairs is what selecting the largest pairs looks like —
+which would have made the exposure variable a measure of principal corridors.
 
-It also means the validation this session hoped for is not a simple equality. Our
-construction from the survey should reproduce the survey's total, not the layer's,
-and the comparison against the layer is a diagnosis of what the layer was.
+**The layer is not from 2023 at all. It is from 2019.** All 181 records match an
+exact `(zat_origen, zat_destino, f_exp)` triple among the 7,863 bicycle trips of
+the 2019 survey, and their endpoints sit on the 2019 zoning's centroids at a
+median 0.046 m against 2.148 m for the 2023 zoning. It carries 9.6 % of 2019's
+1,177,868 daily bicycle trips — the same tenth, of a different year.
+
+**And the selection was not by volume.** Its 160 distinct pairs rank from 1st to
+792nd among 2019's 5,045 inter-zonal bicycle pairs; only 61 are in the top 160,
+and the pairs ranked 3rd, 6th, 9th and 10th are absent. No threshold on the
+expansion factor, on days per week or on pair volume reproduces the set. The one
+rule it clearly follows is that every intra-zonal pair is dropped, which is
+forced — a trip that begins and ends in one zone has no line — and which is 9.3 %
+of 2019's bicycle travel.
+
+What it is instead is an unexplained sample that does not preserve the ranking:
+against the 2023 survey's own bicycle exposure it correlates at **Spearman
+0.377** over the thirty units. That is a stronger reason to replace it than the
+one this section feared. D35 and D38 carry it.
+
+The note about validation was right: the construction reproduces the survey's own
+total and not the layer's, and the comparison against the layer is a diagnosis of
+what the layer was.
 
 ### All years — which day the expansion factor expands to
 
@@ -239,6 +305,22 @@ because they are the reason this pass exists.
   `ZAT2023` is EPSG:3116; the 2015 and 2019 zonings and the study's own
   cartography are EPSG:4686.
 
+- **2019 stores its clock times as fractions of a day.** `hora_inicio_viaje` and
+  `p31_hora_llegada` hold `0.333333333333333` for eight in the morning, the way a
+  spreadsheet stores a time. Every datetime parser refuses them and returns
+  nothing at all, so a duration computed from them is empty rather than wrong —
+  which is the good failure. The trap is the one before it: searching the column
+  list for a duration matches `p34_aplicacion_durante_viaje`, because "durante"
+  contains "dura", and that column is about an app. It parses, it summarises, and
+  every number out of it is meaningless.
+
+- **The 2023 zoning and the study's cartography disagree along every shared
+  edge.** Their overlay gives 1,511 fragments of which 593 are slivers, and
+  without a threshold a single zone is split across as many as seven units by
+  fragments of a few square metres. With one, 907 zones are inside the study area
+  and only 11 are genuinely divided. D38 has the threshold and why it sits where
+  it does.
+
 ---
 
 ## 7. Consequences for the design
@@ -264,6 +346,16 @@ length share, and adding the intra-zonal trips by area share. The three sessions
 after it add a declaration each and nothing else. If the second year needs a
 second reader, the design was wrong and it is cheaper to notice then than at the
 fourth.
+
+*Built.* `config.MobilitySurvey` is the declaration and `MOBILITY_SURVEYS` the
+list; `src/surveys.py` reads one and `src/exposure.py` measures it. **What a new
+year has to supply beyond a declaration is one thing and one only: how it says
+which kind of day a trip was made on.** That is an interview date in 2023, a flag
+on the record in 2015, day-of-week flags in 2019 and a separate database in 2011,
+and no amount of declaration flattens four different mechanisms into one. It is
+therefore a small rule object dispatched through a registry in `surveys.py`, so a
+year adds a rule beside the others rather than a second way of reading a file. A
+year whose rule is not written fails with a message naming itself.
 
 **Interpolation will meet the ρ correction.** The four measured years sit in very
 different places in the history of casualty recording: 2011 and 2015 before the

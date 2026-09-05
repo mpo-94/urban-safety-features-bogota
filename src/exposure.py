@@ -1,4 +1,4 @@
-"""Travel exposure per territorial unit, from the origin-destination desire lines.
+"""Travel exposure per territorial unit, measured two ways from two sources.
 
 This is not an urban predictor and the separation is deliberate. A predictor says
 what a place is built like; exposure says how much traffic there is in it to be
@@ -6,7 +6,24 @@ hurt. In a rate model they sit on opposite sides, so the exposure never enters t
 predictor correlation matrix and never appears in either figure set: a row for it
 there would invite a reader to compare it with variables it does not compete with.
 
-**What the source is.** Each line runs from the centroid of an origin zone of the
+**There are two halves to this module and they measure different things.** The
+first half measures the delivered desire lines: 181 lines of one mode, already
+drawn, which is what the pipeline read before the mobility surveys arrived. The
+second builds the lines from the survey itself, for four modes, four years and
+three kinds of day, and that is the variable the study now uses. The delivered
+layer stays because several finished figures were measured on it and they have to
+remain reproducible, and because it turned out to be worth keeping as evidence:
+it is a 9.6% sample of the 2019 survey and D38 records how that was established.
+
+The one operation the two halves must not do differently — cutting a line at the
+unit boundaries and measuring the pieces — lives in `predictors` and is called by
+both, so the kilometres of a line inside a unit cannot come out two slightly
+different ways depending on which half asked.
+
+What follows immediately below is the first half. The second begins at "Exposure
+built from the survey".
+
+**What the delivered source is.** Each line runs from the centroid of an origin zone of the
 mobility survey to the centroid of a destination zone, and carries the survey's
 own expansion of the trip it stands for. Two expansions arrive on every record and
 they are different quantities, which is the whole difficulty:
@@ -53,16 +70,17 @@ from pathlib import Path
 import geopandas as gpd
 import numpy as np
 import pandas as pd
-from shapely.geometry import Point
+from shapely.geometry import LineString, Point
 
 try:  # regular package import
-    from src import config, maps, population, predictors
+    from src import config, maps, population, predictors, surveys
     from src.provenance import RunLog
 except ImportError:  # executed as a plain script from inside src/
     import config  # type: ignore[no-redef]
     import maps  # type: ignore[no-redef]
     import population  # type: ignore[no-redef]
     import predictors  # type: ignore[no-redef]
+    import surveys  # type: ignore[no-redef]
     from provenance import RunLog  # type: ignore[no-redef]
 
 
@@ -579,23 +597,32 @@ def export(
     log: RunLog,
     layers: tuple[config.SurveyLineLayer, ...] | None = None,
 ) -> dict[str, Path]:
-    """Write the exposure table and the dictionary that reads it."""
+    """Write the delivered layer's table and the dictionary that reads it.
+
+    Filed as a reference table and no longer as the analysis one. It was the
+    study's exposure while it was the only measurement there was; now that the
+    survey produces one, this is the comparison it is measured against and the
+    provenance of the figures already quoted from it. Naming it `analysis` beside
+    a table that is actually analysed would invite the wrong one into a model.
+    """
     layers = layers or config.EXPOSURE_LAYERS
     data_dir = log.run_dir / config.DATA_SUBDIR
     data_dir.mkdir(parents=True, exist_ok=True)
 
     paths: dict[str, Path] = {}
 
-    table_path = data_dir / f"{config.ANALYSIS_PREFIX}__exposure_by_unit.csv"
+    table_path = data_dir / f"{config.REFERENCE_PREFIX}__delivered_desire_lines_by_unit.csv"
     table.to_csv(table_path, index=False, encoding="utf-8")
     table.to_parquet(table_path.with_suffix(".parquet"))
     paths["table"] = table_path
 
-    dictionary_path = data_dir / f"{config.REFERENCE_PREFIX}__exposure_dictionary.csv"
+    dictionary_path = (
+        data_dir / f"{config.REFERENCE_PREFIX}__delivered_desire_lines_dictionary.csv"
+    )
     dictionary_table(layers).to_csv(dictionary_path, index=False, encoding="utf-8")
     paths["dictionary"] = dictionary_path
 
-    log.info("exported 1 analysis table and 1 reference table to %s/", config.DATA_SUBDIR)
+    log.info("exported 2 reference tables for the delivered layer to %s/", config.DATA_SUBDIR)
     return paths
 
 
@@ -955,4 +982,1083 @@ def report(
             "denominator from the population table, per unit and per year. See D36",
             layer.column(config.TRIPS_WEEKLY_PER_PERSON_SUFFIX),
             year,
+        )
+
+
+# ===========================================================================
+# Exposure built from the survey
+# ===========================================================================
+# Everything above measures the delivered desire lines. Everything below builds
+# the lines from the survey itself and measures those, which is the variable the
+# study now uses; the delivered layer stays because it is what several finished
+# figures were measured on, and it is exported as a comparison rather than as the
+# variable. See D38.
+#
+# The two share the one operation they must not do differently — cutting a line
+# at the unit boundaries and measuring the pieces, which lives in `predictors`
+# and is called by both.
+
+
+# Working columns for the survey path. Private to this module, like the ones the
+# delivered layer uses, and named apart from anything exported.
+_PAIR_ID_COL = "_PAIR"
+_PAIR_KM_COL = "_PAIR_TOTAL_KM"
+_ZONE_AREA_COL = "_ZONE_TOTAL_AREA"
+_ZONE_SHARE_COL = "_ZONE_AREA_SHARE"
+_LINE_SHARE_COL = "_LINE_LENGTH_SHARE"
+_COVERED_SHARE_COL = "_SHARE_INSIDE_THE_STUDY"
+_ALLOCATED_COL = "_ALLOCATED"
+_FRAGMENT_AREA_COL = "_FRAGMENT_AREA"
+
+
+@dataclass(frozen=True)
+class SurveyApportionment:
+    """One survey's trips spread over the units, with everything needed to check it.
+
+    The three totals are kept apart rather than added up, because the balance the
+    run checks is that the two routes into a unit plus what left the study area
+    equal what the file holds, and a single total would hide which of the three
+    moved if it ever stopped closing.
+    """
+
+    trips: surveys.SurveyTrips
+    # One row per unit, actor type and day type, carrying the measured quantities.
+    per_unit: pd.DataFrame
+    # Trips per day that fell outside every unit, per actor type and day type.
+    outside: pd.Series
+    zones_read: int
+    zones_reaching_a_unit: int
+    pairs_built: int
+    pairs_reaching_a_unit: int
+    largest_covered_share: float
+
+    @property
+    def survey(self) -> config.MobilitySurvey:
+        return self.trips.survey
+
+
+# ---------------------------------------------------------------------------
+# How a zone reaches a unit
+# ---------------------------------------------------------------------------
+
+
+def zone_area_shares(
+    zones: gpd.GeoDataFrame,
+    units: gpd.GeoDataFrame,
+    survey: config.MobilitySurvey,
+    log: RunLog,
+) -> pd.DataFrame:
+    """The share of each survey zone's area that falls inside each unit.
+
+    This is the rule for everything that has no line to be spread along: a trip
+    that begins and ends in the same zone, and the two alternative allocations
+    that count a trip at one of its endpoints. One rule rather than two, so that
+    an intra-zonal trip and an inter-zonal one are governed by the same idea of
+    what it means for a zone to be in a unit.
+
+    Slivers are dropped and not renormalised. The survey's zoning and the study's
+    cartography draw the same boundaries from different sources, so their overlay
+    produces fragments of a few square metres along every shared edge; left in,
+    they hand a trip to units the zone does not touch. What is dropped is counted
+    as falling outside the study area, which is what it is — the alternative
+    would fold cartographic noise into the units and leave the balance unable to
+    distinguish it from a zone that genuinely lies half in Soacha.
+    """
+    zones = zones.copy()
+    zones[_ZONE_AREA_COL] = zones.geometry.area
+
+    degenerate = zones[_ZONE_AREA_COL] <= 0
+    if degenerate.any():
+        raise ValueError(
+            f"{survey.label}: {int(degenerate.sum())} zone(s) have no area, so the share of "
+            "them falling inside a unit is undefined"
+        )
+
+    fragments = gpd.overlay(
+        zones[[surveys.ZONE_CODE_COL, _ZONE_AREA_COL, "geometry"]],
+        units[[config.AREA_CODE_COL, "geometry"]],
+        how="intersection",
+        keep_geom_type=True,
+    )
+    fragments[_FRAGMENT_AREA_COL] = fragments.geometry.area
+    fragments[_ZONE_SHARE_COL] = fragments[_FRAGMENT_AREA_COL] / fragments[_ZONE_AREA_COL]
+
+    if config.ZONE_UNIT_RENORMALISE:
+        raise NotImplementedError(
+            "ZONE_UNIT_RENORMALISE is declared true, but renormalising the kept shares is "
+            "deliberately not implemented: it would fold the boundary slivers back into the "
+            "units and leave the balance unable to tell them from a zone lying outside the "
+            "city. Changing the flag is a decision that needs the reasoning in D38 revisited"
+        )
+
+    # Summed before the threshold is applied, because a zone that leaves a unit
+    # and comes back gives that unit two fragments and one share, and thresholding
+    # the pieces would drop a real share that arrived in two parts.
+    shares = fragments.groupby(
+        [surveys.ZONE_CODE_COL, config.AREA_CODE_COL], as_index=False
+    ).agg(
+        **{
+            _ZONE_SHARE_COL: (_ZONE_SHARE_COL, "sum"),
+            _FRAGMENT_AREA_COL: (_FRAGMENT_AREA_COL, "sum"),
+        }
+    )
+    slivers = shares[_ZONE_SHARE_COL] <= config.ZONE_UNIT_MIN_AREA_SHARE
+    discarded_area = float(shares.loc[slivers, _FRAGMENT_AREA_COL].sum())
+    shares = shares.loc[~slivers, [surveys.ZONE_CODE_COL, config.AREA_CODE_COL, _ZONE_SHARE_COL]]
+
+    reached = shares[surveys.ZONE_CODE_COL].nunique()
+    split = int((shares.groupby(surveys.ZONE_CODE_COL)[config.AREA_CODE_COL].nunique() > 1).sum())
+    log.info(
+        "%s: %d of %d zone(s) reach a unit, %d of them divided between more than one; "
+        "%d sliver fragment(s) below %g of their zone dropped, %.2f m2 in all",
+        survey.label,
+        reached,
+        len(zones),
+        split,
+        int(slivers.sum()),
+        config.ZONE_UNIT_MIN_AREA_SHARE,
+        discarded_area,
+    )
+    return shares
+
+
+# ---------------------------------------------------------------------------
+# The desire lines, built rather than delivered
+# ---------------------------------------------------------------------------
+
+
+def build_desire_lines(
+    pairs: pd.DataFrame,
+    zones: gpd.GeoDataFrame,
+    survey: config.MobilitySurvey,
+    log: RunLog,
+) -> gpd.GeoDataFrame:
+    """One straight line per distinct origin-destination pair, between zone centroids.
+
+    Built once for every pair the survey uses and reused by every actor type and
+    day type that uses it, because the share of a line falling in a unit is a
+    property of the pair of zones and of nothing else. Building one line per
+    surveyed record would draw the same line dozens of times, split it dozens of
+    times and arrive at the same answer.
+
+    The line is a chord and the limitation is the same one D35 recorded for the
+    delivered layer: nobody rode it. What the apportionment does is spread a trip
+    along the corridor between its endpoints, and that is not a measurement of
+    distance travelled in the unit. It is why the two endpoint allocations are
+    measured beside the variable on every run.
+    """
+    centroids = zones.set_index(surveys.ZONE_CODE_COL).geometry.centroid
+
+    distinct = (
+        pairs[[surveys.ZONE_ORIGIN_COL, surveys.ZONE_DESTINATION_COL]]
+        .drop_duplicates()
+        .reset_index(drop=True)
+    )
+    distinct[_PAIR_ID_COL] = np.arange(len(distinct))
+
+    origins = centroids.loc[distinct[surveys.ZONE_ORIGIN_COL]].to_numpy()
+    destinations = centroids.loc[distinct[surveys.ZONE_DESTINATION_COL]].to_numpy()
+    lines = gpd.GeoDataFrame(
+        distinct,
+        geometry=[
+            LineString([(start.x, start.y), (end.x, end.y)])
+            for start, end in zip(origins, destinations)
+        ],
+        crs=zones.crs,
+    )
+    lines[_PAIR_KM_COL] = lines.geometry.length / 1000.0
+
+    # Two distinct zones whose centroids coincide would give a line of no length
+    # and a division by zero. None occurs; the guard is here because the failure
+    # would otherwise be a null in one unit rather than a message.
+    degenerate = lines[_PAIR_KM_COL] * 1000.0 <= config.EXPOSURE_MIN_LINE_LENGTH_M
+    if degenerate.any():
+        raise ValueError(
+            f"{survey.label}: {int(degenerate.sum())} origin-destination pair(s) of distinct "
+            "zones have centroids in the same place, so the line between them has no length "
+            "and no shares to compute"
+        )
+
+    log.info(
+        "%s: built %d desire line(s) between zone centroids, %s km in all, median %.2f km",
+        survey.label,
+        len(lines),
+        f"{float(lines[_PAIR_KM_COL].sum()):,.1f}",
+        float(lines[_PAIR_KM_COL].median()),
+    )
+    return lines
+
+
+def line_length_shares(
+    lines: gpd.GeoDataFrame,
+    units: gpd.GeoDataFrame,
+    log: RunLog,
+) -> pd.DataFrame:
+    """The share of each desire line's length falling inside each unit.
+
+    Cut by the same function the cycleway kilometres and the delivered layer are
+    cut by, which is the point of that function living in `predictors`: the
+    kilometres of a line inside a unit cannot end up measured two slightly
+    different ways depending on which caller asked.
+    """
+    fragments = predictors.split_lines_by_unit(lines, units, _PAIR_ID_COL)
+    fragments = fragments.merge(
+        lines[[_PAIR_ID_COL, _PAIR_KM_COL]], on=_PAIR_ID_COL, how="left"
+    )
+    fragments[_LINE_SHARE_COL] = (
+        fragments[predictors.FRAGMENT_LENGTH_COL] / fragments[_PAIR_KM_COL]
+    )
+    # Summed per pair and unit, not per fragment: a line that leaves a unit and
+    # comes back gives that unit two pieces and one share.
+    shares = fragments.groupby(
+        [_PAIR_ID_COL, config.AREA_CODE_COL], as_index=False
+    ).agg(
+        **{
+            _LINE_SHARE_COL: (_LINE_SHARE_COL, "sum"),
+            predictors.FRAGMENT_LENGTH_COL: (predictors.FRAGMENT_LENGTH_COL, "sum"),
+        }
+    )
+    log.info(
+        "%d of %d desire line(s) reach at least one unit, in %d (line, unit) piece(s)",
+        shares[_PAIR_ID_COL].nunique(),
+        len(lines),
+        len(shares),
+    )
+    return shares
+
+
+# ---------------------------------------------------------------------------
+# Apportionment
+# ---------------------------------------------------------------------------
+
+
+def _spread(
+    pairs: pd.DataFrame,
+    shares: pd.DataFrame,
+    on: list[str],
+    share_column: str,
+    output_column: str,
+) -> tuple[pd.DataFrame, pd.Series]:
+    """Multiply a table of trips by a table of shares, and measure what is left over.
+
+    Returns the allocated rows and, per actor type and day type, the trips whose
+    shares did not add to one — the part of the study area's edge that is not the
+    study area. That remainder is measured rather than absorbed, which is what
+    lets the balance downstream be an equality instead of an inequality.
+    """
+    allocated = pairs.merge(shares, on=on, how="inner")
+    allocated[output_column] = allocated[surveys.TRIPS_COL] * allocated[share_column]
+
+    covered = shares.groupby(on, as_index=False)[share_column].sum()
+    covered = covered.rename(columns={share_column: _COVERED_SHARE_COL})
+    with_cover = pairs.merge(covered, on=on, how="left")
+    with_cover[_COVERED_SHARE_COL] = with_cover[_COVERED_SHARE_COL].fillna(0.0)
+    outside = (
+        with_cover[surveys.TRIPS_COL] * (1.0 - with_cover[_COVERED_SHARE_COL])
+    ).groupby(
+        [with_cover[config.ACTOR_TYPE_COL], with_cover[config.DAY_TYPE_COL]]
+    ).sum()
+    return allocated, outside
+
+
+def apportion_survey(
+    trips: surveys.SurveyTrips,
+    zones: gpd.GeoDataFrame,
+    units: gpd.GeoDataFrame,
+    log: RunLog,
+) -> SurveyApportionment:
+    """Spread one survey's trips over the units, by the two routes a trip can take.
+
+    A trip between two zones is spread along the line between their centroids, by
+    the share of that line's length inside each unit. A trip that begins and ends
+    in the same zone has no line at all — one centroid, no length — and is spread
+    over the units covering that zone by area share instead.
+
+    **The intra-zonal trips are not dropped, and that is the decision this
+    function exists to implement.** They are 18.1% of the travel the 2023 survey
+    measures in the four modes and 39% of the short walking, so discarding them
+    would not lose precision evenly: it would remove a fifth to two fifths of
+    pedestrian exposure, and it would remove more of it in a unit built of large
+    zones than in one built of small ones. Two rules rather than one because a
+    zero-length line cannot be apportioned, not because the two kinds of trip are
+    different kinds of travel.
+    """
+    survey = trips.survey
+    pairs = trips.pairs
+    intra_zonal = pairs[surveys.ZONE_ORIGIN_COL] == pairs[surveys.ZONE_DESTINATION_COL]
+
+    zone_shares = zone_area_shares(zones, units, survey, log)
+    lines = build_desire_lines(pairs[~intra_zonal], zones, survey, log)
+    length_shares = line_length_shares(lines, units, log)
+
+    # -- inter-zonal: along the line ---------------------------------------
+    between = pairs[~intra_zonal].merge(
+        lines[[surveys.ZONE_ORIGIN_COL, surveys.ZONE_DESTINATION_COL, _PAIR_ID_COL]],
+        on=[surveys.ZONE_ORIGIN_COL, surveys.ZONE_DESTINATION_COL],
+        how="left",
+    )
+    along_line, outside_between = _spread(
+        between, length_shares, [_PAIR_ID_COL], _LINE_SHARE_COL, _ALLOCATED_COL
+    )
+
+    # -- intra-zonal: over the area of the one zone ------------------------
+    within = pairs[intra_zonal].copy()
+    within_shares = zone_shares.rename(columns={surveys.ZONE_CODE_COL: surveys.ZONE_ORIGIN_COL})
+    in_zone, outside_within = _spread(
+        within, within_shares, [surveys.ZONE_ORIGIN_COL], _ZONE_SHARE_COL, _ALLOCATED_COL
+    )
+
+    # -- the two endpoint allocations --------------------------------------
+    # Divided between units by the same area rule as an intra-zonal trip, so that
+    # "a zone is in a unit" means one thing in this module. What makes them
+    # alternatives is which geometry they use — the endpoint zone rather than the
+    # corridor — and not a second idea of how a zone is divided.
+    at_origin, _ = _spread(
+        pairs,
+        zone_shares.rename(columns={surveys.ZONE_CODE_COL: surveys.ZONE_ORIGIN_COL}),
+        [surveys.ZONE_ORIGIN_COL],
+        _ZONE_SHARE_COL,
+        config.TRIPS_AT_ORIGIN_COL,
+    )
+    at_destination, _ = _spread(
+        pairs,
+        zone_shares.rename(columns={surveys.ZONE_CODE_COL: surveys.ZONE_DESTINATION_COL}),
+        [surveys.ZONE_DESTINATION_COL],
+        _ZONE_SHARE_COL,
+        config.TRIPS_AT_DESTINATION_COL,
+    )
+
+    key = [config.AREA_CODE_COL, config.ACTOR_TYPE_COL, config.DAY_TYPE_COL]
+    contributions = [
+        along_line.groupby(key, as_index=False).agg(
+            **{
+                config.TRIPS_PER_AVERAGE_DAY_COL: (_ALLOCATED_COL, "sum"),
+                config.DESIRE_LINE_KM_COL: (predictors.FRAGMENT_LENGTH_COL, "sum"),
+                config.OD_PAIRS_TOUCHING_COL: (_PAIR_ID_COL, "nunique"),
+            }
+        ),
+        in_zone.groupby(key, as_index=False).agg(
+            **{config.INTRAZONAL_TRIPS_COL: (_ALLOCATED_COL, "sum")}
+        ),
+        at_origin.groupby(key, as_index=False).agg(
+            **{config.TRIPS_AT_ORIGIN_COL: (config.TRIPS_AT_ORIGIN_COL, "sum")}
+        ),
+        at_destination.groupby(key, as_index=False).agg(
+            **{config.TRIPS_AT_DESTINATION_COL: (config.TRIPS_AT_DESTINATION_COL, "sum")}
+        ),
+    ]
+    per_unit = contributions[0]
+    for contribution in contributions[1:]:
+        per_unit = per_unit.merge(contribution, on=key, how="outer")
+    for column in (
+        config.TRIPS_PER_AVERAGE_DAY_COL,
+        config.DESIRE_LINE_KM_COL,
+        config.INTRAZONAL_TRIPS_COL,
+        config.TRIPS_AT_ORIGIN_COL,
+        config.TRIPS_AT_DESTINATION_COL,
+    ):
+        per_unit[column] = per_unit[column].fillna(0.0).astype(float)
+    per_unit[config.OD_PAIRS_TOUCHING_COL] = (
+        per_unit[config.OD_PAIRS_TOUCHING_COL].fillna(0).astype(int)
+    )
+    # The variable is the whole of what reached the unit, by whichever route. The
+    # intra-zonal part stays in its own column as a part of it and never as an
+    # addition to it, so a reader can see how much of a unit's walking never left
+    # its zone.
+    per_unit[config.TRIPS_PER_AVERAGE_DAY_COL] = (
+        per_unit[config.TRIPS_PER_AVERAGE_DAY_COL] + per_unit[config.INTRAZONAL_TRIPS_COL]
+    )
+
+    outside = outside_between.add(outside_within, fill_value=0.0)
+    covered_per_pair = length_shares.groupby(_PAIR_ID_COL)[_LINE_SHARE_COL].sum()
+    covered_per_zone = zone_shares.groupby(surveys.ZONE_CODE_COL)[_ZONE_SHARE_COL].sum()
+    largest = float(max(covered_per_pair.max(), covered_per_zone.max()))
+
+    log.record(
+        f"apportion the {survey.year} survey over the units",
+        rows_in=len(pairs),
+        rows_out=len(per_unit),
+        changes=[
+            (len(per_unit) - len(pairs), "zone pairs replaced by one row per unit, actor type and day type"),
+        ],
+        notes=[
+            f"{int((~intra_zonal).sum()):,} inter-zonal pair-rows spread along a line and "
+            f"{int(intra_zonal.sum()):,} intra-zonal ones spread over the area of one zone",
+            f"{float(pairs.loc[intra_zonal, surveys.TRIPS_COL].sum()):,.1f} trips per day are "
+            f"intra-zonal, {100 * float(pairs.loc[intra_zonal, surveys.TRIPS_COL].sum()) / float(pairs[surveys.TRIPS_COL].sum()):.1f}% "
+            "of the four measured modes, and are apportioned rather than discarded",
+            f"{float(outside.sum()):,.1f} trips per day fall outside the {len(units)} units, "
+            "which is the surveyed region beyond the study area and not a loss",
+        ],
+    )
+
+    return SurveyApportionment(
+        trips=trips,
+        per_unit=per_unit,
+        outside=outside,
+        zones_read=len(zones),
+        zones_reaching_a_unit=int(zone_shares[surveys.ZONE_CODE_COL].nunique()),
+        pairs_built=len(lines),
+        pairs_reaching_a_unit=int(length_shares[_PAIR_ID_COL].nunique()),
+        largest_covered_share=largest,
+    )
+
+
+# ---------------------------------------------------------------------------
+# The long table
+# ---------------------------------------------------------------------------
+
+
+def build_from_surveys(
+    units: gpd.GeoDataFrame,
+    log: RunLog,
+    survey_list: tuple[config.MobilitySurvey, ...] | None = None,
+    scale: config.TerritorialScale | None = None,
+) -> tuple[pd.DataFrame, dict[int, SurveyApportionment]]:
+    """One row per unit, year, actor type and day type, for every declared survey.
+
+    The grid is complete by construction: every unit gets a row for every actor
+    type the survey measures and every day type it distinguishes, whether or not
+    a trip reached it. A unit no line of a mode reaches is a zero and an
+    observation, exactly as Torca is for the delivered layer; a unit with no
+    usable area is null and not measured. What is never materialised is a
+    combination the survey does not have — a year with no usable Saturday must be
+    absent, not zero, and that is D10 applied to a dimension that is ragged by
+    construction.
+    """
+    survey_list = survey_list or config.MOBILITY_SURVEYS
+    scale = scale or config.active_scale()
+    projected = predictors.prepare_units(units)
+
+    panel, _, _ = population.build(projected, log, scale=scale)
+
+    blocks: list[pd.DataFrame] = []
+    apportionments: dict[int, SurveyApportionment] = {}
+
+    for survey in survey_list:
+        trips = surveys.read(survey, log)
+        zones = surveys.read_zoning(survey, log)
+        surveys.check_zone_coverage(trips, zones, log)
+        allocation = apportion_survey(trips, zones, projected, log)
+        apportionments[survey.year] = allocation
+
+        # The full grid first, so that a combination nothing reached arrives as a
+        # gap the code can see rather than as a row that is simply not there.
+        grid = pd.MultiIndex.from_product(
+            [
+                projected[config.AREA_CODE_COL],
+                survey.actor_types,
+                [day for day in config.DAY_TYPES if day in set(trips.universe_shares.index)],
+            ],
+            names=[config.AREA_CODE_COL, config.ACTOR_TYPE_COL, config.DAY_TYPE_COL],
+        ).to_frame(index=False)
+
+        block = grid.merge(
+            allocation.per_unit,
+            on=[config.AREA_CODE_COL, config.ACTOR_TYPE_COL, config.DAY_TYPE_COL],
+            how="left",
+        )
+        block[config.YEAR_COL] = survey.year
+        blocks.append(block)
+
+    table = pd.concat(blocks, ignore_index=True)
+
+    counted = [
+        config.TRIPS_PER_AVERAGE_DAY_COL,
+        config.INTRAZONAL_TRIPS_COL,
+        config.TRIPS_AT_ORIGIN_COL,
+        config.TRIPS_AT_DESTINATION_COL,
+        config.DESIRE_LINE_KM_COL,
+    ]
+    untouched = int(table[config.TRIPS_PER_AVERAGE_DAY_COL].isna().sum())
+    table[counted] = table[counted].fillna(0.0).astype(float)
+    table[config.OD_PAIRS_TOUCHING_COL] = (
+        table[config.OD_PAIRS_TOUCHING_COL].fillna(0).astype(int)
+    )
+
+    # The universe share is a property of the year and the day type, so it is the
+    # same on every unit and actor type of a block. It travels in the table rather
+    # than in the log because it is what converts one trip column into the other,
+    # and a reader who cannot recompute the conversion cannot check it.
+    shares = pd.concat(
+        [
+            apportionments[survey.year].trips.universe_shares.rename(
+                config.DAY_TYPE_UNIVERSE_SHARE_COL
+            ).to_frame().assign(**{config.YEAR_COL: survey.year})
+            for survey in survey_list
+        ]
+    ).reset_index(names=config.DAY_TYPE_COL)
+    table = table.merge(shares, on=[config.YEAR_COL, config.DAY_TYPE_COL], how="left")
+
+    geometry = projected[
+        [config.AREA_CODE_COL, config.AREA_NAME_COL, config.AREA_UNIT_KM2_COL]
+    ]
+    table = table.merge(geometry, on=config.AREA_CODE_COL, how="left")
+
+    # The denominator is read at the year of the numerator, which is what the
+    # survey path buys over the delivered layer: the trips now carry a year, so
+    # the population does not have to be pinned to one and named for it. This is
+    # what supersedes POPULATION_2023. See D36 and D38.
+    residents = {
+        survey.year: population.for_year(panel, survey.year) for survey in survey_list
+    }
+    table[config.POPULATION_COL] = [
+        residents[year].get(code, np.nan)
+        for year, code in zip(table[config.YEAR_COL], table[config.AREA_CODE_COL])
+    ]
+
+    table[config.TRIPS_PER_DAY_OF_TYPE_COL] = (
+        table[config.TRIPS_PER_AVERAGE_DAY_COL] / table[config.DAY_TYPE_UNIVERSE_SHARE_COL]
+    )
+    area = table[config.AREA_UNIT_KM2_COL]
+    table[config.TRIPS_PER_KM2_COL] = (
+        table[config.TRIPS_PER_AVERAGE_DAY_COL] / area.where(area > 0)
+    )
+    people = table[config.POPULATION_COL]
+    table[config.TRIPS_PER_INHABITANT_COL] = (
+        table[config.TRIPS_PER_AVERAGE_DAY_COL] / people.where(people > 0)
+    )
+
+    unusable_area = ~(area > 0)
+    table[config.PREDICTOR_STATUS_COL] = np.where(
+        unusable_area, config.NOT_MEASURED_STATUS, config.MEASURED_STATUS
+    )
+    table.loc[unusable_area, counted] = np.nan
+
+    table[config.SCALE_COL] = scale.label
+    table = (
+        table[list(config.survey_exposure_columns())]
+        .sort_values(
+            [config.YEAR_COL, config.AREA_CODE_COL, config.ACTOR_TYPE_COL, config.DAY_TYPE_COL],
+            kind="stable",
+        )
+        .reset_index(drop=True)
+    )
+
+    log.record(
+        "assemble the long exposure table",
+        rows_in=sum(len(a.per_unit) for a in apportionments.values()),
+        rows_out=len(table),
+        changes=[
+            (
+                len(table) - sum(len(a.per_unit) for a in apportionments.values()),
+                "combinations of unit, actor type and day type that no trip reached, "
+                "materialised as a measured zero rather than left absent",
+            ),
+        ],
+        notes=[
+            f"one row per unit, year, actor type and day type at {scale.label}",
+            "years: " + ", ".join(str(survey.year) for survey in survey_list),
+            f"{untouched} combination(s) with no trip at all, each an observed zero",
+            f"{int(unusable_area.sum())} row(s) with no usable area, marked "
+            f"{config.NOT_MEASURED_STATUS}",
+        ],
+    )
+    return table, apportionments
+
+
+def survey_dictionary_table(
+    survey_list: tuple[config.MobilitySurvey, ...] | None = None,
+) -> pd.DataFrame:
+    """What each column of the long exposure table holds, in its own units.
+
+    Built from the same declarations the measurement runs on, so it cannot
+    describe a column the table does not have or miss one it does. The identity
+    columns are in it too, because the table is joined to others outside this
+    repository and a reader there has neither this code nor the survey.
+    """
+    survey_list = survey_list or config.MOBILITY_SURVEYS
+    sources = "; ".join(
+        f"{survey.year}: {survey.trips.path.name} with {survey.zoning.shapefile.name}"
+        for survey in survey_list
+    )
+
+    rows = [
+        {
+            "COLUMN": config.ACTOR_TYPE_COL,
+            "UNIT": "",
+            "MEANS": (
+                "the road user type whose travel is counted, in the vocabulary the casualty "
+                f"matrix uses: {', '.join(config.ROAD_USER_TYPES)}. It is the column the matrix "
+                f"is joined on, against its {config.PARTY_TYPE_COL}"
+            ),
+            "IS_ALTERNATIVE_ALLOCATION": False,
+            "SOURCE": sources,
+        },
+        {
+            "COLUMN": config.DAY_TYPE_COL,
+            "UNIT": "",
+            "MEANS": (
+                f"the kind of day the trips were made on: {', '.join(config.DAY_TYPES)}. A "
+                "dimension and not a suffix, so a year with no usable Saturday is absent from "
+                "this column rather than carrying a zero"
+            ),
+            "IS_ALTERNATIVE_ALLOCATION": False,
+            "SOURCE": sources,
+        },
+        {
+            "COLUMN": config.POPULATION_COL,
+            "UNIT": "inhabitants",
+            "MEANS": (
+                "resident population of the unit in the year of the row, read from "
+                f"{config.POPULATION_SOURCE.path.name} and not from any survey. It carries no "
+                "year in its name because the row does"
+            ),
+            "IS_ALTERNATIVE_ALLOCATION": False,
+            "SOURCE": config.POPULATION_SOURCE.path.name,
+        },
+    ]
+    rows.extend(
+        {
+            "COLUMN": quantity.name,
+            "UNIT": quantity.unit,
+            "MEANS": quantity.means,
+            "IS_ALTERNATIVE_ALLOCATION": quantity.is_alternative,
+            "SOURCE": sources,
+        }
+        for quantity in config.SURVEY_EXPOSURE_QUANTITIES
+    )
+    rows.append(
+        {
+            "COLUMN": config.PREDICTOR_STATUS_COL,
+            "UNIT": "",
+            "MEANS": (
+                f"{config.MEASURED_STATUS} where the unit was measured, whatever came out, and "
+                f"{config.NOT_MEASURED_STATUS} where it could not be; a unit no trip reaches is "
+                f"{config.MEASURED_STATUS} with a zero"
+            ),
+            "IS_ALTERNATIVE_ALLOCATION": False,
+            "SOURCE": "",
+        }
+    )
+    return pd.DataFrame(rows)
+
+
+def export_from_surveys(
+    table: pd.DataFrame,
+    log: RunLog,
+    survey_list: tuple[config.MobilitySurvey, ...] | None = None,
+) -> dict[str, Path]:
+    """Write the long exposure table and the dictionary that reads it."""
+    survey_list = survey_list or config.MOBILITY_SURVEYS
+    data_dir = log.run_dir / config.DATA_SUBDIR
+    data_dir.mkdir(parents=True, exist_ok=True)
+
+    paths: dict[str, Path] = {}
+    table_path = data_dir / f"{config.ANALYSIS_PREFIX}__exposure_by_unit.csv"
+    table.to_csv(table_path, index=False, encoding="utf-8")
+    table.to_parquet(table_path.with_suffix(".parquet"))
+    paths["survey_table"] = table_path
+
+    dictionary_path = data_dir / f"{config.REFERENCE_PREFIX}__exposure_dictionary.csv"
+    survey_dictionary_table(survey_list).to_csv(dictionary_path, index=False, encoding="utf-8")
+    paths["survey_dictionary"] = dictionary_path
+
+    log.info(
+        "exported the long exposure table (%d rows) and its dictionary to %s/",
+        len(table),
+        config.DATA_SUBDIR,
+    )
+    return paths
+
+
+# ---------------------------------------------------------------------------
+# Figures
+# ---------------------------------------------------------------------------
+
+
+def render_survey_figures(
+    table: pd.DataFrame,
+    units: gpd.GeoDataFrame,
+    log: RunLog,
+    survey_list: tuple[config.MobilitySurvey, ...] | None = None,
+) -> tuple[list[Path], list[int]]:
+    """One choropleth per survey year and actor type, on the typical weekday.
+
+    The weekday and not an average of the three, because the map is one number
+    per unit and the day type is a dimension of the table rather than something a
+    figure can carry. Which day type is drawn is therefore a choice, and the
+    weekday is the one nearly every casualty in the series happened on.
+    """
+    survey_list = survey_list or config.MOBILITY_SURVEYS
+    directory = log.run_dir / config.FIGURES_SUBDIR / config.EXPOSURE_FIGURES_SUBDIR
+
+    out_paths: list[Path] = []
+    overflowing: list[int] = []
+    for survey in survey_list:
+        for actor in survey.actor_types:
+            drawn = table[
+                (table[config.YEAR_COL] == survey.year)
+                & (table[config.ACTOR_TYPE_COL] == actor)
+                & (table[config.DAY_TYPE_COL] == config.WEEKDAY_TYPE)
+            ]
+            if drawn.empty:
+                continue
+
+            stem = (
+                f"{config.EXPOSURE_FIGURES_SUBDIR}__{survey.year}_{actor.lower()}"
+                f"_{config.WEEKDAY_TYPE.lower()}"
+            )
+            plain = directory / f"{stem}.{config.MAP_FIGURE_FORMAT}"
+            with_bar = directory / f"{stem}{config.MAP_SCALEBAR_SUFFIX}.{config.MAP_FIGURE_FORMAT}"
+
+            values = drawn.set_index(config.AREA_CODE_COL)[config.TRIPS_PER_AVERAGE_DAY_COL]
+            caption = f"{config.ROAD_USER_LABELS_ES[actor]}, viajes por día ({survey.year})"
+
+            spilling = maps.render_choropleth(units, values, plain, caption, scalebar=False)
+            maps.render_choropleth(units, values, with_bar, caption, scalebar=True)
+            out_paths.extend([plain, with_bar])
+            overflowing.extend(spilling)
+
+            log.info(
+                "choropleth %d %s: %d units, range %s to %s trips per day, %d observed zero(s)",
+                survey.year,
+                actor,
+                len(values),
+                f"{values.min():,.0f}",
+                f"{values.max():,.0f}",
+                int((values == 0).sum()),
+            )
+
+    for path in out_paths:
+        log.info("wrote %s", path)
+    return out_paths, overflowing
+
+
+# ---------------------------------------------------------------------------
+# Verification
+# ---------------------------------------------------------------------------
+
+
+def verify_from_surveys(
+    table: pd.DataFrame,
+    apportionments: dict[int, SurveyApportionment],
+    units: gpd.GeoDataFrame,
+    log: RunLog,
+    survey_list: tuple[config.MobilitySurvey, ...] | None = None,
+    paths: dict[str, Path] | None = None,
+) -> bool:
+    """Check the long table against the surveys it was built from, and against arithmetic.
+
+    The balance is the check that matters and it is made per actor type and day
+    type rather than per year: an aggregate over the four modes could close while
+    two of them were wrong in opposite directions, which is exactly the kind of
+    error a total hides.
+    """
+    survey_list = survey_list or config.MOBILITY_SURVEYS
+    checks: list[tuple[str, bool, str]] = []
+    rtol = config.EXPOSURE_BALANCE_RTOL
+
+    expected_columns = list(config.survey_exposure_columns())
+    checks.append((
+        "the table carries exactly the declared columns, in the declared order",
+        list(table.columns) == expected_columns,
+        f"{len(table.columns)} columns against {len(expected_columns)} declared",
+    ))
+
+    expected_units = set(units[config.AREA_CODE_COL])
+    checks.append((
+        "every row names a unit of the study",
+        set(table[config.AREA_CODE_COL]) <= expected_units,
+        f"{table[config.AREA_CODE_COL].nunique()} distinct units of {len(expected_units)}",
+    ))
+
+    key = [config.YEAR_COL, config.AREA_CODE_COL, config.ACTOR_TYPE_COL, config.DAY_TYPE_COL]
+    checks.append((
+        "no combination of unit, year, actor type and day type appears twice",
+        not table.duplicated(subset=key).any(),
+        f"{int(table.duplicated(subset=key).sum())} duplicated",
+    ))
+
+    measured = table[table[config.PREDICTOR_STATUS_COL] == config.MEASURED_STATUS]
+
+    for survey in survey_list:
+        allocation = apportionments[survey.year]
+        year_rows = table[table[config.YEAR_COL] == survey.year]
+
+        expected_rows = (
+            len(expected_units)
+            * len(survey.actor_types)
+            * len(set(allocation.trips.universe_shares.index))
+        )
+        checks.append((
+            f"{survey.year}: the grid of unit, actor type and day type is complete",
+            len(year_rows) == expected_rows,
+            f"{len(year_rows)} rows against {expected_rows} expected",
+        ))
+
+        # The balance, per actor type and day type. What was apportioned to the
+        # units plus what fell outside them equals what the file holds — the check
+        # the legacy pipeline could not have made, because the quantity it
+        # exported was not a quantity the file held.
+        worst_name, worst_gap = "", 0.0
+        balanced = True
+        for (actor, day_type), total in allocation.trips.totals.items():
+            allocated = float(
+                year_rows[
+                    (year_rows[config.ACTOR_TYPE_COL] == actor)
+                    & (year_rows[config.DAY_TYPE_COL] == day_type)
+                ][config.TRIPS_PER_AVERAGE_DAY_COL].sum()
+            )
+            outside = float(allocation.outside.get((actor, day_type), 0.0))
+            ok = bool(np.isclose(allocated + outside, float(total), rtol=rtol))
+            balanced = balanced and ok
+            gap = abs(allocated + outside - float(total))
+            if gap > worst_gap:
+                worst_gap, worst_name = gap, f"{actor}/{day_type}"
+        checks.append((
+            f"{survey.year}: apportioned plus outside equals the file, per actor type and day",
+            balanced,
+            f"{len(allocation.trips.totals)} combination(s), largest gap {worst_gap:.6f} "
+            f"trips at {worst_name or 'none'}",
+        ))
+
+        # The four modes of the file have to be the four modes of the table, or
+        # something was lost between the two that the balance would not see
+        # because it is checked per mode.
+        measured_total = float(allocation.trips.totals.sum())
+        table_total = float(
+            year_rows[config.TRIPS_PER_AVERAGE_DAY_COL].sum()
+        ) + float(allocation.outside.sum())
+        checks.append((
+            f"{survey.year}: the four measured modes add to the file's own total for them",
+            bool(np.isclose(table_total, measured_total, rtol=rtol)),
+            f"{table_total:,.2f} against {measured_total:,.2f}",
+        ))
+
+        # And the file itself is accounted for. This is the check the whole
+        # reading is worth: the four modes the study measures, plus the modes it
+        # deliberately does not, plus the records whose zone is missing, add to
+        # the survey's own published total. The two sides are different groupings
+        # of the same column, so it is a check and not a restatement — a mode
+        # quietly dropped between the mapping and the totals would show here and
+        # nowhere else.
+        accounted = (
+            measured_total
+            + float(allocation.trips.not_measured_totals.sum())
+            + allocation.trips.unzoned_total
+        )
+        checks.append((
+            f"{survey.year}: every trip the file weights is measured or named as set aside",
+            bool(np.isclose(accounted, allocation.trips.file_total, rtol=rtol)),
+            f"{measured_total:,.1f} measured + "
+            f"{float(allocation.trips.not_measured_totals.sum()):,.1f} in modes outside the "
+            f"study + {allocation.trips.unzoned_total:,.1f} unzoned = {accounted:,.1f} "
+            f"against {allocation.trips.file_total:,.1f}",
+        ))
+
+        checks.append((
+            f"{survey.year}: nothing is apportioned more than once over",
+            allocation.largest_covered_share <= 1 + config.EXPOSURE_MAX_OVER_COVERAGE,
+            f"largest share of a line or zone covered by the units: "
+            f"{allocation.largest_covered_share:.9f}",
+        ))
+
+        # The intra-zonal trips are a part of the variable and not an addition to
+        # it, so they can never exceed it.
+        year_measured = measured[measured[config.YEAR_COL] == survey.year]
+        over = int(
+            (
+                year_measured[config.INTRAZONAL_TRIPS_COL]
+                > year_measured[config.TRIPS_PER_AVERAGE_DAY_COL] * (1 + 1e-9)
+            ).sum()
+        )
+        checks.append((
+            f"{survey.year}: the intra-zonal trips are a part of the variable, never more",
+            over == 0,
+            f"{over} row(s) where the part exceeds the whole",
+        ))
+
+    negatives = int((measured[config.TRIPS_PER_AVERAGE_DAY_COL] < 0).sum())
+    checks.append(("no negative trip count", negatives == 0, f"{negatives} negative"))
+
+    # The two trip columns are the same apportionment of one expansion read two
+    # ways, so one has to be the other divided by the share the table carries. It
+    # is checked against the column in the same table because that is what a
+    # reader would recompute it from.
+    share = measured[config.DAY_TYPE_UNIVERSE_SHARE_COL]
+    checks.append((
+        "trips per day of type is trips per average day over the universe share",
+        bool(np.allclose(
+            (measured[config.TRIPS_PER_AVERAGE_DAY_COL] / share).to_numpy(),
+            measured[config.TRIPS_PER_DAY_OF_TYPE_COL].to_numpy(),
+            rtol=1e-12,
+            equal_nan=True,
+        )),
+        f"compared to 1e-12 over {len(measured)} measured row(s)",
+    ))
+    checks.append((
+        "the universe shares of a year add to one",
+        bool(np.allclose(
+            [
+                float(apportionments[survey.year].trips.universe_shares.sum())
+                for survey in survey_list
+            ],
+            1.0,
+            rtol=1e-9,
+        )),
+        ", ".join(
+            f"{survey.year}: {float(apportionments[survey.year].trips.universe_shares.sum()):.12f}"
+            for survey in survey_list
+        ),
+    ))
+
+    checks.append((
+        "the per-km2 column is the variable over the area of its own unit",
+        bool(np.allclose(
+            (measured[config.TRIPS_PER_AVERAGE_DAY_COL]
+             / measured[config.AREA_UNIT_KM2_COL]).to_numpy(),
+            measured[config.TRIPS_PER_KM2_COL].to_numpy(),
+            rtol=1e-12,
+        )),
+        "compared to 1e-12",
+    ))
+    people = measured[config.POPULATION_COL]
+    checks.append((
+        "the per-inhabitant column is the variable over the population of the same year",
+        bool(np.allclose(
+            (measured[config.TRIPS_PER_AVERAGE_DAY_COL] / people.where(people > 0)).to_numpy(),
+            measured[config.TRIPS_PER_INHABITANT_COL].to_numpy(),
+            rtol=1e-12,
+            equal_nan=True,
+        )),
+        f"compared to 1e-12; {int(people.isna().sum())} row(s) with no population",
+    ))
+
+    zero_rows = table[table[config.TRIPS_PER_AVERAGE_DAY_COL] == 0]
+    checks.append((
+        "a combination no trip reaches carries a zero and the status MEASURED",
+        bool((zero_rows[config.PREDICTOR_STATUS_COL] == config.MEASURED_STATUS).all()),
+        f"{len(zero_rows)} row(s) at zero",
+    ))
+
+    if paths:
+        written = [path for path in paths.values() if path.exists() and path.stat().st_size > 0]
+        checks.append((
+            "every exported file is on disk and none is empty",
+            len(written) == len(paths),
+            f"{len(written)} of {len(paths)}",
+        ))
+
+    width = max(len(name) for name, _, _ in checks)
+    rendered = [
+        f"{'check'.ljust(width)}  {'result':>8}  detail",
+        f"{'-' * width}  {'-' * 8}  ------",
+    ]
+    for name, ok, detail in checks:
+        rendered.append(f"{name.ljust(width)}  {'OK' if ok else 'FAILED':>8}  {detail}")
+    log.table("survey exposure verification:", "\n".join(rendered))
+
+    passed = all(ok for _, ok, _ in checks)
+    if not passed:
+        log.warn("survey exposure verification FAILED")
+    return passed
+
+
+# ---------------------------------------------------------------------------
+# Report
+# ---------------------------------------------------------------------------
+
+
+def report_from_surveys(
+    table: pd.DataFrame,
+    apportionments: dict[int, SurveyApportionment],
+    log: RunLog,
+    survey_list: tuple[config.MobilitySurvey, ...] | None = None,
+) -> None:
+    """What each survey says, in numbers, for whoever reads the log instead."""
+    survey_list = survey_list or config.MOBILITY_SURVEYS
+
+    for survey in survey_list:
+        allocation = apportionments[survey.year]
+        year_rows = table[table[config.YEAR_COL] == survey.year]
+
+        log.info(
+            "%s: %d record(s) read, %d measured in the four modes; %s trips per day in the "
+            "file, %s of them in those modes",
+            survey.label,
+            allocation.trips.records_read,
+            allocation.trips.records_measured,
+            f"{allocation.trips.file_total:,.0f}",
+            f"{float(allocation.trips.totals.sum()):,.0f}",
+        )
+        log.info(
+            "%d of %d zone(s) and %d of %d origin-destination pair(s) reach a unit",
+            allocation.zones_reaching_a_unit,
+            allocation.zones_read,
+            allocation.pairs_reaching_a_unit,
+            allocation.pairs_built,
+        )
+
+        weekday = year_rows[year_rows[config.DAY_TYPE_COL] == config.WEEKDAY_TYPE]
+        for actor in survey.actor_types:
+            rows = weekday[weekday[config.ACTOR_TYPE_COL] == actor]
+            inside = float(rows[config.TRIPS_PER_AVERAGE_DAY_COL].sum())
+            total = float(allocation.trips.totals.get((actor, config.WEEKDAY_TYPE), np.nan))
+            top = rows.nlargest(3, config.TRIPS_PER_AVERAGE_DAY_COL)
+            log.info(
+                "%d %s on a typical weekday: %s of %s trips per day inside the units (%.1f%%); "
+                "most exposed %s",
+                survey.year,
+                actor.lower(),
+                f"{inside:,.0f}",
+                f"{total:,.0f}",
+                100 * inside / total if total else float("nan"),
+                "; ".join(
+                    f"{row[config.AREA_CODE_COL]} {row[config.AREA_NAME_COL]} "
+                    f"{row[config.TRIPS_PER_AVERAGE_DAY_COL]:,.0f}"
+                    for _, row in top.iterrows()
+                ),
+            )
+            empty = rows[rows[config.TRIPS_PER_AVERAGE_DAY_COL] == 0]
+            if len(empty):
+                log.info(
+                    "no %s trip reaches %s, which is an observed zero and not a missing value",
+                    actor.lower(),
+                    ", ".join(
+                        f"{row[config.AREA_CODE_COL]} ({row[config.AREA_NAME_COL]})"
+                        for _, row in empty.iterrows()
+                    ),
+                )
+
+        # The alternatives exist to be compared, so the comparison is made here
+        # rather than left for someone to do by hand. Rank correlation rather
+        # than Pearson: what matters is whether the rules order the units the
+        # same way, not whether they agree on a magnitude they do not share.
+        alternatives = [config.TRIPS_PER_AVERAGE_DAY_COL] + [
+            quantity.name
+            for quantity in config.SURVEY_EXPOSURE_QUANTITIES
+            if quantity.is_alternative
+        ]
+        for actor in survey.actor_types:
+            rows = weekday[weekday[config.ACTOR_TYPE_COL] == actor]
+            ranks = rows[alternatives].corr(method="spearman")
+            log.table(
+                f"{survey.year} {actor.lower()}, typical weekday: rank correlation between the "
+                "allocation rules (Spearman), the variable first:",
+                ranks.to_string(float_format=lambda value: f"{value:.3f}"),
+            )
+
+        # Said on every run, because the number invites a reading it cannot carry.
+        # The survey's own weighting makes a Saturday look like a weekday, and a
+        # reader comparing the two day types has to know that before doing it.
+        shares = allocation.trips.universe_shares
+        rates = {
+            day_type: float(
+                year_rows[year_rows[config.DAY_TYPE_COL] == day_type][
+                    config.TRIPS_PER_DAY_OF_TYPE_COL
+                ].sum()
+            )
+            for day_type in shares.index
+        }
+        log.warn(
+            "%d: rescaled to the universe the day types come out at %s trips per day. The "
+            "expansion factor represents the universe once over all seven reference days, so "
+            "%s counts a day type's share of an average day and %s counts one day of that "
+            "type; only the second is comparable between day types, and it says a Saturday "
+            "carries as much travel as a weekday. See D38",
+            survey.year,
+            "; ".join(f"{day_type} {value:,.0f}" for day_type, value in rates.items()),
+            config.TRIPS_PER_AVERAGE_DAY_COL,
+            config.TRIPS_PER_DAY_OF_TYPE_COL,
         )

@@ -23,10 +23,18 @@ and each has a root declared in `config.py`:
 | `CARTOGRAPHY_DIR` | `data/geo/` | The territorial units and the two other divisions |
 | `CASUALTIES_DIR` | `data/data_siniestros_bogota/` | The delivered crash records |
 | `PREDICTORS_DIR` | `data/shp_properties_sorted/` | The urban layers the predictors are measured on |
-| `EXPOSURE_DIR` | `data/shp_properties_sorted/` | The layers travel exposure is measured on |
+| `EXPOSURE_DIR` | `data/shp_properties_sorted/` | The delivered desire lines, now a reference and not the variable |
+| `SURVEYS_DIR` | `data/incoming/encuestas_movilidad/` | The mobility surveys the study's exposure is built from |
 | `POPULATION_DIR` | `data/population/` | The demographic file the denominators come from |
 | `INCOMING_DIR` | `data/incoming/` | Deliveries not yet merged into the sources above |
 | `INTEGRATED_DIR` | `data/integrated/` | What the `integrate` route rebuilds from a delivery |
+
+**`SURVEYS_DIR` points inside `data/incoming/` and that is not a contradiction.**
+The rule below is that a delivery leaves `incoming/` once it has been inspected
+and declared, and 2023 now is both. It stays where it is because the other three
+years are not, and moving one year of a four-year delivery out of the folder its
+siblings sit in would file the same source two ways. The four move together, once
+2011, 2015 and 2019 are declared and the shape they finally want is known.
 
 **`PREDICTORS_DIR` and `EXPOSURE_DIR` point at the same folder today, and they are
 still two roots.** The desire lines were delivered inside the bundle of predictor
@@ -156,17 +164,24 @@ control, so nothing else can catch the two drifting apart.
 
 ## Known and provisional
 
-**The mobility survey publications are in `incoming/` and unread.** They are the
-four complete publications from the Alcaldía de Bogotá, placed on 2026-09-05,
-replacing an earlier partial delivery. They are meant to replace the single
-bicycle layer now used for exposure, and their shape is not the shape of what
-they replace: they hold **survey trip records and the zoning those records are
-keyed on, and no desire lines at all.**
+**The mobility survey publications are in `incoming/`, and 2023 of them is now
+read.** They are the four complete publications from the Alcaldía de Bogotá,
+placed on 2026-09-05, replacing an earlier partial delivery. They replace the
+single bicycle layer used for exposure until now, and their shape is not the
+shape of what they replace: they hold **survey trip records and the zoning those
+records are keyed on, and no desire lines at all.**
 
-The desire lines the pipeline reads today were derived from material of exactly
-this kind — each line runs between two zone centroids and its records carry
-`zat_origen` and `zat_destin` — so the geometry has to be built here rather than
-declared. That is a stage of the pipeline that does not exist yet.
+The desire lines the pipeline read before this were derived from material of
+exactly this kind — each line runs between two zone centroids and its records
+carry `zat_origen` and `zat_destin` — so the geometry is built rather than
+declared. That stage now exists: `src/surveys.py` reads a declared survey and
+`src/exposure.py` builds the lines and apportions them. See D38.
+
+**Three files of 2023 are read and nothing else in the four folders is.**
+`config.SURVEY_2023` names the trip module, the household module — which is where
+the day type comes from, and only there — and the ZAT zoning. Everything else in
+the 2023 publication, and all of 2011, 2015 and 2019, is delivered and not yet
+declared.
 
 What each year holds for that purpose, out of everything published:
 
@@ -175,7 +190,14 @@ What each year holds for that purpose, out of everything published:
 | 2011 | `120927_ConsultaEODH2011_DiaTipico (1).accdb`, table `Mod_D_VIAJES2_BaseImputacion_Definitiva` | **none delivered** |
 | 2015 | `Base de Datos Completa/VIAJES_ANONIMIZADOS.csv`, 35 MB | `ZATs_2012_MAG.shp`, 948 zones |
 | 2019 | `BD EODH2019 FINAL v14022020/Archivos CSV/ViajesEODH2019.csv`, 23 MB | `ZONAS/`, `ZAT.shp` 1,141 and `UTAM.shp` 141 |
-| 2023 | `05_Base datos procesada/CSV/d. Modulo viajes.csv`, 59 MB | `ZAT2023.shp` 1,215 and `UTAM2023.shp` 142 |
+| 2023 | `05_Base datos procesada/CSV/d. Modulo viajes.csv`, 59 MB **— declared** | `ZAT2023.shp` 1,215 **— declared**; `UTAM2023.shp` 142 |
+
+2023 also reads `05_Base datos procesada/CSV/a. Modulo hogares.csv`, which the
+table above does not list because it holds no trips. It is where the interview
+date and the household expansion factor are, and therefore where the day type of
+every trip comes from. A year's day-type source belongs in its declaration
+alongside its trips, and this is the note that says why a second file appears
+there.
 
 Each year also has a Saturday or non-weekday counterpart, encoded a different way
 in every one of them; `docs/mobility-surveys-inventory.md` has the detail.
@@ -208,11 +230,16 @@ that is to be read; the others are duplicates and must not be read instead.
 Where the files will finally live follows from all of that. Until then
 `EXPOSURE_DIR` still points into the predictor bundle.
 
-**The current desire-lines layer is quoted in finished work** — D35, section 13 of
-the verification report, and `deliverables/plan.md` all carry figures measured on
-it. It must not be overwritten in place when the replacement is declared; the
-superseded delivery has to remain reachable or those figures stop being
-reproducible.
+**The delivered desire-lines layer is quoted in finished work** — D35, section 13
+of the verification report, and `deliverables/plan.md` all carry figures measured
+on it. It must not be overwritten or removed; the superseded delivery has to
+remain reachable or those figures stop being reproducible.
+
+It is still read on every `exposure` run for exactly that reason, and its table
+is now written as `reference__delivered_desire_lines_by_unit.csv` rather than as
+the analysis table. It also turned out to be worth keeping for a second reason:
+it is a 9.6 % sample of the **2019** survey, which is how its year was finally
+established. See D38.
 
 **Eight `.DS_Store` files** are scattered through the delivered folders. They are
 Finder artefacts from the machine the data was prepared on, they are read by

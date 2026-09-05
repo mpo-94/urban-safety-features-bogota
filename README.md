@@ -120,32 +120,50 @@ will fill.
 
 `exposure` is a route of its own because exposure is not a predictor. A predictor
 says what a place is built like; exposure says how much travel there is in it to
-be hurt, which puts the two on opposite sides of a rate model. It reads the
-origin-destination desire lines of the mobility survey, where every line carries
-the survey's own expansion of the trip it stands for, and gives each unit a line
-crosses the share of that line's trips matching the share of its length inside
-the unit. A line crosses three units in the median, so the rule is not optional.
+be hurt, which puts the two on opposite sides of a rate model.
 
-Every quantity comes out in its own column with its unit and its period in the
-name — trips per week and trips per day are different numbers from different
-columns of the source, and the layer's own length column is in degrees. Three
-alternative allocations are exported beside the variable, and none of them is a
-model variable: they are there so the sensitivity of a result to the rule can be
-shown rather than asserted. The route checks, every run, that what was allocated
-to the units plus what fell outside them equals what the file holds.
+It builds the origin-destination desire lines from the household mobility survey
+rather than receiving them drawn. A declared survey is read, its own mode labels
+are mapped to the four road user types the casualty matrix uses, its trips are
+grouped by actor type, kind of day and pair of zones, and one line is drawn
+between the two zone centroids of every pair. Each unit a line crosses gets the
+share of that line's trips matching the share of its length inside the unit — a
+line crosses several units, so the rule is not optional. A trip that begins and
+ends in the same zone has no line at all and is spread over the units covering
+that zone by area instead; those are 18% of the travel measured and dropping them
+would take a quarter of the walking out of the study.
 
-The exposure columns carry the mode in their names —
-`BICYCLE_TRIPS_PER_WEEK_BY_LENGTH_SHARE` — so a second layer adds columns instead
-of colliding with the first. Adding one is a declaration and a run;
-`docs/adding-an-exposure-layer.md` is the procedure, starting with what to verify
-in the file before declaring anything.
+The table is long: one row per unit, year, actor type and kind of day. It joins
+the casualty matrix on unit, year and actor type, and it has to be interpolated
+over the years no survey covers, and both are natural in that shape. The mode is
+therefore a column value and not part of a column name.
 
-The one exposure column that divides by the population names the year it divides
-by, `BICYCLE_TRIPS_PER_WEEK_PER_INHABITANT_2023`, and it is descriptive only. The
-trips carry no year of their own, so putting that ratio in a panel would make it
-move with its denominator alone — a change in cycling that is really a change in
-who lives there. The models take their denominator from the population table
-instead, per unit and per year.
+Adding a survey year is one `MobilitySurvey` in `src/config.py`. The one thing a
+year may also need is a rule for how it says which kind of day a trip was made
+on, because no two of the four surveys say it the same way.
+
+The route checks, every run, that every trip the file weights is either measured
+or named as deliberately set aside, and that what was apportioned to the units
+plus what fell outside them equals what the file holds — per actor type and per
+kind of day, not in aggregate, because an aggregate can close while two modes are
+wrong in opposite directions.
+
+Two trip columns come out, not one, and the difference matters. The survey's
+expansion factor represents the population once over all seven reference days, so
+summing it within one kind of day gives that day's share of an average day and
+not the trips of one such day. `TRIPS_PER_AVERAGE_DAY` is the first,
+`TRIPS_PER_DAY_OF_TYPE` the second, and `DAY_TYPE_UNIVERSE_SHARE` converts
+between them in the table itself. Three alternative allocations are exported
+beside the variable and none is a model variable: they exist so the sensitivity
+of a result to the allocation rule can be shown rather than asserted.
+
+The route also still measures the delivered desire-lines layer the pipeline read
+before the surveys arrived, and writes it as a reference table. It is kept
+because finished figures were measured on it, and because it turned out to be a
+9.6% sample of the 2019 survey that orders the thirty units quite differently
+from the full survey — which is the reason it is no longer the variable.
+`docs/adding-an-exposure-layer.md` is the procedure for a delivered layer of that
+kind, starting with what to verify in the file before declaring anything.
 
 `population` builds the denominator. Casualty counts become rates only when
 divided by the people who were there to be hurt, and that number is a panel:

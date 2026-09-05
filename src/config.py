@@ -316,6 +316,18 @@ OTHER = "OTHER"
 
 ROAD_USER_TYPES = (PEDESTRIAN, BICYCLE, MOTORCYCLE, CAR, PUBLIC_TRANSPORT, OTHER)
 
+# What each type is called in a figure that goes into the thesis. Declared beside
+# the types rather than written into whichever module draws first, so two figures
+# cannot name the same road user two ways.
+ROAD_USER_LABELS_ES: dict[str, str] = {
+    PEDESTRIAN: "Peatones",
+    BICYCLE: "Bicicleta",
+    MOTORCYCLE: "Motocicleta",
+    CAR: "Automóvil",
+    PUBLIC_TRANSPORT: "Transporte público",
+    OTHER: "Otros",
+}
+
 
 def normalize_vehicle_type(value: str) -> str:
     """Reduce a raw vehicle type to the form used as a mapping key.
@@ -1927,6 +1939,394 @@ MAP_CHOROPLETH_MISSING_LABEL_ES = "Sin dato"
 MAP_COLORBAR_LOCATION = "bottom"
 MAP_COLORBAR_SIZE = "3.5%"
 MAP_COLORBAR_PAD = 0.18
+
+
+# ---------------------------------------------------------------------------
+# Mobility surveys
+# ---------------------------------------------------------------------------
+# Exposure built from the survey itself rather than received as finished desire
+# lines. The layer the pipeline read before this arrived as 181 lines already
+# drawn; the four surveys arrive as trip records and the zoning those records are
+# keyed on, so the geometry is built here. See D38.
+#
+# What is declared per year is everything the years differ in, and the years
+# differ in almost everything: encoding, decimal separator, the name of every
+# column, the labels the modes carry, and how the survey says which kind of day a
+# trip was made on. What is *not* declared per year is anything the measurement
+# does — building the lines, apportioning them, adding the intra-zonal trips,
+# checking the balance — because that is the same operation four times and
+# writing it twice is how two years end up measured slightly differently.
+SURVEYS_DIR = INCOMING_DIR / "encuestas_movilidad"
+
+# The kind of day a trip was made on. A dimension of the exposure table and not a
+# suffix on its column names: a column called TRIPS_PER_SATURDAY would need a
+# twin for every other quantity, and the table has to be filtered by day type
+# before it joins anything anyway. See D38.
+WEEKDAY_TYPE = "WEEKDAY"
+SATURDAY_TYPE = "SATURDAY"
+SUNDAY_TYPE = "SUNDAY"
+DAY_TYPES: tuple[str, ...] = (WEEKDAY_TYPE, SATURDAY_TYPE, SUNDAY_TYPE)
+
+# Monday is 0 in the weekday numbering every date library uses, so these are the
+# two that are not a working day. Declared rather than written as literals at the
+# point of use, because "5 and 6" reads as a magic pair and "Saturday and Sunday"
+# does not.
+SATURDAY_WEEKDAY_NUMBER = 5
+SUNDAY_WEEKDAY_NUMBER = 6
+
+
+@dataclass(frozen=True)
+class DelimitedTable:
+    """One delivered text table, with everything needed to read it as numbers.
+
+    Every field here is something a delivery got wrong at least once. 2023 is
+    cp1252 where 2015 and 2019 are utf-8, and reading it as utf-8 fails on an
+    invalid continuation byte. Its numbers are text with a comma decimal
+    separator and a trailing space, so `fexp_vj` parses as an object column and
+    sums to zero without complaining. Three of its column *names* are wrapped in
+    spaces too. None of that is visible from the column names, which is why it is
+    declared and checked rather than discovered.
+    """
+
+    path: Path
+    separator: str = ";"
+    encoding: str = "utf-8"
+    decimal: str = ","
+    # Strip surrounding whitespace from column names and from every text value.
+    # On by default because the one delivery inspected so far needs it and the
+    # cost on one that does not is nothing.
+    strip_whitespace: bool = True
+
+
+@dataclass(frozen=True)
+class SurveyZoning:
+    """The zones a survey's origins and destinations are keyed on.
+
+    A survey's trips carry zone codes and nothing else, so the zoning is what
+    turns a trip into a place. It is declared beside the trips rather than found
+    next to them: 2011 ships no zoning at all, and a year whose geometry has to be
+    borrowed from another year must say so in the configuration instead of having
+    it inferred at read time.
+    """
+
+    shapefile: Path
+    code_column: str
+    # The delivered CRS is trusted but not assumed to be the study's: the 2023
+    # zoning is EPSG:3116 where the 2015 and 2019 zonings and the study's own
+    # cartography are EPSG:4686. The reader reprojects; this is here so a file
+    # that declares no CRS at all can be told what it is instead of silently
+    # being read as degrees.
+    crs_if_undeclared: int | None = None
+
+
+@dataclass(frozen=True)
+class DayTypeFromHouseholdDate:
+    """The day type comes from the household's interview date, shifted back.
+
+    2023 surveys a household once, on one date, and its technical sheet states
+    the reference period as the mobility "del día inmediatamente anterior al que
+    se realiza la encuesta". So the day a trip was made is the day *before* the
+    interview, and an interview on a Sunday reports a Saturday.
+
+    The same table carries the household expansion factor, which is the other
+    thing this rule has to supply. The weights are calibrated so that the whole
+    sample — all seven reference days together — represents the universe once,
+    not so that each day's subsample represents it. Summing the trip factor over
+    one day type therefore gives that day type's contribution to an average day
+    of the collection period and not the trips of one such day, and the share of
+    the universe those households cover is what converts between the two. Both
+    quantities are exported; see D38 for why neither is dropped.
+    """
+
+    households: DelimitedTable
+    # The column both tables carry, which is what lets a trip find its household.
+    join_column: str
+    date_column: str
+    weight_column: str
+    # How many days back from the interview the reported trips were made. One in
+    # 2023; a survey that asked about the interview day itself would declare zero.
+    days_before: int = 1
+    # Latin American dates are day-first and pandas guesses otherwise often
+    # enough to matter. Declared, because a silent month/day swap moves a
+    # Saturday to a weekday without failing.
+    day_first: bool = True
+
+
+@dataclass(frozen=True)
+class MobilitySurvey:
+    """One year of the household mobility survey, as exposure is built from it.
+
+    The declaration is the whole of what a year contributes. Adding 2019, 2015 or
+    2011 is one of these and nothing else — the reading, the mode mapping, the
+    geometry, the apportionment, the checks and the figures all follow from it.
+    If a year ever needs a second reader, the design was wrong.
+    """
+
+    year: int
+    label: str  # short form in English, for the code and the logs
+    label_es: str  # short form in Spanish, for the figures and the documents
+    trips: DelimitedTable
+    zoning: SurveyZoning
+    weight_column: str  # trips per day the record stands for
+    origin_zone_column: str
+    destination_zone_column: str
+    mode_column: str
+    # Every value of the mode column that becomes one of the study's four actor
+    # types. Two source labels may map to the same type: 2023 splits walking at
+    # fifteen minutes and both halves are walking.
+    mode_map: dict[str, str]
+    # Every value of the mode column that is deliberately not measured. It exists
+    # so that a label in neither mapping stops the run instead of vanishing in a
+    # groupby, which is D4's rule applied to a source that has its own vocabulary
+    # every year. Public transport is here rather than in the map because the
+    # casualty matrix's PUBLIC_TRANSPORT counts the occupants of a bus and the
+    # survey counts the passengers of a system, and those are not the same
+    # denominator.
+    modes_not_measured: tuple[str, ...]
+    day_type_rule: DayTypeFromHouseholdDate
+    measures: str  # one line: what the variable is, for the log and the dictionary
+
+    @property
+    def modes_declared(self) -> tuple[str, ...]:
+        """Every label the declaration accounts for, mapped or deliberately not."""
+        return tuple(self.mode_map) + self.modes_not_measured
+
+    @property
+    def actor_types(self) -> tuple[str, ...]:
+        """The study's actor types this survey measures, in the matrix's order."""
+        measured = set(self.mode_map.values())
+        return tuple(actor for actor in ROAD_USER_TYPES if actor in measured)
+
+
+# The processed database of the 2023 survey. The delivery also publishes an
+# unprocessed one and an XLSX copy of both; this is the one file that is read and
+# the others must not be read instead.
+_EODH_2023 = SURVEYS_DIR / "2023" / "2.PublicacionSIMUR" / "EODH"
+
+SURVEY_2023 = MobilitySurvey(
+    year=2023,
+    label="Mobility survey 2023",
+    label_es="Encuesta de movilidad 2023",
+    trips=DelimitedTable(
+        path=_EODH_2023 / "05_Base datos procesada" / "CSV" / "d. Modulo viajes.csv",
+        encoding="cp1252",
+    ),
+    zoning=SurveyZoning(
+        shapefile=_EODH_2023 / "03_Zonificacion" / "b. Shapefile ZAT" / "ZAT2023" / "ZAT2023.shp",
+        code_column="ZAT",
+    ),
+    weight_column="fexp_vj",
+    origin_zone_column="zat_ori",
+    destination_zone_column="zat_des",
+    mode_column="modo_principal_agrupado",
+    mode_map={
+        # 2023 is the only year that splits walking, and both halves are walking.
+        # Excluding the short ones would leave 4.04 M trips a day against 2019's
+        # 6.94 M, and 48.3% of 2019's walking lasts under fifteen minutes — the
+        # gap would be the category and not the city. See D38.
+        "A PIE > 15 MIN": PEDESTRIAN,
+        "A PIE <15 MIN": PEDESTRIAN,
+        # Includes the motorised bicycle, which this year lists separately under
+        # modo_principal_desagrupado and 2011 and 2015 cannot separate at all. The
+        # numerator cannot separate it either: the crash source has no such
+        # category, only BICICLETA and BICITAXI. See D38.
+        "BICICLETA": BICYCLE,
+        "MOTO": MOTORCYCLE,
+        # Driver and passenger together, plus shared, rented and electric cars.
+        "AUTO": CAR,
+    },
+    modes_not_measured=(
+        "TRANSPORTE PÚBLICO",
+        "TAXI OCUPADO",
+        "TRANSPORTE ESCOLAR",
+        "ESPECIAL OCUPADO",
+        "INFORMAL",
+        "OTRO",
+    ),
+    day_type_rule=DayTypeFromHouseholdDate(
+        households=DelimitedTable(
+            path=_EODH_2023 / "05_Base datos procesada" / "CSV" / "a. Modulo hogares.csv",
+            encoding="cp1252",
+        ),
+        join_column="key_hg",
+        date_column="fecha",
+        weight_column="fexp_hg",
+    ),
+    measures="trips per day apportioned to the unit by the share of the desire line's length "
+             "inside it, with the intra-zonal trips apportioned by area share",
+)
+
+# Every survey the pipeline measures. A year is added here and nowhere else.
+MOBILITY_SURVEYS: tuple[MobilitySurvey, ...] = (SURVEY_2023,)
+
+# -- how a zone reaches a unit ----------------------------------------------
+# The survey's zoning and the study's cartography are different files drawing the
+# same boundaries with different pencils, so their overlay produces slivers: 583
+# of the 1,511 fragments of the 2023 zoning weigh less than a millionth of their
+# zone and together carry 12.3 m² over the whole city, the largest of them 3.88 m².
+# Left in, they scatter a trip across as many as seven units that the zone does
+# not actually touch.
+#
+# The threshold sits inside an empirical gap rather than at a round number. No
+# sliver exceeds 0.035% of its zone and the smallest genuine split is 1.73% of
+# one — a factor of 49 between the two — so anything from a ten-thousandth to a
+# hundredth gives the identical answer: 907 zones inside the study area, 896 of
+# them wholly within one unit and 11 genuinely divided between two.
+ZONE_UNIT_MIN_AREA_SHARE = 1e-3
+
+# What a discarded sliver becomes. Nothing: the shares of a zone are left as they
+# come out, so they sum to one where the zone lies wholly inside the study area
+# and to less than one where part of it is in Soacha, in a rural unit, or in a
+# sliver that was dropped. Renormalising would fold the boundary noise into the
+# units and leave the balance unable to tell the two kinds of "outside" apart.
+ZONE_UNIT_RENORMALISE = False
+
+# -- what the exposure table holds -------------------------------------------
+# The table is LONG: one row per unit, year, actor type and day type, with the
+# quantities as columns. The delivered-layer table was wide over the mode, which
+# was right while exposure was one undated snapshot of one mode. It stopped being
+# right for two reasons at once. The table has to join a casualty matrix keyed on
+# unit, year and actor type, which is a join on three columns the long shape has
+# and the wide one encodes in its column names; and it has to be interpolated
+# over the fourteen years no survey covers, which is a group-by in the long shape
+# and a loop over column names in the wide one. See D38.
+#
+# The mode therefore leaves the column names. It was there to stop two exposure
+# layers colliding in a table that had one row per unit; in a table with a row
+# per mode there is nothing to collide.
+ACTOR_TYPE_COL = "ACTOR_TYPE"
+DAY_TYPE_COL = "DAY_TYPE"
+
+
+@dataclass(frozen=True)
+class SurveyExposureQuantity:
+    """One number the survey measurement produces, per unit, year, mode and day."""
+
+    name: str
+    unit: str
+    means: str
+    # True for the allocations exported beside the variable to be compared with
+    # it. They are never model variables, and the dictionary says so.
+    is_alternative: bool = False
+
+
+# The variable, and the same allocation of the rescaled expansion beside it.
+# Both are exported because neither answers the other's question: the first sums
+# across day types to exactly what the file holds, which is what the balance is
+# checked against, and the second is the only one of the two that can be compared
+# between a weekday and a Saturday. See D38.
+TRIPS_PER_AVERAGE_DAY_COL = "TRIPS_PER_AVERAGE_DAY"
+TRIPS_PER_DAY_OF_TYPE_COL = "TRIPS_PER_DAY_OF_TYPE"
+DAY_TYPE_UNIVERSE_SHARE_COL = "DAY_TYPE_UNIVERSE_SHARE"
+INTRAZONAL_TRIPS_COL = "INTRAZONAL_TRIPS_PER_AVERAGE_DAY"
+TRIPS_AT_ORIGIN_COL = "TRIPS_PER_AVERAGE_DAY_AT_ORIGIN"
+TRIPS_AT_DESTINATION_COL = "TRIPS_PER_AVERAGE_DAY_AT_DESTINATION"
+DESIRE_LINE_KM_COL = "DESIRE_LINE_KM_INSIDE"
+OD_PAIRS_TOUCHING_COL = "OD_PAIRS_TOUCHING"
+TRIPS_PER_KM2_COL = "TRIPS_PER_AVERAGE_DAY_PER_KM2"
+TRIPS_PER_INHABITANT_COL = "TRIPS_PER_AVERAGE_DAY_PER_INHABITANT"
+
+SURVEY_EXPOSURE_QUANTITIES: tuple[SurveyExposureQuantity, ...] = (
+    SurveyExposureQuantity(
+        name=TRIPS_PER_AVERAGE_DAY_COL,
+        unit="trips per day",
+        means="the variable: the survey's own expansion of the trips of this actor type made "
+              "on a day of this type, apportioned to the unit by the share of each desire "
+              "line's length inside it, with the intra-zonal trips apportioned by area share. "
+              "Summed over the day types it is what the file holds, which is what the balance "
+              "check compares against; it counts an average day of the collection period, so "
+              "the three day types are not comparable with one another",
+    ),
+    SurveyExposureQuantity(
+        name=TRIPS_PER_DAY_OF_TYPE_COL,
+        unit="trips per day",
+        means="the same apportionment divided by DAY_TYPE_UNIVERSE_SHARE, which counts the "
+              "trips of one day of this type rather than this day type's share of an average "
+              "day. This is the one of the two that can be compared between a weekday and a "
+              "Saturday; see D38 for what it exposes about the survey's own weighting",
+    ),
+    SurveyExposureQuantity(
+        name=DAY_TYPE_UNIVERSE_SHARE_COL,
+        unit="share",
+        means="the share of the surveyed universe covered by the households whose reference "
+              "day was of this type. It is the same for every unit and actor type of a year "
+              "and day type, and it is here so the two trip columns can be derived from each "
+              "other in the table they appear in",
+    ),
+    SurveyExposureQuantity(
+        name=INTRAZONAL_TRIPS_COL,
+        unit="trips per day",
+        means="how much of TRIPS_PER_AVERAGE_DAY arrived through the area share rather than "
+              "through a desire line, because its origin and destination are the same zone and "
+              "it therefore has no line. It is a part of the variable and not an addition to it",
+    ),
+    SurveyExposureQuantity(
+        name=TRIPS_AT_ORIGIN_COL,
+        unit="trips per day",
+        means="alternative allocation: the whole of a trip counted in the unit its origin zone "
+              "falls in, owing nothing to the geometry between the endpoints",
+        is_alternative=True,
+    ),
+    SurveyExposureQuantity(
+        name=TRIPS_AT_DESTINATION_COL,
+        unit="trips per day",
+        means="alternative allocation: the whole of a trip counted in the unit its destination "
+              "zone falls in",
+        is_alternative=True,
+    ),
+    SurveyExposureQuantity(
+        name=DESIRE_LINE_KM_COL,
+        unit="km",
+        means="alternative allocation: the kilometres of desire line of this actor type and day "
+              "type inside the unit, carrying no trip count at all. One line per "
+              "origin-destination pair, so it measures the corridors and not the traffic on them",
+        is_alternative=True,
+    ),
+    SurveyExposureQuantity(
+        name=OD_PAIRS_TOUCHING_COL,
+        unit="count",
+        means="how many origin-destination pairs of this actor type and day type reach the "
+              "unit, whatever share of them it holds",
+    ),
+    SurveyExposureQuantity(
+        name=TRIPS_PER_KM2_COL,
+        unit="trips per day per km2",
+        means="the variable over the area of the unit",
+    ),
+    SurveyExposureQuantity(
+        name=TRIPS_PER_INHABITANT_COL,
+        unit="trips per day per inhabitant",
+        means="the variable over the population of the same unit in the same year. Unlike the "
+              "delivered layer's per-inhabitant column this one is a rate and not a "
+              "description, because the numerator now carries the year its denominator is "
+              "read at; see D36 and D38",
+    ),
+)
+
+
+def survey_exposure_columns() -> tuple[str, ...]:
+    """The long exposure table's columns, in order.
+
+    Identity first — and the identity is now four columns, because the row is a
+    unit in a year for one actor type on one kind of day — then the population,
+    then every quantity, then the status. Built rather than listed so that the
+    table and the dictionary that reads it cannot disagree.
+    """
+    return (
+        SCALE_COL,
+        AREA_CODE_COL,
+        AREA_NAME_COL,
+        AREA_UNIT_KM2_COL,
+        YEAR_COL,
+        ACTOR_TYPE_COL,
+        DAY_TYPE_COL,
+        # One column, not one per year. The numerator carries a year now, so the
+        # denominator is read at that year and the name has nothing left to
+        # disambiguate. This is what supersedes POPULATION_2023. See D36 and D38.
+        POPULATION_COL,
+        *(quantity.name for quantity in SURVEY_EXPOSURE_QUANTITIES),
+        PREDICTOR_STATUS_COL,
+    )
 
 
 # ---------------------------------------------------------------------------

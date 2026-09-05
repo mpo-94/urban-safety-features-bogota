@@ -10,10 +10,20 @@ Section 10 covers the correction for the change in recording practice, which
 produces a second dataset beside the observed one rather than replacing it.
 Section 11 covers the tree variables and the tables the pipeline now emits as
 LaTeX source. Section 12 covers the two sets of predictor figures and the check
-that the printed correlation and the drawn one are the same numbers. Section 13
-covers travel exposure, which is measured beside the predictors and belongs on
-the other side of a rate model. Section 14 covers the population panel, which is
-what both of them and the casualty counts are divided by.
+that the printed correlation and the drawn one are the same numbers. Section 14
+covers the population panel, which is what the predictors, the exposure and the
+casualty counts are all divided by.
+
+Travel exposure has two sections because it has two sources. **Section 15 is the
+study's exposure**, built from the household mobility survey, per unit, year,
+road user type and kind of day. **Section 13 is the delivered desire lines**,
+which were the exposure until the surveys were read and are now kept as a
+reference: several figures quoted elsewhere were measured on them, and a figure
+whose source stopped being computed cannot be checked later. Both are measured on
+every run of the `exposure` route and both are checked; only the first is a
+variable. Either way, exposure belongs on the far side of a rate model and is
+never in the predictor grid, the correlation matrix or either predictor figure
+set.
 
 | | |
 |---|---|
@@ -913,7 +923,16 @@ nothing.
 
 ---
 
-## 13. Travel exposure
+## 13. Travel exposure from the delivered desire lines
+
+> **This is no longer the study's exposure.** Section 15 is, and it is built from
+> the mobility surveys. This layer is kept, measured on every run and filed as
+> `reference__delivered_desire_lines_by_unit.csv`, because the figures below are
+> quoted in finished work and have to stay reproducible. Every number in this
+> section is unchanged on `run_20260905_055939`, which is how the replacement was
+> checked. Two things about it are now known that were open when it was written:
+> it is a sample of the **2019** survey and not of 2023, and its selection was
+> not by volume. Both are in D38 and in section 15.
 
 Run `run_20260901_091802`, route `exposure`, command
 `python -m src.run_pipeline exposure`. **Every check passed.** The
@@ -1245,3 +1264,218 @@ model and not a count, and that belongs in the same paragraph as the ρ
 correction: both are places where the data before 2018 are of a different kind
 from the data after it. To be confirmed against the source before any document
 says which years are which.
+
+---
+
+## 15. Travel exposure from the mobility survey
+
+Run `run_20260905_055939`, route `exposure`, command
+`python -m src.run_pipeline exposure`. **Every check passed.** This is the
+study's exposure: how much travel of each of four road user types passes through
+each unit, per survey year and per kind of day, built from the household mobility
+survey rather than received as finished desire lines. The decision is D38, which
+supersedes D35 for the variable and part of D36 for the denominator.
+
+**2023 is the only year measured so far.** The machinery is written for four and
+the other three are a declaration each; what each of them still needs is in
+`docs/mobility-surveys-inventory.md`.
+
+### What the source gives, and what is set aside
+
+The 2023 trip module holds 100,174 records. Every one of them is accounted for.
+
+| | Records | Trips per day |
+|---|---:|---:|
+| The four measured modes | 62,055 | 10,182,150.8 |
+| Modes deliberately outside the study | 37,835 | 6,208,757.0 |
+| No expansion factor, dropped | 284 | — |
+| Records with no origin or destination zone | 0 | 0.0 |
+| **The file** | **100,174** | **16,390,907.8** |
+
+The two sides of the trips column are different groupings of the same values, so
+that check is a check and not a restatement: a mode lost between the mapping and
+the totals would show there and nowhere else.
+
+**The 284 records without an expansion factor are dropped and the run says so.**
+The survey's own published total is the sum that excludes them, so they sit
+outside the universe the file describes rather than leaving a hole in it, and
+imputing a weight would be inventing trips.
+
+The four modes, against the survey's own figures:
+
+| Actor type | Source labels | Trips per day |
+|---|---|---:|
+| `PEDESTRIAN` | `A PIE > 15 MIN` + `A PIE <15 MIN` | 6,098,788 |
+| `CAR` | `AUTO` | 1,932,348 |
+| `BICYCLE` | `BICICLETA` | 1,115,685 |
+| `MOTORCYCLE` | `MOTO` | 1,035,329 |
+
+Each of the eleven mode labels the file carries is either mapped to an actor type
+or declared as deliberately not measured, and a label in neither stops the run.
+There is no `OTHER` to fall through to: the study measures four modes and an
+unrecognised label is a question for a person.
+
+### The kind of day
+
+The technical sheet gives the reference period as the day immediately before the
+interview, so the interview dates are shifted back one day before the day type is
+read off them. The sample that results:
+
+| Day type | Households | Share of the surveyed universe |
+|---|---:|---:|
+| `WEEKDAY` | 17,554 | 0.7722 |
+| `SATURDAY` | 2,990 | 0.1320 |
+| `SUNDAY` | 2,211 | 0.0957 |
+
+The shares are there because the expansion factors represent the universe **once
+over all seven reference days**, not once per day: the household factors sum to
+3,623,413 against the 3,667,331 the technical sheet declares. So the trip factor
+summed within one day type gives that day type's share of an average day, and the
+share above is what converts it into the trips of one such day. Both columns are
+exported and the share travels with them, so either can be derived from the other
+in the table it appears in.
+
+### From zones to units
+
+| | |
+|---|---:|
+| Zones in the 2023 zoning | 1,215 |
+| Zones reaching at least one unit | 907 |
+| Of those, wholly inside one unit | 896 |
+| Genuinely divided between two units | 11 |
+| Sliver fragments discarded | 593 |
+| Total area discarded | 4,762.90 m² |
+
+The threshold that separates the two is a thousandth of a zone's area, and it
+sits inside an empirical gap: no sliver exceeds 0.035 % of its zone and the
+smallest genuine split is 1.73 % of one. Any threshold between a ten-thousandth
+and a hundredth gives the identical answer.
+
+24,354 desire lines were built between zone centroids, 179,075 km in all with a
+median of 4.84 km, from 29,782 inter-zonal groupings of actor type, day type and
+zone pair. 1,197 intra-zonal groupings have no line and are spread by area share
+instead.
+
+### Funnel
+
+| Stage | In | Out | Cause of the difference |
+|---|---:|---:|---|
+| read the 2023 mobility survey | 100,174 | 30,979 | −284 with no expansion factor, −37,835 in modes outside the study, −31,076 to grouping into actor type, day type and zone pair |
+| apportion the 2023 survey over the units | 30,979 | 360 | −30,619 zone pairs replaced by one row per unit, actor type and day type |
+| assemble the long exposure table | 360 | 360 | — |
+
+### The balance closes, per actor type and per day type
+
+What was apportioned to the units plus what fell outside them equals what the
+file holds. It is checked on each of the twelve combinations of actor type and
+day type rather than in aggregate, because an aggregate over four modes can close
+while two of them are wrong in opposite directions. **The largest gap over the
+twelve is 0.000000 trips.**
+
+**1,860,306 trips a day fall outside the thirty units, 18.3 % of the four modes.**
+That is the twenty neighbouring municipalities the survey also covers plus the
+three rural units the study does not have. It is measured and reported, not
+absorbed, which is what lets the check be an equality.
+
+### The intra-zonal trips, and why they are not dropped
+
+**1,841,452 trips a day are intra-zonal, 18.1 % of the four measured modes.** They
+begin and end in the same zone, so they have no desire line at all, and they are
+spread over the units covering that zone in proportion to area rather than
+discarded.
+
+On a typical weekday, inside the thirty units:
+
+| Actor type | Trips per average day | Of which intra-zonal | Desire line km inside |
+|---|---:|---:|---:|
+| `PEDESTRIAN` | 3,894,943 | 1,055,074 | 28,184 |
+| `CAR` | 1,251,736 | 31,036 | 39,596 |
+| `MOTORCYCLE` | 637,266 | 8,048 | 27,926 |
+| `BICYCLE` | 635,804 | 29,180 | 14,092 |
+
+**A quarter of the pedestrian exposure arrives through the intra-zonal route.**
+Dropping those trips would not have been a small loss of precision: it would have
+removed that quarter systematically, and removed more of it from units built of
+large zones than from units built of small ones.
+
+### The checks
+
+| Check | Result |
+|---|---|
+| The table carries exactly the declared columns, in the declared order | OK, 19 of 19 |
+| Every row names a unit of the study | OK, 30 of 30 |
+| No combination of unit, year, actor type and day type appears twice | OK, 0 duplicated |
+| The grid of unit, actor type and day type is complete | OK, 360 rows of 360 |
+| Apportioned plus outside equals the file, per actor type and day | OK, largest gap 0.000000 |
+| The four measured modes add to the file's own total for them | OK, 10,182,150.80 |
+| Every trip the file weights is measured or named as set aside | OK, 16,390,907.8 |
+| Nothing is apportioned more than once over | OK, largest share 1.000000128 |
+| The intra-zonal trips are a part of the variable, never more | OK, 0 rows |
+| No negative trip count | OK |
+| Trips per day of type is trips per average day over the universe share | OK to 1e-12 |
+| The universe shares of a year add to one | OK, 1.000000000000 |
+| The per-km² column is the variable over the area of its own unit | OK to 1e-12 |
+| The per-inhabitant column is the variable over the population of the same year | OK to 1e-12, 0 rows without a population |
+| A combination no trip reaches carries a zero and the status MEASURED | OK, 0 rows at zero |
+| Every exported file is on disk and none is empty | OK, 4 of 4 |
+
+The tolerance on "apportioned more than once" is deliberately not machine
+epsilon. A line is split into as many as ten fragments whose lengths are summed
+and divided by the whole, and that arithmetic lands a few parts per billion over
+one without anything being wrong; what the check is looking for is two unit
+polygons overlapping, which shows up as percentage points.
+
+### What it says about the city
+
+The bicycle ranking on a typical weekday runs Kennedy (58,908), Patio Bonito
+(44,446) and Bosa (40,017) at the top and Usme-Entrenubes (1,554), San Cristóbal
+(3,399) and Lucero (4,064) at the bottom — the flat south-west against the
+southern hillsides. That is not a check, and it is the kind of external agreement
+that would have been worth worrying about had it been absent.
+
+### The delivered layer, measured against it
+
+The delivered layer's bicycle variable and the survey's 2023 bicycle weekday
+variable correlate at **Spearman 0.377** across the thirty units. Kennedy, the
+survey's most cycled unit, is sixteenth in the delivered layer; Edén, the layer's
+first, is sixth in the survey. The two do not order the same thirty places the
+same way, which is the practical reason the layer could not stay as the variable.
+
+The comparison mixes two things — the layer is 2019 and the survey 2023 — and
+four years of change in Bogotá's cycling cannot produce a rank correlation of
+0.377. The layer being a 9.6 % sample with an unreconstructable selection rule
+can.
+
+### The alternative allocations
+
+Exported beside the variable and never model variables, so that the sensitivity
+of a result to the allocation rule can be shown rather than asserted. Spearman
+against the variable, typical weekday 2023:
+
+| Actor type | At origin | At destination | Line km inside |
+|---|---:|---:|---:|
+| `PEDESTRIAN` | 0.980 | 0.977 | 0.494 |
+| `CAR` | 0.949 | 0.959 | 0.894 |
+| `MOTORCYCLE` | 0.774 | 0.784 | 0.827 |
+| `BICYCLE` | 0.822 | 0.834 | 0.728 |
+
+The endpoint rules agree with each other far more closely than either agrees with
+the variable, and how closely they agree with it varies by mode — pedestrians
+travel short distances and are apportioned near their endpoints anyway,
+motorcycles do not. The rules are different variables and not two scales of one,
+which is why the choice had to be made on an argument.
+
+**The lines are straight, and that limitation carries over from D35 unchanged.**
+The kilometres inside a unit are a share of a chord nobody rode. Any document
+quoting this variable says so.
+
+### What is open
+
+**Which day type the models take**, and **whether a day-type comparison is
+supportable at all.** Rescaled to the universe, the region makes 1.778 trips per
+person on a weekday, 1.802 on a Saturday and 1.749 on a Sunday. Bogotá does not
+travel as much on a Sunday as on a Tuesday, so either the survey was answered
+about a generic day rather than the specific previous one, or its calibration
+flattens the difference. Resolving it means reading the survey's expansion
+document, and it has to be resolved before any document compares a Saturday with
+a weekday. The run warns about it on every execution. D38 has both.
