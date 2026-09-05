@@ -172,33 +172,38 @@ What each year holds for that purpose, out of everything published:
 
 | Year | Household trip records | Zoning |
 |---|---|---|
-| 2011 | `120927_ConsultaEODH2011_DiaTipico (1).accdb`, 122 MB | **none delivered** |
-| 2015 | `VIAJES_ANONIMIZADOS.csv`, 35 MB | `ZATs_2012_MAG.shp` |
-| 2019 | `ViajesEODH2019.csv`, 23 MB | `ZONAS.zip`, holding UTAM and ZAT |
-| 2023 | `05_Base datos procesada/CSV/d. Modulo viajes.csv`, 59 MB | two zips, `ZAT2023` and `UTAM2023` |
+| 2011 | `120927_ConsultaEODH2011_DiaTipico (1).accdb`, table `Mod_D_VIAJES2_BaseImputacion_Definitiva` | **none delivered** |
+| 2015 | `Base de Datos Completa/VIAJES_ANONIMIZADOS.csv`, 35 MB | `ZATs_2012_MAG.shp`, 948 zones |
+| 2019 | `BD EODH2019 FINAL v14022020/Archivos CSV/ViajesEODH2019.csv`, 23 MB | `ZONAS/`, `ZAT.shp` 1,141 and `UTAM.shp` 141 |
+| 2023 | `05_Base datos procesada/CSV/d. Modulo viajes.csv`, 59 MB | `ZAT2023.shp` 1,215 and `UTAM2023.shp` 142 |
+
+Each year also has a Saturday or non-weekday counterpart, encoded a different way
+in every one of them; `docs/mobility-surveys-inventory.md` has the detail.
 
 Everything else published alongside — the EMME model of 2011, the intercept
 surveys, the reports, the forms, the indicator annexes — is out of scope and
 stays where it is.
 
-Five things are visible from the listing alone and are settled by inspection, not
-in advance:
+**`docs/mobility-surveys-inventory.md` is what these files actually contain**,
+measured rather than read off the column names: record counts, mode labels and
+their trip totals, expansion factors, zone keys, the share of trips that never
+leave one zone, and what each year leaves unresolved. It was written before any
+of this was declared, and the session that declares a year starts from it.
 
-- **2011 carries no zoning of any kind.** No shapefile, no `.dbf`, nothing named
-  for a zone. Trips keyed on ZAT codes cannot become centroids without it. The
-  2015 folder carries `ZATs_2012_MAG`, which is plausibly the zoning the 2011
-  survey used, but that has to be shown against the codes and not assumed.
-- **2011 is an Access database**, where every other year is CSV. The 64-bit Access
-  ODBC driver is installed on this machine and the environment's Python is 64-bit,
-  so it is readable, but only with a dependency the project does not have yet.
-- **The zoning is a different set of zones each year.** Per-year apportionment to
-  the units is unaffected; reading one zone across years is not the same zone.
-- **Each year publishes the same records twice**, as CSV and as XLSX, and 2023
-  publishes both a raw and a processed database. Which one is read has to be
-  declared rather than picked at the moment of reading.
-- **Walking has to be confirmed for every year.** The four modes the study wants
-  are on foot, bicycle, motorcycle and car, and the trip records are the only
-  place all four could be.
+Two things about the delivery belong here rather than there:
+
+- **2011 carries no zoning of any kind**, so its trips cannot become geometry
+  from its own folder. Whether the 2015 zoning serves is an open question, not an
+  assumption.
+- **2011 is an Access database** where the others are CSV. `pyodbc` reads it
+  through the 64-bit Access ODBC driver installed on this machine, with the
+  environment's 64-bit Python. It is installed but **not yet in
+  `requirements.txt`**, because nothing declared reads it yet; the commit that
+  first reads 2011 adds it.
+
+Each year also publishes its records twice, as CSV and as XLSX, and 2023 publishes
+both a raw and a processed database. The table above names the one file per year
+that is to be read; the others are duplicates and must not be read instead.
 
 Where the files will finally live follows from all of that. Until then
 `EXPOSURE_DIR` still points into the predictor bundle.
