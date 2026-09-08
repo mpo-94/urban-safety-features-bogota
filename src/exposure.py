@@ -2215,31 +2215,68 @@ def report_from_surveys(
 # One year against the years already measured
 # ---------------------------------------------------------------------------
 
+# The one column two years may be compared on, and it is not the one the balance
+# is checked against.
+#
+# TRIPS_PER_AVERAGE_DAY is what the file holds, so every within-year check uses
+# it and must. But what it holds depends on what that year's expansion factor
+# expands to: 2023's spreads the universe over seven reference days, so its
+# weekday rows carry 77.2% of a weekday, while 2019's expands to its one typical
+# day and its rows carry all of it. Comparing the two on that column compares a
+# whole day against three quarters of one.
+#
+# TRIPS_PER_DAY_OF_TYPE is that column divided by the universe share, so it counts
+# one day of its own kind in every year whatever the factor did. That is the only
+# footing on which a trip rate from one survey means the same as a trip rate from
+# another.
+#
+# This was invisible while one year was implemented, because a comparison with
+# nothing to compare against cannot be wrong. It became wrong the moment a second
+# year declared a different `weight_expands_to`, which is exactly the field D38
+# says must never be inherited — and the reason it must not be inherited is the
+# reason this column has to be the right one.
+_COMPARABLE_TRIPS_COL = config.TRIPS_PER_DAY_OF_TYPE_COL
+
 
 def _mode_share(weekday: pd.DataFrame, year: int, actor: str) -> float:
-    """One actor type's share of the four measured modes, in one year."""
+    """One actor type's share of the four measured modes, in one year.
+
+    A ratio inside one year, so the choice of column cancels; it is made the same
+    as the others so that a reader checking one number against another in the same
+    table is not comparing two different quantities.
+    """
     rows = weekday[weekday[config.YEAR_COL] == year]
-    whole = float(rows[config.TRIPS_PER_AVERAGE_DAY_COL].sum())
+    whole = float(rows[_COMPARABLE_TRIPS_COL].sum())
     if not whole:
         return float("nan")
     part = rows[rows[config.ACTOR_TYPE_COL] == actor]
-    return float(part[config.TRIPS_PER_AVERAGE_DAY_COL].sum()) / whole
+    return float(part[_COMPARABLE_TRIPS_COL].sum()) / whole
 
 
 def _trips_per_inhabitant(rows: pd.DataFrame) -> float:
-    """Trips per resident, over whatever slice of the table is passed."""
+    """Trips per resident on one day of the kind, over whatever slice is passed.
+
+    This is the number the cross-year threshold is applied to, and the one the
+    column choice actually changes: on the other column 2023 would come out 23%
+    below 2019 for no reason but the shape of its expansion factor.
+    """
     residents = float(rows[config.POPULATION_COL].sum())
     if not residents:
         return float("nan")
-    return float(rows[config.TRIPS_PER_AVERAGE_DAY_COL].sum()) / residents
+    return float(rows[_COMPARABLE_TRIPS_COL].sum()) / residents
 
 
 def _rank_agreement(before: pd.DataFrame, after: pd.DataFrame) -> float:
-    """Spearman between two years' orderings of the units, or NaN if not comparable."""
+    """Spearman between two years' orderings of the units, or NaN if not comparable.
+
+    Rank-based, so a constant factor within a year cannot move it and the column
+    choice is immaterial here. Made the same as the others for one reason only:
+    so that nobody later has to work out whether it mattered.
+    """
     paired = pd.concat(
         [
-            before.set_index(config.AREA_CODE_COL)[config.TRIPS_PER_AVERAGE_DAY_COL],
-            after.set_index(config.AREA_CODE_COL)[config.TRIPS_PER_AVERAGE_DAY_COL],
+            before.set_index(config.AREA_CODE_COL)[_COMPARABLE_TRIPS_COL],
+            after.set_index(config.AREA_CODE_COL)[_COMPARABLE_TRIPS_COL],
         ],
         axis=1,
     ).dropna()
@@ -2289,13 +2326,14 @@ def compare_years(
             seen[actor] = for_actor
             rendered.append(
                 f"{year:>6}  {actor:<12}  "
-                f"{float(for_actor[config.TRIPS_PER_AVERAGE_DAY_COL].sum()):>12,.0f}  "
+                f"{float(for_actor[_COMPARABLE_TRIPS_COL].sum()):>12,.0f}  "
                 f"{_mode_share(weekday, year, actor):>7.1%}  "
                 f"{_trips_per_inhabitant(for_actor):>10.3f}  "
                 + (f"{agreement:>8.3f}" if np.isfinite(agreement) else f"{'—':>8}")
             )
     log.table(
-        "exposure across the surveys, typical weekday, inside the study units:",
+        f"exposure across the surveys, one typical weekday, inside the study units "
+        f"({_COMPARABLE_TRIPS_COL}, which is the only column two years are comparable on):",
         "\n".join(rendered),
     )
 

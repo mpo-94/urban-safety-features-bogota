@@ -14,7 +14,7 @@ was computed from the delivered file in the session of 2026-09-05.
 **2023 and 2019 have since been built and are no longer structural notes.** They
 are declared in `config.SURVEY_2023` and `config.SURVEY_2019`, read by
 `src/surveys.py`, measured by `src/exposure.py` and checked on run
-`run_20260908_011605`; the decisions are D38. What those passes resolved is marked
+`run_20260908_014143`; the decisions are D38. What those passes resolved is marked
 below where it lands, and the entries for 2011 and 2015 are unchanged and still
 unverified. Several things this document listed as unresolved have been answered
 and three of its statements turned out to be wrong, which is said in full in
@@ -579,15 +579,29 @@ long before it is a finding about the city. All three warn and none fails: a rea
 change of that size is possible and the run cannot tell the two apart, so it
 refuses to let one pass unremarked instead of pretending to judge it.
 
-The baseline, typical weekday, inside the thirty units. This is what 2015 and
-2011 will be read against, and it is what 2019 was read against:
+The baseline, **one typical weekday**, inside the thirty units. This is what 2015
+and 2011 will be read against, and it is what 2019 was read against:
 
 | Actor type | 2019 trips/day | Share | Per inhab. | 2023 trips/day | Share | Per inhab. | Spearman |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| `PEDESTRIAN` | 4,160,690 | 55.8 % | 0.554 | 3,300,984 | 57.2 % | 0.420 | **0.662** |
-| `CAR` | 1,827,723 | 24.5 % | 0.243 | 1,244,327 | 21.5 % | 0.158 | 0.947 |
-| `BICYCLE` | 787,563 | 10.6 % | 0.105 | 597,033 | 10.3 % | 0.076 | 0.886 |
-| `MOTORCYCLE` | 680,233 | 9.1 % | 0.091 | 632,338 | 11.0 % | 0.080 | 0.893 |
+| `PEDESTRIAN` | 4,160,690 | 55.8 % | 0.554 | 4,274,636 | 57.2 % | 0.544 | **0.662** |
+| `CAR` | 1,827,723 | 24.5 % | 0.243 | 1,611,352 | 21.5 % | 0.205 | 0.947 |
+| `BICYCLE` | 787,563 | 10.6 % | 0.105 | 773,132 | 10.3 % | 0.098 | 0.886 |
+| `MOTORCYCLE` | 680,233 | 9.1 % | 0.091 | 818,851 | 11.0 % | 0.104 | 0.893 |
+
+**These are `TRIPS_PER_DAY_OF_TYPE` and they have to be.** It is the only column
+two years are comparable on, because what `TRIPS_PER_AVERAGE_DAY` holds depends on
+what that year's factor expands to: 2023's weekday rows carry 77.2 % of a weekday
+and 2019's carry all of one. Comparing the two on that column compares a whole day
+against three quarters of one, and it makes every 2023 mode look 23 % smaller than
+it is. That is what `compare_years` did until the second year exposed it — a
+mistake that could not exist while one year was implemented, because a comparison
+with nothing to compare against cannot be wrong.
+
+The corrected figures say something a reader can check against the city: walking
+and cycling roughly flat, motorcycle up 15 %, car down 16 %. On the wrong column
+all four modes fell by about the same 23 %, which should have been the tell —
+four modes measured independently do not collapse in unison.
 
 And what each set aside, as a share of what it measured:
 
@@ -604,16 +618,31 @@ almost the same fractions for the same three reasons.
 **One thing does trip the check, and it survived investigation.** Pedestrian
 exposure orders the thirty units at Spearman **0.662** between the two years,
 below the 0.70 floor, while the other three modes sit between 0.886 and 0.947.
-It was chased and it is not a misread column: the same reading reproduces the
-survey's own published per-UTAM table on 132 of 134 units. The disagreement is
-concentrated in the north-west — Tibabuyes falls from 8th to 28th, Rincón de Suba
-from 7th to 21st, Niza rises from 29th to 10th — over a stretch of city where the
-two zonings are nearly identical, 8 zones against 8 in Tibabuyes and 28 against 28
-in Niza, and where the area each survey's zoning assigns to each unit differs by
-under a tenth of a per cent. So it is neither the geometry nor the reading; it is
-what the two samples say about walking in Suba, and the study cannot tell a real
-change from sampling variation there. The run warns and does not fail, which is
-the correct behaviour and not a shortcoming.
+The disagreement is concentrated in the north-west: Tibabuyes falls 71 %, Suba
+52 %, Rincón de Suba 41 %, while Niza rises 146 % and Barrios Unidos 59 %.
+
+Five tests were run against it and none of them makes it the pipeline's.
+
+1. **The reading reproduces the survey's own published sub-city table** — 132 of
+   the 134 UTAM of indicator IND_64 within 0.01 %, 130 to the last decimal.
+2. **The two zonings put the same number of zones in those units** — 8 against 8
+   in Tibabuyes, 14 against 14 in Rincón, 28 against 28 in Niza — and assign each
+   unit the same area to within a tenth of a per cent, 0.82 % at worst over the
+   thirty.
+3. **The three allocation rules agree with each other.** Tibabuyes falls 71 % by
+   length share, 70 % counted at the origin and 70 % at the destination; Niza
+   rises 146 %, 155 % and 145 %. The desire lines are not doing it.
+4. **The sliver threshold does not move it.** Swept across two orders of
+   magnitude the largest per-unit pedestrian figure moves 0.16 %, and Niza 0.2 %.
+5. **The raw trip files say the same thing with no pipeline at all.** Summing each
+   survey's own expansion factor over its walking trips by origin zone, with one
+   zoning used for both years and no desire lines, no apportionment, no day-type
+   rescaling and no duration filter, Tibabuyes' share of city walking falls 56 %,
+   Rincón's 44 %, Suba's 41 %, and Niza's rises 90 %.
+
+So it is what the two samples say about walking in Suba, and the study cannot tell
+a real change from sampling variation there. The run warns and does not fail,
+which is the correct behaviour and not a shortcoming.
 
 ---
 

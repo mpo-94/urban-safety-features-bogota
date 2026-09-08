@@ -1282,7 +1282,7 @@ says which years are which.
 
 ## 15. Travel exposure from the mobility survey
 
-Run `run_20260908_011605`, route `exposure`, command
+Run `run_20260908_014143`, route `exposure`, command
 `python -m src.run_pipeline exposure`. **Every check passed.** This is the
 study's exposure: how much travel of each of four road user types passes through
 each unit, per survey year and per kind of day, built from the household mobility
@@ -1535,10 +1535,29 @@ one of them would have looked entirely reasonable.
 | Sliver fragments discarded | 229 | 593 |
 | Total area discarded | 395,860.00 m² | 4,762.90 m² |
 
-The threshold is a thousandth of a zone's area in both, and for 2023 it sits
-inside an empirical gap: no sliver exceeds 0.035 % of its zone and the smallest
-genuine split is 1.73 % of one, so any threshold between a ten-thousandth and a
-hundredth gives the identical answer.
+The threshold is a thousandth of a zone's area in both years, and **the argument
+that justifies it holds for 2023 and not for 2019**:
+
+| | 2019 | 2023 |
+|---|---:|---:|
+| Largest fragment dropped, as a share of its zone | 0.0993 % | 0.0353 % |
+| Smallest fragment kept | 0.1002 % | 1.7340 % |
+| Kept fragments under 5 % of their zone | 264 | 5 |
+
+For 2023 there is a gap of a factor of 49 between the two populations, so any
+threshold between a ten-thousandth and a hundredth gives the identical answer.
+**For 2019 the distribution runs continuously across the cut** — 0.0993 % below
+against 0.1002 % above — because that zoning's boundaries do not nest inside the
+UPL and its overlay is a spectrum of partial overlaps rather than slivers plus
+splits.
+
+**So for 2019 the threshold is arbitrary, and what that costs was measured rather
+than argued.** Swept across the same two orders of magnitude, the largest per-unit
+pedestrian figure moves **0.16 %**, Niza moves 0.2 %, and the city total moves
+1,017 trips a day out of 4.16 million. The fragments in the continuum are numerous
+but tiny, so they carry almost no travel. The threshold stays where it is for a
+different reason in each year: an empirical gap in 2023, a measured indifference
+in 2019.
 
 **2019's overlay with the study's cartography is coarser and the numbers say so.**
 It discards eighty times the area 2023 does and leaves 246 zones straddling a unit
@@ -1673,39 +1692,83 @@ polygons overlapping, which shows up as percentage points.
 ### One year against the other
 
 `compare_years` puts each survey beside the ones before it, and with two years
-implemented it is a check rather than a baseline. Typical weekday, inside the
-thirty units:
+implemented it is a check rather than a baseline. **One typical weekday**, inside
+the thirty units, on `TRIPS_PER_DAY_OF_TYPE`:
 
 | Actor type | 2019 trips/day | Share | Per inhab. | 2023 trips/day | Share | Per inhab. | Spearman |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| `PEDESTRIAN` | 4,160,690 | 55.8 % | 0.554 | 3,300,984 | 57.2 % | 0.420 | **0.662** |
-| `CAR` | 1,827,723 | 24.5 % | 0.243 | 1,244,327 | 21.5 % | 0.158 | 0.947 |
-| `BICYCLE` | 787,563 | 10.6 % | 0.105 | 597,033 | 10.3 % | 0.076 | 0.886 |
-| `MOTORCYCLE` | 680,233 | 9.1 % | 0.091 | 632,338 | 11.0 % | 0.080 | 0.893 |
+| `PEDESTRIAN` | 4,160,690 | 55.8 % | 0.554 | 4,274,636 | 57.2 % | 0.544 | **0.662** |
+| `CAR` | 1,827,723 | 24.5 % | 0.243 | 1,611,352 | 21.5 % | 0.205 | 0.947 |
+| `BICYCLE` | 787,563 | 10.6 % | 0.105 | 773,132 | 10.3 % | 0.098 | 0.886 |
+| `MOTORCYCLE` | 680,233 | 9.1 % | 0.091 | 818,851 | 11.0 % | 0.104 | 0.893 |
+
+**The column matters and this table is on the corrected one.** The comparison used
+to read `TRIPS_PER_AVERAGE_DAY`, which is what the file holds and what the balance
+closes on — but what it holds depends on what the year's factor expands to. 2023's
+weekday rows carry 77.2 % of a weekday and 2019's carry all of one, so on that
+column every 2023 mode came out about 23 % below 2019: pedestrian −24 %, bicycle
+−28 %, car −35 %, motorcycle −12 %. Car sat one decimal from tripping the 35 %
+threshold on an artefact of the comparison's own arithmetic, and four independently
+measured modes falling in unison was the tell. The defect could not exist while one
+year was implemented and appeared the moment a second declared a different
+`weight_expands_to`. Mode shares and the Spearman are ratios and ranks, so neither
+was affected. See D38.
 
 **Nothing crosses the mode-share or trip-rate thresholds.** No share moves ten
-points; the largest per-inhabitant move is car at −35.0 %, just inside the 35 %
+points; the largest per-inhabitant move is car at −15.7 %, well inside the 35 %
 threshold. The two years also set aside almost the same fractions for the same
 three reasons — 13.1 % against 9.4 % impossible, 21.5 % against 20.0 %
 intra-zonal, 19.5 % against 18.4 % outside the units.
 
 **One thing does trip the check: pedestrian exposure orders the thirty units at
 Spearman 0.662, below the 0.70 floor.** It warns and does not fail, which is
-correct, and it was investigated rather than accepted.
+correct, and it was investigated rather than accepted. Five tests, and none of
+them makes it the pipeline's:
 
-It is **not** a misread declaration. The same reading reproduces the survey's own
-published per-UTAM table on 132 of 134 units. It is **not** the geometry: the
-disagreement concentrates in the north-west — Tibabuyes falls from 8th to 28th,
-Rincón de Suba from 7th to 21st, Suba from 23rd to 29th, Niza rises from 29th to
-10th — where the two zonings have the same number of zones to the unit and assign
-each unit the same area to within a tenth of a per cent. And it is **not** the
-intra-zonal rule: split into halves the correlation is 0.690 on the inter-zonal
-part alone against 0.662 on the whole.
+| Test | Result |
+|---|---|
+| The reading against the survey's published per-UTAM table (IND_64) | 132 of 134 within 0.01 %, 130 to the last decimal |
+| Zones each zoning puts in the units that move | 8 vs 8 in Tibabuyes, 14 vs 14 in Rincón, 28 vs 28 in Niza |
+| Area each zoning assigns to each unit | differs by 0.82 % at worst over the thirty, under 0.1 % in Suba |
+| The three allocation rules against each other | Tibabuyes −71 %, −70 %, −70 %; Niza +146 %, +155 %, +145 % |
+| The sliver threshold swept over two orders of magnitude | largest per-unit move 0.16 %, Niza 0.2 % |
+| The raw trip files, no pipeline at all | Tibabuyes' share of city walking −56 %, Rincón −44 %, Suba −41 %, Niza +90 % |
+
+The last one settles it. Summing each survey's own expansion factor over its
+walking trips by origin zone, with one zoning used for both years — they number
+the same polygons the same way, median 1 m between the two centroids of a code —
+and with no desire lines, no apportionment, no day-type rescaling and no duration
+filter, the same units move in the same direction by a similar amount. **The
+disagreement is already in the two files.**
+
+The pipeline's figures are larger than the raw ones (−71 % against −56 % in
+Tibabuyes, +146 % against +90 % in Niza) because the plausibility filter and the
+line apportionment act on top of it, but the sign and the geography are the
+survey's.
 
 So it is what the two samples say about walking in Suba, and **the study cannot
 tell a real change from sampling variation there.** It is recorded here because a
 reader comparing a pedestrian rate for Tibabuyes across the two years will see
-them differ by a factor of four and deserves to know it was pursued.
+them differ by a factor of three and deserves to know it was pursued.
+
+Per unit, on the comparable column, the units that move most:
+
+| Unit | 2019 trips/day | 2023 trips/day | Change | Rank 2019 → 2023 |
+|---|---:|---:|---:|---|
+| UPL27 Niza | 64,963 | 160,044 | **+146 %** | 29 → 10 |
+| UPL33 Barrios Unidos | 74,053 | 117,401 | +59 % | 27 → 19 |
+| UPL17 Bosa | 214,831 | 312,912 | +46 % | 3 → 1 |
+| UPL08 Britalia | 83,653 | 113,699 | +36 % | 26 → 20 |
+| UPL13 Tintal | 128,440 | 173,320 | +35 % | 18 → 8 |
+| … | | | | |
+| UPL12 Fontibón | 85,782 | 57,164 | −33 % | 25 → 27 |
+| UPL28 Rincón de Suba | 179,952 | 106,866 | −41 % | 7 → 21 |
+| UPL09 Suba | 96,928 | 46,361 | −52 % | 23 → 29 |
+| UPL10 Tibabuyes | 179,095 | 51,140 | **−71 %** | 8 → 28 |
+| UPL07 Torca | 9,771 | 1,750 | −82 % | 30 → 30 |
+
+The city total moves **+2.7 %**, from 4,160,690 to 4,274,636. What the two surveys
+disagree about is where the walking is, not how much of it there is.
 
 ### The delivered layer, validated and then retired
 

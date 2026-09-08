@@ -2986,7 +2986,7 @@ the models take, and whether a day-type comparison is supportable at all — a
 question 2019 has since made sharper rather than easier.
 
 **Built:** Yes. `src/surveys.py` and the second half of `src/exposure.py`, route
-`exposure`. Run `run_20260908_011605`.
+`exposure`. Run `run_20260908_014143`.
 
 **Amended by 2019**, in four places, each marked below: the day type is not a
 dimension every year carries; the duration is a declared rule and not a column
@@ -3253,6 +3253,33 @@ visible instead of either.
 the list still stops the run.** This is the one field that could quietly swallow a
 real zone, so the reason for each code is written at the declaration rather than
 inferred from the fact that it failed to match.
+
+**Amended by 2019 — the empirical gap that justifies the sliver threshold is a
+property of the 2023 zoning and not a general one.** The threshold was set at a
+thousandth of a zone's area because on the 2023 overlay no sliver exceeded 0.035 %
+of its zone and the smallest genuine split was 1.73 % — a factor of 49, so any
+threshold between a ten-thousandth and a hundredth gave the identical answer. That
+argument does not survive the second year.
+
+**On the 2019 overlay there is no gap at all.** The largest fragment below the
+threshold is 0.0993 % of its zone and the smallest above it is 0.1002 %: the
+distribution runs continuously across the cut, and 264 kept fragments are under
+5 % of their zone against five in 2023. The 2019 ZAT boundaries simply do not nest
+inside the UPL — 246 of its zones are divided between units against 11 of 2023's —
+so the overlay produces a spectrum of genuine partial overlaps rather than a
+population of slivers plus a population of splits.
+
+**The threshold is therefore arbitrary for 2019, and the cost of that was
+measured rather than argued.** Swept across the same two orders of magnitude, the
+largest per-unit pedestrian figure moves **0.16 %** and the city total moves
+1,017 trips a day in 4.16 million. The fragments in the continuum are numerous but
+tiny in area, so they carry almost no travel. The threshold stays where it is,
+and it stays there for a different reason in each year: an empirical gap in 2023,
+a measured indifference in 2019.
+
+**What a year must now do is show one or the other.** A year whose overlay has
+neither a gap nor indifference would need a threshold argued on its own terms, and
+that is a question for a person and not a constant to reuse.
 
 Not renormalising is the other half of the decision. A zone's shares are left as
 they come out, so they sum to one where the zone lies wholly inside the study area
@@ -3664,7 +3691,50 @@ claimed, at 0.362.
 run cannot tell it from a misreading, so it refuses to let one pass unremarked
 rather than pretending to judge it. The baseline is in §6b of the inventory.
 
-**It fired on the first year it could, and the investigation is the point.**
+### Amended by 2019 — the comparison is made on the column two years share
+
+**Decision — `compare_years` reads `TRIPS_PER_DAY_OF_TYPE`, never
+`TRIPS_PER_AVERAGE_DAY`.** This corrects a defect that existed from the moment
+this comparison was written and could not be detected until a second year arrived.
+
+`TRIPS_PER_AVERAGE_DAY` is what the file holds, so every within-year check uses it
+and must: it is the quantity the balance closes on. But what it holds depends on
+what that year's factor expands to. 2023's spreads the universe over seven
+reference days, so its weekday rows carry **77.2 %** of a weekday; 2019's expands
+to its one typical day, so its rows carry all of it. Compared on that column,
+2023's weekday is measured against three quarters of itself.
+
+What that produced, before and after:
+
+| Actor type | 2019 per inhab. | 2023, wrong column | change | 2023, right column | change |
+|---|---:|---:|---:|---:|---:|
+| `PEDESTRIAN` | 0.554 | 0.420 | −24 % | 0.544 | −1.8 % |
+| `CAR` | 0.243 | 0.158 | −35 % | 0.205 | −15.7 % |
+| `BICYCLE` | 0.105 | 0.076 | −28 % | 0.098 | −6.2 % |
+| `MOTORCYCLE` | 0.091 | 0.080 | −12 % | 0.104 | +15.1 % |
+
+**The wrong version was nearly a false alarm and was certainly a false picture.**
+Car came out at −35.0 % against a threshold of 35 %, so the check was one decimal
+from warning about an artefact of its own arithmetic. And all four modes fell by
+roughly the same amount, which is the tell: four modes measured independently do
+not collapse in unison, and a uniform factor across all of them is arithmetic and
+not a city. Corrected, the picture is one a reader can check against Bogotá —
+walking and cycling flat, motorcycle up, car down.
+
+**Mode shares and the Spearman are unaffected**, because a share is a ratio inside
+one year and a rank cannot be moved by a constant factor. So the pedestrian
+finding below stands exactly as it did; what was wrong was every level and every
+rate.
+
+**The general lesson is the one D38 already states about `weight_expands_to`, one
+step further on.** That field must never be inherited because a wrong value is
+invisible. The same is true of anything computed *across* years from a column
+whose meaning that field controls — and a check written against a single year
+cannot see it, because a comparison with nothing to compare against cannot be
+wrong. The third year should assume the same class of defect is waiting wherever
+two years are put side by side.
+
+### The pedestrian ranking fired, and the investigation is the point
 Pedestrian exposure orders the thirty units at **Spearman 0.662** between 2019 and
 2023, below the 0.70 floor, while car, motorcycle and bicycle sit at 0.947, 0.893
 and 0.886. Everything else agrees: no mode share moves ten points, no trip rate
@@ -3688,12 +3758,25 @@ It was chased to the bottom and it is not a misread declaration.
   differs by under a tenth of a per cent.
 - **It is not the intra-zonal rule.** Split into its two halves the correlation
   barely moves: 0.690 on the inter-zonal part alone against 0.662 on the whole.
+- **It is not the allocation rule either.** The three allocations agree with each
+  other unit by unit: Tibabuyes falls 71 % by length share, 70 % counted whole at
+  the origin and 70 % at the destination; Niza rises 146 %, 155 % and 145 %. If
+  the desire lines were putting trips in the wrong place the three would diverge.
+- **It is not the sliver threshold.** Swept from a ten-thousandth to a hundredth,
+  the largest per-unit pedestrian figure of 2019 moves 0.16 % and Niza 0.2 %.
+- **And the raw trip files say it with no pipeline at all.** Summing each survey's
+  own expansion factor over its walking trips by origin zone — one zoning for both
+  years, since they number the same polygons the same way; no desire lines, no
+  apportionment, no day-type rescaling, no duration filter — Tibabuyes' share of
+  city walking falls **56 %**, Rincón de Suba's 44 %, Suba's 41 %, and Niza's
+  rises **90 %**. Nothing this project does can be the cause of a difference that
+  is already in the two files.
 
 So it is what the two samples say about walking in Suba, and **the study cannot
 tell a real change from sampling variation there**. That is the honest answer and
 it is the reason the check warns rather than fails. It is material for the report:
 a jury reading a pedestrian rate for Tibabuyes in 2019 and another in 2023 will
-see them differ by a factor of four, and the answer is that two surveys run four
+see them differ by a factor of three, and the answer is that two surveys run four
 years apart by different administrations disagree about that corner of the city
 more than the study can resolve.
 
