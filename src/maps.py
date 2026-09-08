@@ -329,6 +329,27 @@ def _readable_label_color(rgba: tuple[float, ...]) -> str:
     return config.MAP_LABEL_COLOR
 
 
+def figure_variants(directory: Path, stem: str) -> list[tuple[Path, bool]]:
+    """The files one figure comes out as, and whether each carries a scale bar.
+
+    One entry by default, two when the bar-less copy is asked for. Every map in
+    the pipeline goes through here so that the rule lives in one place: the
+    exposure choropleths, the desire-line maps and the reference map all answer
+    the same setting, and a run cannot end with some of them having a presentation
+    copy and others not.
+
+    The first entry is always the standard figure, so a caller needing to do
+    something once — measuring which labels overflow, say — does it on that one.
+    """
+    variants = [(directory / f"{stem}.{config.MAP_FIGURE_FORMAT}", True)]
+    if config.MAP_EMIT_NO_SCALEBAR_VARIANT:
+        variants.append((
+            directory / f"{stem}{config.MAP_NO_SCALEBAR_SUFFIX}.{config.MAP_FIGURE_FORMAT}",
+            False,
+        ))
+    return variants
+
+
 def _thousands(value: float, _position: int = 0) -> str:
     """A number on the colour bar, punctuated the way the document punctuates it.
 
@@ -485,6 +506,16 @@ def render_choropleth(
     bar.set_label(legend_label, fontsize=config.MAP_LABEL_FONT_PT + 1, color=config.MAP_LABEL_COLOR)
     bar.ax.xaxis.set_major_formatter(matplotlib.ticker.FuncFormatter(_thousands))
     bar.ax.tick_params(labelsize=config.MAP_LABEL_FONT_PT, colors=config.MAP_LABEL_COLOR)
+    # Set on a diagonal because the numbers are wide and the bar is only as wide
+    # as the city. Six-figure trip counts written horizontally under a bar that
+    # narrow overlap each other into an unreadable smear, and dropping ticks to
+    # make room would leave a scale a reader cannot place a colour on. Anchored at
+    # the right end so each label points at its own tick rather than drifting off
+    # it as it rotates.
+    for label in bar.ax.get_xticklabels():
+        label.set_rotation(config.MAP_COLORBAR_LABEL_ROTATION)
+        label.set_horizontalalignment("right")
+        label.set_rotation_mode("anchor")
     bar.outline.set_linewidth(0.4)
     bar.outline.set_edgecolor(config.MAP_BOUNDARY_COLOR)
 
@@ -538,8 +569,8 @@ def render_desire_lines(
     out_path: Path,
     caption: str,
     scalebar: bool,
-) -> int:
-    """Draw the desire lines of one mode and day over the units, and say how many.
+) -> tuple[int, int]:
+    """Draw the desire lines of one mode and day, and say how many of how many.
 
     The companion of the choropleth and the reason it exists: the lines are built
     by this pipeline rather than delivered, so without this figure there is no way
@@ -549,11 +580,17 @@ def render_desire_lines(
     Three things are deliberately unlike every other map here. **The units carry
     no numbers**, because a label under a few thousand crossing lines is
     unreadable and an unreadable label is worse than none. **The fill is flat**,
-    because the fill is a backdrop here and not a value. And **the frame is the
-    city rather than the lines**: they run to Zipaquirá and Facatativá, 154 km
-    apart against the city's 23, so a map framed on them would put the study area
-    in a seventh of its width. They are drawn whole and leave the frame, which is
-    what says the travel continues past the edge of the study.
+    because the fill is a backdrop here and not a value. And **the lines are
+    clipped to the study area**, so that what is drawn is exactly what is counted.
+
+    That last one was a choice between two, and it went the way the measurement
+    had already gone. The lines run to Zipaquirá and Facatativá, 154 km apart
+    against the city's 23, so framing the map on them would leave the study area
+    in a seventh of its width; framing it on the city while drawing them whole
+    cuts them at the frame, which reads as a rendering fault rather than as a
+    statement. The apportionment counts the fraction of a line inside a unit and
+    ignores the rest, so a figure that drew the rest was showing something no
+    number uses.
 
     `weights` is the trips per day each line carries, in the order of `lines`.
     Both the width and the opacity grow as its square root, and the heaviest lines
@@ -561,6 +598,36 @@ def render_desire_lines(
     """
     metric = units.to_crs(epsg=config.PROJECTED_CRS)
     drawn = lines.to_crs(epsg=config.PROJECTED_CRS)
+    weights = np.asarray(weights, dtype=float)
+
+    # Clipped against the union of the units rather than against each polygon, so
+    # a line crossing an internal boundary stays one line instead of becoming one
+    # per unit. A line that leaves the study area and re-enters it comes back as a
+    # multi-part geometry, which the segment building below handles.
+    study_area = metric.geometry.union_all()
+    clipped = drawn.geometry.intersection(study_area)
+    reaches = ~(clipped.is_empty | clipped.isna())
+    drawn = drawn.loc[reaches.to_numpy()].set_geometry(clipped.loc[reaches.to_numpy()])
+    weights = weights[reaches.to_numpy()]
+    reaching = len(drawn)
+
+    # Then the long tail is left out of the drawing. Ranked by trips, the lines
+    # accounting for the declared share of the travel are drawn and the rest are
+    # not — about 30% of them carry 5% of the trips, and drawing them costs
+    # legibility for almost nothing.
+    #
+    # This is a property of the figure and of nothing else. Every trip is still
+    # counted, apportioned and exported; what changes is how many lines are put on
+    # a page. The caption says so, because a figure that quietly omits part of its
+    # subject is a figure that misleads.
+    if reaching:
+        ranked = np.argsort(weights)[::-1]
+        covered = np.cumsum(weights[ranked]) / weights.sum() if weights.sum() > 0 else np.zeros(reaching)
+        keep = ranked[: int(np.searchsorted(covered, config.MAP_DESIRE_LINE_TRIP_COVERAGE) + 1)]
+        selection = np.zeros(reaching, dtype=bool)
+        selection[keep] = True
+        drawn = drawn.loc[selection]
+        weights = weights[selection]
 
     minx, miny, maxx, maxy = metric.total_bounds
     height = config.MAP_FIGURE_HEIGHT_IN
@@ -594,14 +661,32 @@ def render_desire_lines(
 
     # Ascending, so a heavy corridor is not buried under the hundreds of light
     # lines that happen to be drawn after it.
+    #
+    # One line can contribute several segments: clipping a line that leaves the
+    # study area and comes back gives a multi-part geometry, and every part is
+    # drawn with that line's own width and opacity. Building the three lists
+    # together is what keeps them aligned once the count of segments stops
+    # matching the count of lines.
     order = np.argsort(magnitude, kind="stable")
-    segments = [list(drawn.geometry.iloc[position].coords) for position in order]
     colour = matplotlib.colors.to_rgb(config.MAP_DESIRE_LINE_COLOR)
+    segments: list[list[tuple[float, float]]] = []
+    segment_widths: list[float] = []
+    segment_colours: list[tuple[float, ...]] = []
+    for position in order:
+        geometry = drawn.geometry.iloc[position]
+        parts = getattr(geometry, "geoms", (geometry,))
+        for part in parts:
+            if part.is_empty or not hasattr(part, "coords"):
+                continue
+            segments.append(list(part.coords))
+            segment_widths.append(widths[position])
+            segment_colours.append((*colour, alphas[position]))
+
     axis.add_collection(
         matplotlib.collections.LineCollection(
             segments,
-            linewidths=widths[order],
-            colors=[(*colour, alpha) for alpha in alphas[order]],
+            linewidths=segment_widths,
+            colors=segment_colours,
             capstyle="round",
             zorder=2,
         )
@@ -644,8 +729,12 @@ def render_desire_lines(
             )
         )
 
+    # The second line is not decoration. The figure leaves out the long tail of
+    # lines, and a reader counting them against a number quoted elsewhere has to
+    # be told that rather than left to discover it.
     axis.set_title(
-        caption,
+        f"{caption}\n{_thousands(len(drawn))} de {_thousands(reaching)} líneas, "
+        f"el {config.MAP_DESIRE_LINE_TRIP_COVERAGE:.0%} de los viajes",
         fontsize=config.MAP_LABEL_FONT_PT + 1,
         color=config.MAP_LABEL_COLOR,
         pad=6,
@@ -654,7 +743,7 @@ def render_desire_lines(
     out_path.parent.mkdir(parents=True, exist_ok=True)
     figure.savefig(out_path, bbox_inches="tight", pad_inches=0.02, transparent=True)
     plt.close(figure)
-    return len(drawn)
+    return len(drawn), reaching
 
 
 def _labels_that_do_not_fit(figure, axis, metric: gpd.GeoDataFrame, texts: list) -> list[int]:
@@ -683,20 +772,18 @@ def render_figures(
     composition: Composition,
     log: RunLog,
 ) -> tuple[list[Path], list[int]]:
-    """Write both maps and say how they came out.
+    """Write the map and say how it came out.
 
-    Two files, identical but for the scale bar: see MAP_SCALEBAR_SUFFIX for why
-    that is a second figure rather than a setting. Everything else about them is
-    the same, so the labels are measured once, on the plain one.
+    One file, or two when the bar-less copy is asked for: see
+    MAP_EMIT_NO_SCALEBAR_VARIANT. Everything about them is the same but the scale
+    bar, so the labels are measured once, on the standard one.
     """
     directory = log.run_dir / config.FIGURES_SUBDIR / config.MAP_FIGURES_SUBDIR
-    stem = "map__territorial_units"
-    out_paths = [
-        directory / f"{stem}.{config.MAP_FIGURE_FORMAT}",
-        directory / f"{stem}{config.MAP_SCALEBAR_SUFFIX}.{config.MAP_FIGURE_FORMAT}",
-    ]
-    overflowing = render(units, composition, out_paths[0], scalebar=False)
-    render(units, composition, out_paths[1], scalebar=True)
+    variants = figure_variants(directory, "map__territorial_units")
+    out_paths = [path for path, _ in variants]
+    overflowing = render(units, composition, *variants[0])
+    for path, scalebar in variants[1:]:
+        render(units, composition, path, scalebar=scalebar)
 
     log.info(
         "map: %d units over %d borders, coloured with %d of the %d declared colours",

@@ -929,7 +929,7 @@ nothing.
 > the mobility surveys. This layer is kept, measured on every run and filed as
 > `reference__delivered_desire_lines_by_unit.csv`, because the figures below are
 > quoted in finished work and have to stay reproducible. Every number in this
-> section is unchanged on `run_20260905_055939`, which is how the replacement was
+> section is unchanged on `run_20260907_231531`, which is how the replacement was
 > checked. Two things about it are now known that were open when it was written:
 > it is a sample of the **2019** survey and not of 2023, and its selection was
 > not by volume. Both are in D38 and in section 15.
@@ -1269,7 +1269,7 @@ says which years are which.
 
 ## 15. Travel exposure from the mobility survey
 
-Run `run_20260907_205936`, route `exposure`, command
+Run `run_20260907_231531`, route `exposure`, command
 `python -m src.run_pipeline exposure`. **Every check passed.** This is the
 study's exposure: how much travel of each of four road user types passes through
 each unit, per survey year and per kind of day, built from the household mobility
@@ -1475,9 +1475,37 @@ that would have been worth worrying about had it been absent.
 ### The figures
 
 Two per combination of year, actor type and day type — a choropleth and the
-desire lines behind it — in two files each, with and without a scale bar. **Fifty
-figures for 2023**, forty-eight of them from the survey and two from the delivered
-layer.
+desire lines behind it. **Twenty-five figures for 2023**, twenty-four of them from
+the survey and one from the delivered layer, filed by year, then mode, then kind:
+
+```
+figures/exposure/
+├── 2023/
+│   ├── bicycle/
+│   │   ├── choropleth/     3 files, one per day type
+│   │   └── desire_lines/   3 files, one per day type
+│   ├── car/  motorcycle/  pedestrian/
+└── delivered_2019_bicycle/choropleth/    1 file
+```
+
+**One file per figure, and it carries the scale bar.** Both variants used to be
+written every run; the bar-less copy is now behind
+`MAP_EMIT_NO_SCALEBAR_VARIANT`, off by default, and the standard figure takes the
+plain name because a suffix on the only file distinguishes it from nothing. Every
+map in the pipeline goes through one helper for that rule, the reference map
+included.
+
+**A map is 9 inches tall**, about 13 by 23 cm, where it used to be 5 and came out
+postcard-sized. These are vector figures, so what the size buys is the ratio
+between the map and the type: the unit numbers shrink relative to the territory
+and the colour bar gains room for seven ticks where it had four.
+
+Every figure sits under one of the two kind folders, the delivered layer included,
+so a recursive match on `*/choropleth/*.pdf` returns all thirteen choropleths and
+`*/desire_lines/*.pdf` all twelve line maps. The file names repeat the year and
+mode the tree already gives, because a figure is copied out of this tree into the
+document's own folder before LaTeX can see it and would otherwise arrive stripped
+of its identity.
 
 **The choropleth shows `TRIPS_PER_DAY_OF_TYPE`.** A map titled "viajes por día"
 has to carry the trips of a day, and the variable counts a day type's share of an

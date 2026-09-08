@@ -650,17 +650,24 @@ def render_figures(
     out_paths: list[Path] = []
     overflowing: list[int] = []
     for layer in layers:
+        # Under a `choropleth/` folder like every other figure in the tree, even
+        # though this layer produces only two files. The rule is what makes
+        # `**/choropleth/*.pdf` mean "every choropleth"; an exception for the one
+        # odd artefact would cost more than the folder does.
+        into = directory / layer.figures_subdir / config.EXPOSURE_CHOROPLETH_SUBDIR
         stem = f"{config.EXPOSURE_FIGURES_SUBDIR}__{layer.name.lower()}"
-        plain = directory / f"{stem}.{config.MAP_FIGURE_FORMAT}"
-        with_bar = directory / f"{stem}{config.MAP_SCALEBAR_SUFFIX}.{config.MAP_FIGURE_FORMAT}"
+        variants = maps.figure_variants(into, stem)
 
         values = table.set_index(config.AREA_CODE_COL)[layer.column(config.TRIPS_WEEKLY_SUFFIX)]
         caption = f"{layer.label_es} por semana"
 
-        spilling = maps.render_choropleth(units, values, plain, caption, scalebar=False)
-        maps.render_choropleth(units, values, with_bar, caption, scalebar=True)
-        out_paths.extend([plain, with_bar])
-        overflowing.extend(spilling)
+        for position, (path, scalebar) in enumerate(variants):
+            spilling = maps.render_choropleth(
+                units, values, path, caption, scalebar=scalebar
+            )
+            if position == 0:
+                overflowing.extend(spilling)
+        out_paths.extend(path for path, _ in variants)
 
         log.info(
             "choropleth %s: %d units, range %s to %s %s, %d observed zero(s), %d not measured",
@@ -1735,6 +1742,9 @@ def render_survey_figures(
                 drawn = for_actor[for_actor[config.DAY_TYPE_COL] == day_type]
                 if drawn.empty:
                     continue
+                into = config.exposure_figure_dir(
+                    directory, survey.year, actor, config.EXPOSURE_CHOROPLETH_SUBDIR
+                )
                 stem = (
                     f"{config.EXPOSURE_FIGURES_SUBDIR}__{survey.year}_{actor.lower()}"
                     f"_{day_type.lower()}"
@@ -1745,18 +1755,15 @@ def render_survey_figures(
                     f"{config.DAY_TYPE_LABELS_ES[day_type]} {survey.year}"
                 )
 
-                plain = directory / f"{stem}.{config.MAP_FIGURE_FORMAT}"
-                with_bar = (
-                    directory / f"{stem}{config.MAP_SCALEBAR_SUFFIX}.{config.MAP_FIGURE_FORMAT}"
-                )
-                spilling = maps.render_choropleth(
-                    units, values, plain, caption, scalebar=False, value_range=shared
-                )
-                maps.render_choropleth(
-                    units, values, with_bar, caption, scalebar=True, value_range=shared
-                )
-                out_paths.extend([plain, with_bar])
-                overflowing.extend(spilling)
+                variants = maps.figure_variants(into, stem)
+                for position, (path, scalebar) in enumerate(variants):
+                    spilling = maps.render_choropleth(
+                        units, values, path, caption,
+                        scalebar=scalebar, value_range=shared,
+                    )
+                    if position == 0:
+                        overflowing.extend(spilling)
+                out_paths.extend(path for path, _ in variants)
 
                 log.info(
                     "choropleth %d %s %s: %d units, %s to %s trips per day, ramp to %s, "
@@ -1771,18 +1778,23 @@ def render_survey_figures(
                     int((values == 0).sum()),
                 )
 
-                lines_drawn, line_paths = _render_desire_line_map(
+                counts, line_paths = _render_desire_line_map(
                     allocation, units, actor, day_type, survey, directory, log
                 )
                 out_paths.extend(line_paths)
-                log.info(
-                    "desire lines %d %s %s: %d line(s) drawn over the %d units",
-                    survey.year,
-                    actor,
-                    day_type,
-                    lines_drawn,
-                    len(units),
-                )
+                if line_paths:
+                    lines_drawn, reaching, built = counts
+                    log.info(
+                        "desire lines %d %s %s: %d line(s) built, %d reaching the units, "
+                        "%d drawn (%.0f%% of the trips); the rest stay in the data",
+                        survey.year,
+                        actor,
+                        day_type,
+                        built,
+                        reaching,
+                        lines_drawn,
+                        100 * config.MAP_DESIRE_LINE_TRIP_COVERAGE,
+                    )
 
     for path in out_paths:
         log.info("wrote %s", path)
@@ -1797,7 +1809,7 @@ def _render_desire_line_map(
     survey: config.MobilitySurvey,
     directory: Path,
     log: RunLog,
-) -> tuple[int, list[Path]]:
+) -> tuple[tuple[int, int, int], list[Path]]:
     """The desire lines of one mode and day, drawn over the units.
 
     Only the inter-zonal trips have a line to draw. The intra-zonal ones are on
@@ -1817,26 +1829,30 @@ def _render_desire_line_map(
             actor,
             day_type,
         )
-        return 0, []
+        return (0, 0, 0), []
 
     geometry = allocation.lines.merge(
         selected[[_PAIR_ID_COL, surveys.TRIPS_COL]], on=_PAIR_ID_COL, how="inner"
+    )
+    into = config.exposure_figure_dir(
+        directory, survey.year, actor, config.EXPOSURE_LINES_SUBDIR
     )
     stem = (
         f"{config.EXPOSURE_LINES_FIGURE_PREFIX}__{survey.year}_{actor.lower()}"
         f"_{day_type.lower()}"
     )
-    plain = directory / f"{stem}.{config.MAP_FIGURE_FORMAT}"
-    with_bar = directory / f"{stem}{config.MAP_SCALEBAR_SUFFIX}.{config.MAP_FIGURE_FORMAT}"
+    variants = maps.figure_variants(into, stem)
     caption = (
         f"{config.ROAD_USER_LABELS_ES[actor]}, líneas de deseo entre zonas · "
         f"{config.DAY_TYPE_LABELS_ES[day_type]} {survey.year}"
     )
 
     weights = geometry[surveys.TRIPS_COL].to_numpy(dtype=float)
-    drawn = maps.render_desire_lines(units, geometry, weights, plain, caption, scalebar=False)
-    maps.render_desire_lines(units, geometry, weights, with_bar, caption, scalebar=True)
-    return drawn, [plain, with_bar]
+    for path, scalebar in variants:
+        drawn, reaching = maps.render_desire_lines(
+            units, geometry, weights, path, caption, scalebar=scalebar
+        )
+    return (drawn, reaching, len(geometry)), [path for path, _ in variants]
 
 
 # ---------------------------------------------------------------------------
@@ -2179,3 +2195,171 @@ def report_from_surveys(
             config.TRIPS_PER_AVERAGE_DAY_COL,
             config.TRIPS_PER_DAY_OF_TYPE_COL,
         )
+
+
+# ---------------------------------------------------------------------------
+# One year against the years already measured
+# ---------------------------------------------------------------------------
+
+
+def _mode_share(weekday: pd.DataFrame, year: int, actor: str) -> float:
+    """One actor type's share of the four measured modes, in one year."""
+    rows = weekday[weekday[config.YEAR_COL] == year]
+    whole = float(rows[config.TRIPS_PER_AVERAGE_DAY_COL].sum())
+    if not whole:
+        return float("nan")
+    part = rows[rows[config.ACTOR_TYPE_COL] == actor]
+    return float(part[config.TRIPS_PER_AVERAGE_DAY_COL].sum()) / whole
+
+
+def _trips_per_inhabitant(rows: pd.DataFrame) -> float:
+    """Trips per resident, over whatever slice of the table is passed."""
+    residents = float(rows[config.POPULATION_COL].sum())
+    if not residents:
+        return float("nan")
+    return float(rows[config.TRIPS_PER_AVERAGE_DAY_COL].sum()) / residents
+
+
+def _rank_agreement(before: pd.DataFrame, after: pd.DataFrame) -> float:
+    """Spearman between two years' orderings of the units, or NaN if not comparable."""
+    paired = pd.concat(
+        [
+            before.set_index(config.AREA_CODE_COL)[config.TRIPS_PER_AVERAGE_DAY_COL],
+            after.set_index(config.AREA_CODE_COL)[config.TRIPS_PER_AVERAGE_DAY_COL],
+        ],
+        axis=1,
+    ).dropna()
+    if len(paired) <= 2:
+        return float("nan")
+    return float(paired.corr(method="spearman").iloc[0, 1])
+
+
+def compare_years(
+    table: pd.DataFrame,
+    apportionments: dict[int, SurveyApportionment],
+    log: RunLog,
+) -> None:
+    """Put each survey beside the ones before it, and say where they disagree.
+
+    Every year is read through its own declaration, because every survey was run
+    by a different administration and catalogues its data its own way. That means
+    a handful of independent decisions per year — which column is the expansion
+    factor, what it expands to, how the day type is stated, what the mode labels
+    are — and any one of them can be wrong in a way that still produces numbers
+    that look entirely reasonable on their own.
+
+    Nothing inside a year catches that. What catches it is the year before:
+    Bogotá does not remake its travel between two surveys, so a mode share that
+    moves fifteen points, a per-inhabitant trip rate that doubles, or a ranking of
+    the thirty units that stops agreeing with the previous survey is a misread
+    column long before it is a finding about the city.
+
+    Everything here is a warning and never a failure. A real change of that size
+    is possible and this cannot tell the two apart; what it can do is refuse to
+    let one through unremarked.
+    """
+    years = sorted(apportionments)
+    weekday = table[table[config.DAY_TYPE_COL] == config.WEEKDAY_TYPE]
+
+    rendered = [
+        f"{'year':>6}  {'actor type':<12}  {'trips/day':>12}  {'share':>7}  "
+        f"{'per inhab.':>10}  {'vs prev.':>8}",
+        f"{'-' * 6}  {'-' * 12}  {'-' * 12}  {'-' * 7}  {'-' * 10}  {'-' * 8}",
+    ]
+    seen: dict[str, pd.DataFrame] = {}
+    for year in years:
+        rows = weekday[weekday[config.YEAR_COL] == year]
+        for actor in apportionments[year].survey.actor_types:
+            for_actor = rows[rows[config.ACTOR_TYPE_COL] == actor]
+            agreement = _rank_agreement(seen[actor], for_actor) if actor in seen else float("nan")
+            seen[actor] = for_actor
+            rendered.append(
+                f"{year:>6}  {actor:<12}  "
+                f"{float(for_actor[config.TRIPS_PER_AVERAGE_DAY_COL].sum()):>12,.0f}  "
+                f"{_mode_share(weekday, year, actor):>7.1%}  "
+                f"{_trips_per_inhabitant(for_actor):>10.3f}  "
+                + (f"{agreement:>8.3f}" if np.isfinite(agreement) else f"{'—':>8}")
+            )
+    log.table(
+        "exposure across the surveys, typical weekday, inside the study units:",
+        "\n".join(rendered),
+    )
+
+    # What each year set aside, which is the other place a misread declaration
+    # shows: a year dropping far more or far less than its neighbours is a year
+    # whose duration column, mode map or zoning is not doing what it was declared
+    # to do.
+    aside = [
+        f"{'year':>6}  {'in the file':>14}  {'measured':>14}  {'impossible':>10}  "
+        f"{'intra-zonal':>11}  {'outside':>8}",
+        f"{'-' * 6}  {'-' * 14}  {'-' * 14}  {'-' * 10}  {'-' * 11}  {'-' * 8}",
+    ]
+    for year in years:
+        allocation = apportionments[year]
+        measured = float(allocation.trips.totals.sum())
+        impossible = float(allocation.trips.implausible_totals.sum())
+        pairs = allocation.trips.pairs
+        intra = float(
+            pairs.loc[
+                pairs[surveys.ZONE_ORIGIN_COL] == pairs[surveys.ZONE_DESTINATION_COL],
+                surveys.TRIPS_COL,
+            ].sum()
+        )
+        aside.append(
+            f"{year:>6}  {allocation.trips.file_total:>14,.0f}  {measured:>14,.0f}  "
+            f"{impossible / (measured + impossible):>10.1%}  {intra / measured:>11.1%}  "
+            f"{float(allocation.outside.sum()) / measured:>8.1%}"
+        )
+    log.table("what each survey set aside, as a share of what it measured:", "\n".join(aside))
+
+    if len(years) < 2:
+        log.info(
+            "only %d survey is implemented, so there is nothing to compare it against yet. "
+            "The two tables above are the baseline the next year is read against; see D38",
+            len(years),
+        )
+        return
+
+    for earlier, later in zip(years, years[1:]):
+        for actor in apportionments[later].survey.actor_types:
+            before = weekday[
+                (weekday[config.YEAR_COL] == earlier) & (weekday[config.ACTOR_TYPE_COL] == actor)
+            ]
+            after = weekday[
+                (weekday[config.YEAR_COL] == later) & (weekday[config.ACTOR_TYPE_COL] == actor)
+            ]
+            if before.empty or after.empty:
+                continue
+
+            moved = _mode_share(weekday, later, actor) - _mode_share(weekday, earlier, actor)
+            if abs(moved) > config.EXPOSURE_YEAR_MODE_SHARE_JUMP:
+                log.warn(
+                    "%s moves %+.1f points of the four-mode share between %d and %d, past the "
+                    "%.0f-point threshold. Check the mode map and the expansion factor of %d "
+                    "before reading it as a change in the city. See D38",
+                    actor, 100 * moved, earlier, later,
+                    100 * config.EXPOSURE_YEAR_MODE_SHARE_JUMP, later,
+                )
+
+            was, now = _trips_per_inhabitant(before), _trips_per_inhabitant(after)
+            if np.isfinite(was) and was > 0:
+                change = now / was - 1.0
+                if abs(change) > config.EXPOSURE_YEAR_TRIP_RATE_JUMP:
+                    log.warn(
+                        "%s trips per inhabitant move %+.0f%% between %d and %d, past the %.0f%% "
+                        "threshold, from %.3f to %.3f. That is the shape of a factor expanding "
+                        "to something other than what %d declares. See D38",
+                        actor, 100 * change, earlier, later,
+                        100 * config.EXPOSURE_YEAR_TRIP_RATE_JUMP, was, now, later,
+                    )
+
+            agreement = _rank_agreement(before, after)
+            if np.isfinite(agreement) and agreement < config.EXPOSURE_YEAR_RANK_AGREEMENT_FLOOR:
+                log.warn(
+                    "%s orders the units at Spearman %.3f between %d and %d, below the %.2f "
+                    "floor. The geography of a mode does not reinvent itself between two "
+                    "surveys, so suspect the zoning or the zone codes of %d. It is the same "
+                    "measurement that showed the delivered layer was not what it claimed. See D38",
+                    actor, agreement, earlier, later,
+                    config.EXPOSURE_YEAR_RANK_AGREEMENT_FLOOR, later,
+                )

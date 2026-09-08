@@ -2450,7 +2450,7 @@ below were measured on. Read this for the allocation rule, which D38 inherits
 unchanged, and D38 for what the variable now is.
 
 **Built:** Yes. `src/exposure.py`, route `exposure`. Run `run_20260901_003409`;
-the same figures on `run_20260905_055939`, which is how the change was checked.
+the same figures on `run_20260907_231531`, which is how the change was checked.
 
 ### What the layer turned out to be
 
@@ -2968,7 +2968,7 @@ take, and whether the survey's own weighting can support a day-type comparison a
 all.
 
 **Built:** Yes. `src/surveys.py` and the second half of `src/exposure.py`, route
-`exposure`. Run `run_20260905_055939`.
+`exposure`. Run `run_20260907_231531`.
 
 ### What replaced what, and why it had to
 
@@ -3246,6 +3246,101 @@ choropleth of how much travel the unit ends up with, and the desire lines that
 put it there. Twelve of each for 2023, twenty-four files with the scale-bar
 variants, and the same for every year added.
 
+**They are filed rather than listed, because four years come to 192 files.** Year,
+then mode, then kind:
+
+```
+figures/exposure/
+├── 2023/
+│   ├── bicycle/
+│   │   ├── choropleth/     exposure__2023_bicycle_weekday.pdf      (3 + 3 scalebar)
+│   │   └── desire_lines/   desire_lines__2023_bicycle_weekday.pdf  (3 + 3 scalebar)
+│   ├── car/  motorcycle/  pedestrian/
+├── 2019/  2015/  2011/     the same shape, one folder per session
+└── delivered_2019_bicycle/
+    └── choropleth/         the superseded layer, deleted when 2019 lands
+```
+
+The year is outermost because it is the unit of work and of provenance: a session
+implements one survey and creates one folder without touching the others. The
+mode is next because a choropleth and the desire lines behind it explain each
+other and are read together. The kind is innermost, and **every figure in the tree
+sits under one of the two kinds, the delivered layer included**, so that a
+recursive match on `*/choropleth/*.pdf` means "every choropleth of every year"
+with no exception to remember.
+
+**The names are repeated between the tree and the file names on purpose.** A
+figure has to be copied into the document's own folder before LaTeX can see it,
+so a file called `bicycle_weekday.pdf` would arrive there with its year stripped
+off by the move. Redundant in the tree, self-identifying out of it.
+
+**Only one file per figure is written, and it is the one with the scale bar.**
+Both used to come out of every run, the bar-less one for slides and the other for
+the page. In practice the study is producing figures for itself, so half of what
+was written was read by nobody — twenty-five files instead of fifty.
+
+The bar-less copy is not deleted, it is behind
+`MAP_EMIT_NO_SCALEBAR_VARIANT`. The reason it stays in the pipeline at all is
+that the alternative anyone reaches for is worse: opening the PDF and removing
+the scale bar by hand. That does not work well, because the figure is vector and
+the bar is an object to hunt down in Illustrator rather than a layer to hide —
+and, decisively, the edit is gone the next time the route runs. Every generated
+artefact here is reproducible from a run, and a retouched figure is not. A
+presentation copy is one constant and one re-run.
+
+Inverting which file carries the mark follows from that. **The standard figure
+now takes the plain name and the optional copy is the one suffixed**, because a
+`__scalebar` suffix on the only file distinguishes it from nothing. The rule
+lives in `maps.figure_variants`, which every map in the pipeline goes through —
+the choropleths, the desire lines and the reference map — so a run cannot end
+with some of them having a presentation copy and others not.
+
+**The scale-bar variant stays a suffix and never a folder.** It is the same figure
+rendered twice; making it a directory would mean adding or removing a scale bar
+changes the path in the `.tex` rather than one word in the file name.
+
+**A map is 9 inches tall rather than 5.** These are vector figures, so the size is
+not about resolution: it is the ratio between the map and the type, which is
+fixed in points. At 5 inches a map came out the size of a postcard, 7 by 13 cm,
+with the unit numbers and the colour bar crowding the territory. At 9 it is about
+13 by 23 cm, the numbers shrink relative to the city, and the colour bar gains
+room for seven ticks where it had four. The figures are read on screen while the
+study is being built, and that is what the value is set for.
+
+### The figures a deliverable will want are a different rendering, and not yet built
+
+Everything above is sized and captioned for reading on a screen during the work.
+A figure going into the written report or a slide differs in three settings, and
+they are recorded here rather than built, because no deliverable needs them yet
+and guessing a page size before there is a page is how a setting gets fixed
+wrongly.
+
+**Height**, which is one constant already.
+
+**Whether the identifying text is drawn inside the figure.** Today it is, and it
+would be duplicated by a LaTeX `\caption`. The two figures are not the same case.
+On the desire-line map the whole title is caption material and would go. On the
+choropleth the text is the colour bar's label, and part of it must stay whatever
+the caption says — a bar with no unit on it means nothing — so what leaves is the
+mode and the day, and what remains is `viajes por día`.
+
+**Whether the bar-less copy is emitted**, which is the constant above.
+
+The piece that makes the second one safe is that **the pipeline should export the
+captions**, one row per figure, naming the file and the Spanish text that
+identifies it. Then a `\caption` is copied from a generated file instead of being
+typed, which is D33's argument for emitting tables as LaTeX applied to figures: a
+number retyped by hand is a number that can be retyped wrongly, and there is no
+way to tell afterwards which run it came from. Building that is the job of the
+session that produces the first deliverable figure.
+
+The delivered layer's folder is named for what it is rather than for what it
+measures, because it is no longer the study's exposure and the tree should not
+suggest otherwise. It carries **2019** — the year established in this decision,
+not the 2023 its own per-inhabitant column still divides by — it sorts after the
+year folders because letters follow digits, and when 2019 is implemented the
+folder goes with the layer.
+
 **The choropleth shows `TRIPS_PER_DAY_OF_TYPE` and not the variable.** This is
 the decision inside the figures that matters. A map titled "viajes por día" has
 to carry the trips of a day, and the variable counts a day type's share of an
@@ -3364,6 +3459,40 @@ declared as a rule object and dispatched through a registry, so a year adds a
 small rule beside the others rather than a second way of reading a file. A year
 whose rule is not written yet fails with a message naming itself, which is the
 behaviour that keeps the gap visible.
+
+**Each survey was commissioned by a different administration**, and that is the
+reason the declaration is as wide as it is. The naming, the catalogue, the mode
+vocabulary and the way the reference day is stated all change with whoever ran
+the survey; none of it is knowable in advance and none of it can be inherited.
+What is fixed is everything downstream — the measurement, the four actor types,
+the shape of the table, the figures and where they are written — and a year that
+cannot be made to fit that shape is a finding to report rather than a shape to
+bend. `docs/mobility-surveys-inventory.md` §6b is the contract, and it is what a
+session implementing a year reads first.
+
+### A year is checked against the years already measured
+
+**Decision — the run compares each survey against the ones before it, and warns
+where they disagree.** `exposure.compare_years` prints what each year measures
+per mode and what each sets aside; with one year those are a baseline, and from
+the second onwards they are the check.
+
+It exists because of what the declaration is: six things per year, each
+established from that year's own files, and every one of them able to be wrong in
+a way that still produces plausible numbers. Nothing inside a year catches that
+— the balance closes just as neatly on a misread column as on a correct one,
+because it checks the reading against itself.
+
+The year before is what catches it. Bogotá does not remake its travel between two
+surveys, so three things are read as symptoms rather than findings: a mode share
+moving more than ten points, a per-inhabitant trip rate moving more than 35 %, or
+a Spearman below 0.70 between two years' orderings of the thirty units. That last
+one is the same measurement that established the delivered layer was not what it
+claimed, at 0.362.
+
+**All three warn and none fails.** A real change of that size is possible and the
+run cannot tell it from a misreading, so it refuses to let one pass unremarked
+rather than pretending to judge it. The 2023 baseline is in §6b of the inventory.
 
 ### The balance, and what the run checks
 

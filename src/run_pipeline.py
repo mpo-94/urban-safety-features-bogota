@@ -222,6 +222,11 @@ def run_exposure(log: RunLog) -> None:
         raise RouteFailed("the exposure tables do not agree with the sources they were built from")
 
     exposure.report_from_surveys(table, apportionments, log)
+    # Last, because it is the report that reads across the years rather than
+    # inside one. With a single survey implemented it prints the baseline the next
+    # one will be read against; with more, it is what catches a year whose
+    # declaration is subtly wrong in a way no check inside that year can see.
+    exposure.compare_years(table, apportionments, log)
     exposure.report(delivered, allocations, log)
 
 

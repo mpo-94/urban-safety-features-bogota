@@ -13,7 +13,7 @@ was computed from the delivered file in the session of 2026-09-05.
 
 **2023 has since been built and is no longer a structural note.** It is declared
 in `config.SURVEY_2023`, read by `src/surveys.py`, measured by `src/exposure.py`
-and checked on run `run_20260905_055939`; the decisions are D38. What that pass
+and checked on run `run_20260907_231531`; the decisions are D38. What that pass
 resolved is marked below where it lands, and the entries for 2011, 2015 and 2019
 are unchanged and still unverified. Two of the things this document listed as
 unresolved were answered by it and one of its statements turned out to be wrong,
@@ -323,40 +323,103 @@ because they are the reason this pass exists.
 
 ---
 
-## 6b. What every remaining year has to establish for itself
+## 6b. The contract for the sessions that implement 2019, 2015 and 2011
 
-Three things came out of building 2023 that are **not** properties of 2023. Each
-is a field of the declaration, each must be answered from that year's own files,
-and inheriting 2023's answer would produce figures that all look right.
+**Read this before opening a survey folder.** Each of the four surveys was
+commissioned by a different city administration, and each names and catalogues
+its data its own way — different column names, different mode vocabularies,
+different ways of saying which day a trip was made on, and in 2015's case four
+candidate weight columns with nothing in the file to choose between them. None of
+that is knowable in advance. What *is* fixed is everything downstream of it, and
+keeping the two apart is the whole design.
 
-**What the expansion factor expands to.** 2023's represents the universe once over
-all seven reference days together, so a day type's own figure needs rescaling by
-the share of the universe its households cover. A survey whose factor already
-expands to one day of the record's own kind declares that instead and skips the
-rescaling. This is `weight_expands_to`, and 2015 is the year it will bite: it has
-**four candidate weight columns and none of them identified**.
+### What does not change, and must not
 
-**A published total to check the reconstruction against.** `published_total` is
-what turns a belief about which column is the factor into a demonstration. 2023
-reproduces 16,390,908 exactly. A year with none declared runs, and says on every
-execution that its reconstruction was checked against nothing.
+These are the same for every year, and a session that finds itself editing any of
+them has misread the problem:
 
-**Which day the reported trips belong to.** 2023 asks about the day *before* the
-interview, so the interview dates are shifted back one day before the day type is
-read off them. Taking the interview date instead would have filed every Saturday
-trip under a Sunday. Each year states this in its own technical documentation and
-each says it differently; the rule is a declared object dispatched through a
-registry in `src/surveys.py`.
+- **The measurement.** Group the trips by actor type, day type and pair of zones;
+  draw one line between the two zone centroids; give each unit the share of that
+  line's trips matching the share of its length inside the unit. A trip that
+  begins and ends in one zone has no line and is spread over that zone's units by
+  area. What falls outside the thirty units is measured, not redistributed.
+- **The four actor types**, `PEDESTRIAN`, `BICYCLE`, `MOTORCYCLE` and `CAR`,
+  named as the casualty matrix names them. Public transport is deliberately not a
+  fifth.
+- **The shape of the table.** One row per unit, year, actor type and day type,
+  with the columns `config.survey_exposure_columns()` declares, in that order.
+- **The figures.** Two per combination — a choropleth of `TRIPS_PER_DAY_OF_TYPE`
+  and the desire lines behind it — at the same size, the same ramp, the same
+  clipping to the study area, the same 95 % drawing threshold, and the same
+  colour-bar treatment. One file each unless the bar-less copy is asked for.
+- **Where they are written.** `figures/exposure/<year>/<mode>/<kind>/`, with the
+  year and mode repeated in the file name because figures get copied into LaTeX
+  projects. A new year adds `figures/exposure/2019/` and touches nothing else.
+- **The balance.** Every trip the file weights is either measured or named as set
+  aside, and what was apportioned plus what fell outside equals what the file
+  holds, per actor type and per day type.
 
-And one check every year inherits and every year should be expected to fail
-somewhere: **records whose two zones are further apart than the mode could have
-covered in the reported duration.** In 2023 that is 5,344 records and 960,910
-trips a day, **14.6 % of the walking** — found by drawing the desire lines and
-noticing that pedestrian lines crossed the whole city. It needs a duration column,
-declared as `duration_minutes_column`; a year that reports none cannot be checked
-and the run says so rather than implying the year is clean. Verify the duration
-against something else before trusting it: 2023's agrees with its own
-fifteen-minute walking split, which is what made it usable as evidence.
+If a year cannot be made to fit that without changing it, **stop and report it**
+rather than bending the shape. The point of four years is that they are
+comparable.
+
+### What must be established from that year's own files
+
+Six things, each a field of `config.MobilitySurvey`, none of which may be
+inherited from another year. Every one of them can be wrong in a way that still
+produces entirely plausible numbers, which is why they are declared rather than
+inferred and why the cross-year comparison below exists.
+
+| What | Field | Where 2023 got it |
+|---|---|---|
+| Which file holds the trips, and how it is encoded | `trips` | cp1252, `;`, comma decimals, spaces inside three column names |
+| Which column is the expansion factor | `weight_column` | `fexp_vj`, confirmed against the published total |
+| What one unit of it expands to | `weight_expands_to` | an average day of the collection period, from the household factors summing to the universe once over all seven reference days |
+| A published total to check the reconstruction against | `published_total` | 16,390,908, reproduced exactly |
+| How the year says which kind of day a trip was made on | `day_type_rule` | the household's interview date, shifted back one day |
+| Which column is the trip duration | `duration_minutes_column` | `duracion_min`, verified against the fifteen-minute walking split before it was trusted |
+
+Plus the mode map and the modes deliberately not measured, which between them
+must account for **every** label the file carries: one in neither stops the run.
+
+**Verify a column against something outside itself before trusting it.** That is
+the rule the whole project runs on and it earned its keep three times here. The
+2023 factor arrives as text with a comma decimal and a trailing space, so read the
+obvious way it sums to zero without complaining. 2019 stores clock times as
+fractions of a day, and a column search for a duration matches
+`p34_aplicacion_durante_viaje` because "durante" contains "dura" — it parses, it
+summarises, and every number from it is meaningless. And the delivered desire
+lines dated themselves 2023 in their own metadata while being a sample of the 2019
+survey.
+
+### How the year is checked against the years already measured
+
+`exposure.compare_years` runs at the end of the route and prints two tables: what
+each survey measures per mode, and what each sets aside. With one year they are a
+baseline; from the second onwards they are the check.
+
+**This is the check that catches a misread declaration**, because nothing inside
+a year can. Bogotá does not remake its travel between two surveys, so a mode share
+that moves fifteen points, a per-inhabitant trip rate that doubles, or a ranking of
+the thirty units that stops agreeing with the previous survey is a misread column
+long before it is a finding about the city. All three warn and none fails: a real
+change of that size is possible and the run cannot tell the two apart, so it
+refuses to let one pass unremarked instead of pretending to judge it.
+
+The 2023 baseline, typical weekday, inside the thirty units — this is what 2019
+will be read against:
+
+| Actor type | Trips/day | Share of the four | Per inhabitant |
+|---|---:|---:|---:|
+| `PEDESTRIAN` | 3,300,984 | 57.2 % | 0.420 |
+| `CAR` | 1,244,327 | 21.5 % | 0.158 |
+| `MOTORCYCLE` | 632,338 | 11.0 % | 0.080 |
+| `BICYCLE` | 597,033 | 10.3 % | 0.076 |
+
+And what it set aside, as a share of what it measured: **9.4 % impossible for
+their mode, 20.0 % intra-zonal, 18.4 % falling outside the thirty units.** A year
+departing sharply from those proportions is a year whose duration column, mode map
+or zoning is not doing what it was declared to do.
 
 ---
 

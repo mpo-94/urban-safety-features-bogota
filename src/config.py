@@ -1648,11 +1648,34 @@ class SurveyLineLayer:
     # it is a property of the layer rather than a setting of the module, because
     # a second layer would come with a date of its own. See D36.
     population_reference_year: int = LAST_YEAR
+    # The survey this layer actually came from, once that was established rather
+    # than guessed. It is deliberately not the same as `population_reference_year`
+    # above, and the difference is the point: that one is 2023 because the ArcGIS
+    # export in the metadata is dated 2023, and this one is 2019 because all 181
+    # records match an exact triple in the 2019 survey. The per-inhabitant column
+    # therefore divides 2019 trips by 2023 residents, and it is left that way on
+    # purpose — it is descriptive, it enters no model, and renaming it would break
+    # the traceability of figures already quoted. See D36 and D38. Carrying both
+    # here is what keeps that discrepancy visible instead of buried in prose.
+    established_year: int | None = None
     geometry: str = LINE_GEOMETRY
 
     @property
     def path(self) -> Path:
         return EXPOSURE_DIR / GEOMETRY_FOLDERS[self.geometry] / self.source_layer / self.source_file
+
+    @property
+    def figures_subdir(self) -> str:
+        """The folder this layer's figures go in, under the exposure figures root.
+
+        Named for what the layer is rather than for what it measures, because it
+        is no longer the study's exposure and the tree should not suggest it is.
+        It sorts after the year folders, which is where a superseded artefact
+        belongs, and when the survey it came from is implemented the whole folder
+        goes with it.
+        """
+        year = self.established_year if self.established_year is not None else "undated"
+        return f"delivered_{year}_{self.mode.lower()}"
 
     def column(self, suffix: str) -> str:
         """The name one measured quantity takes in the exported table.
@@ -1709,10 +1732,17 @@ BICYCLE_DESIRE_LINES = SurveyLineLayer(
     # ArcGIS rather than the survey behind it. Treated as a snapshot of unknown
     # date until my advisor says which survey it is. See D35.
     time_coverage=SNAPSHOT_COVERAGE,
-    # November 2023 is what that ArcGIS export is dated, and it is the closest
-    # thing to a date the layer has. It fixes the denominator of the
-    # per-inhabitant column and appears in that column's name. See D36.
+    # November 2023 is what that ArcGIS export is dated, and it was the closest
+    # thing to a date the layer had when this was written. It fixes the
+    # denominator of the per-inhabitant column and appears in that column's name.
+    # It is now known to be the wrong year and is kept anyway; see D36.
     population_reference_year=2023,
+    # And this is the right one, established after the fact: every one of the 181
+    # records matches an exact (zat_origen, zat_destino, f_exp) triple among the
+    # 7,863 bicycle trips of the 2019 survey, and the endpoints sit on the 2019
+    # zoning's centroids at a median 0.046 m against 2.148 m for the 2023 zoning.
+    # See D38.
+    established_year=2019,
 )
 
 # -- what the exposure table holds ------------------------------------------
@@ -1891,13 +1921,43 @@ EXPOSURE_MAX_OVER_COVERAGE = 1e-6
 # otherwise be a silent NaN in one unit rather than a message.
 EXPOSURE_MIN_LINE_LENGTH_M = 1e-9
 
-# -- the choropleth ---------------------------------------------------------
+# -- where the figures go ---------------------------------------------------
 EXPOSURE_FIGURES_SUBDIR = "exposure"
 
-# The desire-line maps take a prefix of their own rather than a suffix, so that a
-# directory listing puts the twelve choropleths together and the twelve line maps
-# together instead of interleaving them by mode.
+# The desire-line maps take a prefix of their own rather than a suffix, so a file
+# says which of the two kinds it is even after it has been copied out of the tree
+# below and into a LaTeX project, which is what `deliverables/plan.md` requires
+# of every figure.
 EXPOSURE_LINES_FIGURE_PREFIX = "desire_lines"
+
+# Four years, four modes, three day types and two kinds of figure come to 192
+# files, so they are filed rather than listed. Year, then mode, then kind:
+#
+#   figures/exposure/2023/bicycle/choropleth/exposure__2023_bicycle_weekday.pdf
+#   figures/exposure/2023/bicycle/desire_lines/desire_lines__2023_bicycle_weekday.pdf
+#
+# The year is the outer level because it is the unit of work and of provenance:
+# a session implements one survey and creates one folder without touching the
+# others. The mode is next because a choropleth and the desire lines behind it
+# explain each other and are read together. The kind is last, and every figure in
+# the tree sits under one of the two — the delivered layer included — so that
+# `**/choropleth/*.pdf` matches every choropleth of every year and nothing else.
+#
+# **The names in the tree are repeated in the file names on purpose.** A figure
+# is copied into the document's own folder before LaTeX can see it, so a file
+# called `bicycle_weekday.pdf` would arrive there with its year stripped off by
+# the move. Redundant in the tree, self-identifying out of it.
+#
+# The scale-bar variant stays a suffix and never a folder. It is the same figure
+# rendered twice, and making it a directory would mean adding or removing a scale
+# bar changes the path in the `.tex` instead of one word in the file name.
+EXPOSURE_CHOROPLETH_SUBDIR = "choropleth"
+EXPOSURE_LINES_SUBDIR = "desire_lines"
+
+
+def exposure_figure_dir(base: Path, year: int, mode: str, kind: str) -> Path:
+    """Where one survey's figures of one mode and kind are written."""
+    return base / str(year) / mode.lower() / kind
 
 # Sequential and single-hue, because the quantity has a floor at zero and no
 # meaningful midpoint: a diverging ramp would invent one. Deliberately neither
@@ -1945,6 +2005,13 @@ MAP_COLORBAR_LOCATION = "bottom"
 MAP_COLORBAR_SIZE = "3.5%"
 MAP_COLORBAR_PAD = 0.18
 
+# The tick labels of the colour bar are set on a diagonal. The bar is only as wide
+# as the city's footprint, which is narrow, and the values on it run to six
+# figures: written horizontally they overlap into a smear. Thinning the ticks
+# instead would leave a scale with too few numbers to place a colour on, and
+# shrinking the type would make them unreadable in print.
+MAP_COLORBAR_LABEL_ROTATION = 45
+
 # -- the desire-line map -----------------------------------------------------
 # The other half of every exposure figure: the choropleth says how much travel
 # each unit ends up with, and this says which lines put it there. Nothing else in
@@ -1972,12 +2039,30 @@ MAP_DESIRE_LINE_MAX_WIDTH = 1.6
 MAP_DESIRE_LINE_MIN_ALPHA = 0.05
 MAP_DESIRE_LINE_MAX_ALPHA = 0.55
 
-# The frame is the city, not the lines. Bogotá is 23 km across and the lines run
-# to Zipaquirá and Facatativá, 154 km apart, so a map framed on the lines would
-# put the study area in 15% of its width. The lines are drawn whole and simply
-# leave the frame, which says what a clipped line could not: that the travel
-# continues past the edge of the study.
+# The frame is the city, and the lines are clipped to it. Bogotá is 23 km across
+# and the lines run to Zipaquirá and Facatativá, 154 km apart, so a map framed on
+# the lines would put the study area in 15% of its width; and drawing them whole
+# inside a frame this size cuts them at its edge, which reads as a rendering fault
+# rather than as a statement. Clipping settles it the way the measurement already
+# did: the apportionment counts the fraction of a line inside a unit and ignores
+# the rest, so a figure drawing the rest showed what no number uses.
 MAP_DESIRE_FRAME_MARGIN = 0.02
+
+# How much of a mode's travel the drawn lines have to account for. The rest are
+# left out of the figure and stay in the data.
+#
+# The distribution is long-tailed: on a typical weekday about 30% of the lines
+# carry only 5% of the trips, and drawing them costs legibility for almost no
+# information. Ranked by trips and cut at 95% cumulative coverage, roughly 70% of
+# the lines are drawn.
+#
+# **It applies to the drawing and never to the measurement**, and that separation
+# is the whole point. Truncating the data instead would delete real exposure to
+# make a figure tidier, and the literal reading of a 95th-percentile rule — drop
+# the lines above it — would delete between a fifth and a third of every mode's
+# travel, taking the busiest corridors first. Those are the places with the most
+# exposure. See D38.
+MAP_DESIRE_LINE_TRIP_COVERAGE = 0.95
 
 # The colour bar of the choropleths is shared across the day types of one mode
 # and never across modes. Sharing it within a mode is what makes the three days
@@ -2156,6 +2241,26 @@ MODE_SPEED_CEILING_KMH: dict[str, float] = {
     MOTORCYCLE: 80.0,
     CAR: 80.0,
 }
+
+# -- one year against the years already measured -----------------------------
+# Every survey was run by a different administration and catalogues its data its
+# own way, so each year is read through its own declaration. That is a lot of
+# independent decisions per year — which column is the factor, what it expands
+# to, how the day type is stated, what the mode labels are — and any one of them
+# can be wrong in a way that still produces plausible-looking numbers.
+#
+# What catches that is not another check inside the year. It is the comparison
+# against the years already measured: Bogotá does not remake its travel between
+# two surveys, so a mode share that moves fifteen points, or a per-inhabitant
+# trip rate that doubles, or a ranking of the units that stops agreeing with the
+# previous survey, is a reading error long before it is a finding about the city.
+#
+# These are the thresholds at which the run says so. They are warnings and never
+# failures: a real change of that size is possible and the run cannot tell the
+# two apart. What it can do is refuse to let one pass unremarked.
+EXPOSURE_YEAR_MODE_SHARE_JUMP = 0.10  # share of the four modes, in points
+EXPOSURE_YEAR_TRIP_RATE_JUMP = 0.35  # trips per inhabitant, relative
+EXPOSURE_YEAR_RANK_AGREEMENT_FLOOR = 0.70  # Spearman of the units, mode by mode
 
 # How far the reconstructed total may sit from the survey's own published one
 # before the run stops. Tight, because this is a sum of the same column the
@@ -2584,7 +2689,18 @@ MAP_FIGURES_SUBDIR = "map"
 # projected on a wall and is almost all edges, and edges are what rasterising
 # ruins.
 MAP_FIGURE_FORMAT = "pdf"
-MAP_FIGURE_HEIGHT_IN = 5.0  # width follows from the footprint of the city
+# Width follows from the footprint of the city, which is much taller than it is
+# wide, so at 9 inches a map comes out about 13 by 23 cm.
+#
+# It was 5, which made a figure the size of a postcard. Because these are vector
+# figures the size is not about resolution — it is the ratio between the map and
+# the type, which is fixed in points: enlarging the figure shrinks the unit
+# numbers and the colour bar relative to the territory, and the bar gains room for
+# more ticks, from four to seven. The figures are read on screen while the study
+# is being built, and that is what this value is set for. A figure sized for a
+# page or a slide is a different setting and belongs to the deliverable that wants
+# it; see D38.
+MAP_FIGURE_HEIGHT_IN = 9.0
 
 # Two polygons are neighbours if their boundaries come within this distance, in
 # the metric CRS. Exact touching would be the right test on a topologically
@@ -2665,7 +2781,25 @@ MAP_NORTH_ARROW_SCALE = 0.22
 # of editing this line and running again.
 MAP_SCALEBAR_LOCATION = "lower right"
 MAP_SCALEBAR_LENGTH_FRACTION = 0.32
-MAP_SCALEBAR_SUFFIX = "__scalebar"
+# **The figure that carries a scale bar is the one with the plain name.** It used
+# to be the other way round, with the bar-less file unmarked and its twin
+# suffixed, from when both were emitted every run and the bar-less one was the
+# presentation copy. Now only one is emitted by default and the suffix would
+# distinguish it from nothing, so the standard figure takes the plain name and the
+# optional extra is the one that carries a mark.
+MAP_NO_SCALEBAR_SUFFIX = "__no_scalebar"
+
+# Whether the bar-less copy is written beside it. Off: a map for a slide is a
+# thing that will be wanted occasionally and produced by flipping this and
+# re-running, which takes seconds and leaves a file the next run reproduces.
+#
+# The alternative anyone reaches for is opening the PDF and deleting the scale
+# bar by hand. It does not work well — the figure is vector, so the bar is an
+# object to hunt down in Illustrator rather than a layer to hide — and, more to
+# the point, the edit is gone the next time the route runs. Every other generated
+# artefact in this pipeline is reproducible from a run, and a figure that has been
+# retouched is not.
+MAP_EMIT_NO_SCALEBAR_VARIANT = False
 
 # -- predictor histograms ---------------------------------------------------
 # With thirty observations the choice of bins decides a good deal of what the
