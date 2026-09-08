@@ -2885,7 +2885,9 @@ SURVEY_2015 = MobilitySurvey(
         "EODH 2015, Tomo IV: 17,251,733 trips on a working day (Tabla 59) and 15,730,551 on a "
         "Saturday (sum of the twelve modes of Tabla 119, chapter 4 \"Indicadores día sábado\"); "
         "the published matrices matriz_habil and matriz_nohabil are reproduced to the last "
-        "decimal once the codes naming no place are set aside"
+        "decimal under their own exclusion rule, which is the records with no zone and the "
+        "sentinel 0 — they keep zone 1000 as a pseudo-zone and this study cannot, so the two "
+        "readings agree on the file and diverge there on purpose"
     ),
 )
 

@@ -128,6 +128,23 @@ now taken, and D38 carries the reasoning:
   aggregates codes 22 and 23; in 2023 `AUTO` covers `Vehículo privado como
   conductor` and `como pasajero`, plus `Auto compartido` and `Auto alquilado`.
   *Unchanged: they stay together.*
+- **The three years do not put the same floor under a walking trip, and 2019 is
+  the odd one.** 2023 reports nothing shorter than three minutes and 2015 nothing
+  real below it either — 0.22 % of its weekday walking sits under three minutes and
+  it is the same 0.22 % that reports a duration of exactly zero, so its floor is
+  three minutes too, which is what Tomo IV says it inherited from 2011. **2019 has
+  no floor at all**: 1.46 % of its weekday walking, **101,168 trips a day**, lasts
+  under three minutes, against 0.03 % of zero-length records.
+
+  So 2019's pedestrian total carries about a point and a half of walking the other
+  two years never collected. It is small enough not to change anything measured
+  here — it is a twentieth of the gap the pedestrian Spearman is about — and it is
+  written down because it is a difference between the instruments and not between
+  the years, and because it points the same way as the 2015→2019 pedestrian rise:
+  part of that rise is 2019 counting trips 2015 did not. Not correctable without
+  imposing a floor on 2019 that its own publication does not use, which would
+  make the study's walking disagree with the survey's.
+
 - **2015 cannot put the bicitaxi anywhere, and that is a limitation rather than
   a decision.** Its predominant-mode vocabulary folds the bicitaxi into `ILEGAL`
   together with the mototaxi, the informal car, the collective taxi and the
@@ -382,15 +399,24 @@ reading the trip file reproduces them **to the last decimal on both kinds of day
 703,911.6228 on the weekday, and all five modes of the Saturday, every one of them
 exact.
 
-**That check is also what found the zone sentinels**, which is why a matrix is
-worth more than a city total. Before they were set aside the two readings differed
+**That check is also what found the first zone sentinel**, which is why a matrix
+is worth more than a city total. Before it was set aside the two readings differed
 by 1,665.4631 trips on the weekday, and **every disagreeing pair had a `0` at one
 end**: 16 records, all of them in Soacha, which is this delivery's way of writing
-a zone nobody resolved. The consultant had dropped them and said so nowhere. The
-second sentinel is `1000` — 2,229 records and 279,009 trips a day — and it is not a
-defect: it is the survey's code for a place outside the eighteen municipalities,
-carrying municipality 19 *"Otro"* and coordinates 0,0, and no zoning could hold a
-polygon for it.
+a zone nobody resolved. The consultant had dropped them and said so nowhere.
+
+**The second sentinel is `1000`, and the matrices keep it where this study cannot.**
+It is not a defect: it is the survey's code for a place outside the eighteen
+municipalities, carrying municipality 19 *"Otro"* and coordinates 0,0, on 2,229
+records and 279,009 trips a day. The consultant left it in their matrices as a
+pseudo-zone, which is reasonable for a table of flows between codes and impossible
+for a study that has to put a trip on a map: no zoning holds a polygon for it. So
+the agreement above is under the matrices' own exclusion rule — no zone, and the
+sentinel `0` — and the two readings then diverge by exactly zone 1000, on purpose:
+59,115 trips a day on the weekday and 89,642 on the Saturday, in the four measured
+modes. **That divergence is the reason to state the rule rather than say "once the
+codes naming no place are set aside"**, which would claim agreement on the one
+record the two readings decide differently.
 
 **The duration is derived from two `HH:MM:SS` columns and it is exact.**
 `HORA_INICIO` and `HORA_FIN`, the questionnaire's *"hora militar"*, with 503

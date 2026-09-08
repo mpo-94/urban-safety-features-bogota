@@ -1343,11 +1343,22 @@ reproduces them **to the last decimal on both kinds of day**:
 | `matriz_medio_habil`, bicycle | 846,727.0479 | 846,727.0479 |
 | `matriz_medio_habil`, private car | 1,829,032.5781 | 1,829,032.5781 |
 
-**That check is also what found the zone sentinels.** Before they were set aside
+**That check is also what found the first zone sentinel.** Before it was set aside
 the two readings differed by 1,665.4631 trips on the weekday, and **every
 disagreeing pair had a `0` at one end** — 16 records, all in Soacha. The consultant
 had dropped them and documented it nowhere. It is a better check than a city total
 for exactly that reason: a total can close while individual pairs are wrong.
+
+**The agreement is under the matrices' own exclusion rule, and the second sentinel
+is where the two readings part company on purpose.** `1000` is not a defect but a
+code for a place outside the eighteen municipalities surveyed, and the consultant
+kept it in their matrices as a pseudo-zone — reasonable for a table of flows
+between codes, impossible for a study that has to put a trip on a map. So the
+figures above exclude the records with no zone and the sentinel `0`, as the
+matrices do, and the pipeline additionally sets aside zone 1000: **59,115 trips a
+day on the weekday and 89,642 on the Saturday**, in the four measured modes. Saying
+the matrices are reproduced "once the codes naming no place are set aside" would
+have claimed agreement on the one record the two readings decide differently.
 
 **The derived duration is verified twice and neither check needs rounding.**
 `HORA_INICIO` and `HORA_FIN` are `HH:MM:SS` text with 503 records crossing
@@ -1441,6 +1452,18 @@ figures below are the two days added, because that is what the file holds:
 | `CAR` | 6 `AUTO` | 4,495,181 | 4,415,221 |
 | `BICYCLE` | 10 `BICICLETA, BICICLETA CON MOTOR` | 1,569,731 | 1,551,243 |
 | `MOTORCYCLE` | 7 `MOTO` | 1,537,075 | 1,475,206 |
+
+**The walking floor is not the same in the three years, and it is 2019 that
+differs.** 2023 reports no walk shorter than three minutes; 2015 reports none
+either, once its zero-length records are separated out — 0.22 % of its weekday
+walking is under three minutes and the same 0.22 % reports exactly zero, so the
+floor is three minutes, the one Tomo IV says it took from 2011. **2019 has no
+floor**: 1.46 % of its weekday walking, 101,168 trips a day, lasts under three
+minutes. That is about a point and a half of 2019's pedestrian total that the other
+two years never collected, and part of the 2015→2019 pedestrian rise is it. It is
+not corrected, because imposing a floor on 2019 that its own publication does not
+use would make this study's walking disagree with the survey's — but every
+pedestrian comparison across those two years carries this sentence.
 
 **2015 cannot put the bicitaxi anywhere, and that is a limitation and not a
 decision.** Its `ILEGAL` code folds the bicitaxi in with the mototaxi, the informal
@@ -1807,12 +1830,19 @@ journeys should look like. That it holds on a third survey, read through a third
 set of column names and a duration derived a third way, is the strongest evidence
 available that the plausibility test measures what it was built to measure.
 
-**2015's pedestrian kilometres are the highest of the three at 22,885**, and that
-follows from the same thing that makes its impossible share the lowest: it drops
-far fewer long walking lines, because it has far fewer of them to drop. The
-distances themselves are shorter, not longer — at the ninetieth percentile the two
-zones of one of its walking records are 1.45 km apart against 7.07 km in 2019 —
-so more short lines survive rather than a few long ones.
+**2015's pedestrian kilometres are the highest of the three at 22,885, and the
+reason is the filter and not the walking.** It is not that 2015 builds more lines:
+it builds 8,836 pedestrian lines on a typical weekday against 2019's 8,952 and
+2023's 5,914. It is that far fewer of them are removed — 3.3 % of its walking
+against 19.7 % and 14.6 % — and what the test removes is the long tail. So 2015
+keeps long-ish walking lines the other two years discard, and its kilometres inside
+the units come to 2.72 per line reaching a unit against 1.64 in both other years.
+
+The two statements about distance are not in tension and it is worth being explicit,
+because they look it. *Before* the filter 2015's walking pairs are much closer
+together — 1.45 km at the ninetieth percentile against 7.07 km in 2019 — which is
+why so few of them fail. *After* it, 2019 has had its tail cut off and 2015 has not,
+because 2015 barely had one. Fewer removals, not longer walks.
 
 ### The checks
 
