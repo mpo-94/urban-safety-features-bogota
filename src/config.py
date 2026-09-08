@@ -1894,6 +1894,11 @@ EXPOSURE_MIN_LINE_LENGTH_M = 1e-9
 # -- the choropleth ---------------------------------------------------------
 EXPOSURE_FIGURES_SUBDIR = "exposure"
 
+# The desire-line maps take a prefix of their own rather than a suffix, so that a
+# directory listing puts the twelve choropleths together and the twelve line maps
+# together instead of interleaving them by mode.
+EXPOSURE_LINES_FIGURE_PREFIX = "desire_lines"
+
 # Sequential and single-hue, because the quantity has a floor at zero and no
 # meaningful midpoint: a diverging ramp would invent one. Deliberately neither
 # the viridis of the casualty heatmaps nor the Blues of the master table, so the
@@ -1940,6 +1945,47 @@ MAP_COLORBAR_LOCATION = "bottom"
 MAP_COLORBAR_SIZE = "3.5%"
 MAP_COLORBAR_PAD = 0.18
 
+# -- the desire-line map -----------------------------------------------------
+# The other half of every exposure figure: the choropleth says how much travel
+# each unit ends up with, and this says which lines put it there. Nothing else in
+# the pipeline draws its own input, and this one earns it — the lines are built
+# here rather than delivered, so a reader has no other way to see what was built.
+#
+# The units are drawn as an outline with no fill and, unlike every other map in
+# the pipeline, **without their numbers**. A number inside a unit is unreadable
+# under a few thousand crossing lines, and a label nobody can read is worse than
+# no label: it says the figure was not looked at.
+MAP_DESIRE_LINE_COLOR = "#1f6f8b"
+MAP_DESIRE_UNIT_FACE_COLOR = "#f4f4f2"
+
+# Width and opacity both grow with the trips a line carries, and both grow as the
+# square root of them. The reason is the spread: on a typical weekday the median
+# pedestrian line carries 233 trips and the heaviest 7,474, a range of 32 to 1.
+# Drawn linearly the heaviest line would be thirty times the median and would
+# cover the city, and the median would be a hairline; drawn uniformly the map
+# would show which pairs were surveyed rather than where the travel is, and the
+# heaviest tenth of the lines carries between a third and a half of all the trips.
+# A square root is the usual compromise for encoding a magnitude as a width, and
+# it keeps both ends of the range on the page.
+MAP_DESIRE_LINE_MIN_WIDTH = 0.08
+MAP_DESIRE_LINE_MAX_WIDTH = 1.6
+MAP_DESIRE_LINE_MIN_ALPHA = 0.05
+MAP_DESIRE_LINE_MAX_ALPHA = 0.55
+
+# The frame is the city, not the lines. Bogotá is 23 km across and the lines run
+# to Zipaquirá and Facatativá, 154 km apart, so a map framed on the lines would
+# put the study area in 15% of its width. The lines are drawn whole and simply
+# leave the frame, which says what a clipped line could not: that the travel
+# continues past the edge of the study.
+MAP_DESIRE_FRAME_MARGIN = 0.02
+
+# The colour bar of the choropleths is shared across the day types of one mode
+# and never across modes. Sharing it within a mode is what makes the three days
+# comparable at a glance, which is the whole point of having the day as a
+# dimension; sharing it across modes would put bicycle and motorcycle at a fifth
+# of a ramp scaled by walking, and neither map would have a readable pattern.
+MAP_CHOROPLETH_SHARE_SCALE_ACROSS_DAY_TYPES = True
+
 
 # ---------------------------------------------------------------------------
 # Mobility surveys
@@ -1966,6 +2012,16 @@ WEEKDAY_TYPE = "WEEKDAY"
 SATURDAY_TYPE = "SATURDAY"
 SUNDAY_TYPE = "SUNDAY"
 DAY_TYPES: tuple[str, ...] = (WEEKDAY_TYPE, SATURDAY_TYPE, SUNDAY_TYPE)
+
+# What each is called in a figure that goes into the thesis. "Día típico" and not
+# "día hábil": the survey's own vocabulary is the working-day mobility of a
+# representative day, and a holiday that falls on a Tuesday is in this category
+# too.
+DAY_TYPE_LABELS_ES: dict[str, str] = {
+    WEEKDAY_TYPE: "día típico",
+    SATURDAY_TYPE: "sábado",
+    SUNDAY_TYPE: "domingo",
+}
 
 # Monday is 0 in the weekday numbering every date library uses, so these are the
 # two that are not a working day. Declared rather than written as literals at the
@@ -2052,6 +2108,62 @@ class DayTypeFromHouseholdDate:
     day_first: bool = True
 
 
+# What a year's expansion factor expands one surveyed trip to. This is the field
+# that must never be inherited from another year, and it is declared rather than
+# derived because getting it wrong is invisible: every figure stays plausible and
+# every one of them is out by the ratio between the two readings.
+#
+# AVERAGE_DAY means the factors represent the whole population once over all the
+# reference days the survey covers together, so summing within one kind of day
+# gives that kind of day's share of an average day and the share of the universe
+# its households cover is what turns it into the trips of one such day. That is
+# 2023, and it was established from the file: the household factors sum to
+# 3,623,413 against the 3,667,331 households the technical sheet declares, over
+# all seven reference days.
+#
+# DAY_OF_TYPE means the factors already expand to one day of the kind the record
+# belongs to, so no rescaling happens and the universe share of every day type is
+# one. No year is declared this way yet; the constant exists so that the year
+# which is finds a place to say so instead of being forced through 2023's answer.
+WEIGHT_EXPANDS_TO_AVERAGE_DAY = "average day of the collection period"
+WEIGHT_EXPANDS_TO_DAY_OF_TYPE = "one day of the record's own day type"
+WEIGHT_EXPANSIONS: tuple[str, ...] = (
+    WEIGHT_EXPANDS_TO_AVERAGE_DAY,
+    WEIGHT_EXPANDS_TO_DAY_OF_TYPE,
+)
+
+# -- records the geometry contradicts ---------------------------------------
+# The fastest each mode is allowed to have travelled, straight line, before the
+# record is treated as impossible rather than merely surprising. They are
+# deliberately generous: 6 km/h is a brisk walk sustained for the whole trip and
+# 80 km/h is well above what Bogotá's traffic allows, so a record that fails is
+# not unusual, it is wrong.
+#
+# The test is against the **shortest distance between the two zone polygons**,
+# which is the best case the traveller could possibly have had — not between the
+# centroids. A record that fails could not have been made however the trip ran
+# inside its zones.
+#
+# It exists because a fifth of the 2023 pedestrian trips fail it. The extreme is
+# 82.3 km in 15 minutes, and it is not a centroid artefact: those two zones are
+# 61.8 km apart at their nearest points and do not touch. Something in the record
+# is wrong — the mode, the zones, or both — and the file does not say which. What
+# is certain is that the desire line drawn from it is a line nobody travelled,
+# and that line spreads pedestrian exposure across units the walker never entered.
+MODE_SPEED_CEILING_KMH: dict[str, float] = {
+    PEDESTRIAN: 6.0,
+    BICYCLE: 25.0,
+    MOTORCYCLE: 80.0,
+    CAR: 80.0,
+}
+
+# How far the reconstructed total may sit from the survey's own published one
+# before the run stops. Tight, because this is a sum of the same column the
+# publication summed: anything beyond rounding means the file was read
+# differently from the way it was published.
+SURVEY_CONTROL_TOTAL_RTOL = 1e-6
+
+
 @dataclass(frozen=True)
 class MobilitySurvey:
     """One year of the household mobility survey, as exposure is built from it.
@@ -2071,6 +2183,14 @@ class MobilitySurvey:
     origin_zone_column: str
     destination_zone_column: str
     mode_column: str
+    # How long the trip took, in minutes. It is what makes an origin-destination
+    # pair checkable: without it there is no way to say a pair is too far apart
+    # for the mode, and the run says so rather than passing a check it could not
+    # make. Declared per year because not every survey reports it, and the one
+    # that does had to be verified against something else before it was trusted —
+    # 2023's agrees with its own fifteen-minute walking split, 3 to 14 minutes on
+    # one side and 15 to 439 on the other.
+    duration_minutes_column: str | None
     # Every value of the mode column that becomes one of the study's four actor
     # types. Two source labels may map to the same type: 2023 splits walking at
     # fifteen minutes and both halves are walking.
@@ -2085,6 +2205,18 @@ class MobilitySurvey:
     modes_not_measured: tuple[str, ...]
     day_type_rule: DayTypeFromHouseholdDate
     measures: str  # one line: what the variable is, for the log and the dictionary
+    # What one unit of `weight_column` expands a surveyed trip to. Declared per
+    # year and never inherited: two of the four surveys have not had this
+    # established yet, and a year read under the wrong one produces figures that
+    # are all plausible and all wrong by the same factor.
+    weight_expands_to: str = WEIGHT_EXPANDS_TO_AVERAGE_DAY
+    # The survey's own published total for `weight_column`, and where it was read
+    # from. The run reconstructs it and stops if the two disagree, which is what
+    # turns "we think this column is the expansion factor" into a fact. None means
+    # no control total has been found for the year, and the run says so rather
+    # than passing a check it did not make.
+    published_total: float | None = None
+    published_total_source: str = ""
 
     @property
     def modes_declared(self) -> tuple[str, ...]:
@@ -2119,6 +2251,7 @@ SURVEY_2023 = MobilitySurvey(
     origin_zone_column="zat_ori",
     destination_zone_column="zat_des",
     mode_column="modo_principal_agrupado",
+    duration_minutes_column="duracion_min",
     mode_map={
         # 2023 is the only year that splits walking, and both halves are walking.
         # Excluding the short ones would leave 4.04 M trips a day against 2019's
@@ -2154,6 +2287,15 @@ SURVEY_2023 = MobilitySurvey(
     ),
     measures="trips per day apportioned to the unit by the share of the desire line's length "
              "inside it, with the intra-zonal trips apportioned by area share",
+    # Established from the file rather than assumed: the household factors sum to
+    # 3,623,413 against the 3,667,331 households the technical sheet declares, over
+    # all seven reference days together. So one factor is a trip on an average day
+    # of the collection period, and a day type's own figure needs the rescaling.
+    weight_expands_to=WEIGHT_EXPANDS_TO_AVERAGE_DAY,
+    # The sum of fexp_vj over the whole trip module. It excludes the 284 records
+    # that carry no factor, which is why those are dropped rather than imputed.
+    published_total=16_390_908.0,
+    published_total_source="EODH 2023, sum of fexp_vj over d. Modulo viajes.csv",
 )
 
 # Every survey the pipeline measures. A year is added here and nowhere else.

@@ -258,7 +258,7 @@ of 2019's bicycle travel.
 
 What it is instead is an unexplained sample that does not preserve the ranking:
 against the 2023 survey's own bicycle exposure it correlates at **Spearman
-0.377** over the thirty units. That is a stronger reason to replace it than the
+0.362** over the thirty units. That is a stronger reason to replace it than the
 one this section feared. D35 and D38 carry it.
 
 The note about validation was right: the construction reproduces the survey's own
@@ -320,6 +320,43 @@ because they are the reason this pass exists.
   fragments of a few square metres. With one, 907 zones are inside the study area
   and only 11 are genuinely divided. D38 has the threshold and why it sits where
   it does.
+
+---
+
+## 6b. What every remaining year has to establish for itself
+
+Three things came out of building 2023 that are **not** properties of 2023. Each
+is a field of the declaration, each must be answered from that year's own files,
+and inheriting 2023's answer would produce figures that all look right.
+
+**What the expansion factor expands to.** 2023's represents the universe once over
+all seven reference days together, so a day type's own figure needs rescaling by
+the share of the universe its households cover. A survey whose factor already
+expands to one day of the record's own kind declares that instead and skips the
+rescaling. This is `weight_expands_to`, and 2015 is the year it will bite: it has
+**four candidate weight columns and none of them identified**.
+
+**A published total to check the reconstruction against.** `published_total` is
+what turns a belief about which column is the factor into a demonstration. 2023
+reproduces 16,390,908 exactly. A year with none declared runs, and says on every
+execution that its reconstruction was checked against nothing.
+
+**Which day the reported trips belong to.** 2023 asks about the day *before* the
+interview, so the interview dates are shifted back one day before the day type is
+read off them. Taking the interview date instead would have filed every Saturday
+trip under a Sunday. Each year states this in its own technical documentation and
+each says it differently; the rule is a declared object dispatched through a
+registry in `src/surveys.py`.
+
+And one check every year inherits and every year should be expected to fail
+somewhere: **records whose two zones are further apart than the mode could have
+covered in the reported duration.** In 2023 that is 5,344 records and 960,910
+trips a day, **14.6 % of the walking** — found by drawing the desire lines and
+noticing that pedestrian lines crossed the whole city. It needs a duration column,
+declared as `duration_minutes_column`; a year that reports none cannot be checked
+and the run says so rather than implying the year is clean. Verify the duration
+against something else before trusting it: 2023's agrees with its own
+fifteen-minute walking split, which is what made it usable as evidence.
 
 ---
 

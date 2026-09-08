@@ -208,7 +208,7 @@ def run_exposure(log: RunLog) -> None:
 
     table, apportionments = exposure.build_from_surveys(units, log)
     paths = exposure.export_from_surveys(table, log)
-    exposure.render_survey_figures(table, units, log)
+    exposure.render_survey_figures(table, units, apportionments, log)
 
     delivered, allocations, lines_by_layer = exposure.build(units, log)
     paths.update(exposure.export(delivered, log))

@@ -2658,7 +2658,7 @@ layer's 160 distinct pairs rank from 1st to 792nd among 2019's 5,045 inter-zonal
 bicycle pairs, only 61 are in the top 160, and the pairs ranked 3rd, 6th, 9th and
 10th are missing. No threshold reproduces the set. What it is instead is an
 unexplained sample that does not preserve the ranking: against the 2023 survey's
-own bicycle exposure it correlates at **Spearman 0.377** over the thirty units.
+own bicycle exposure it correlates at **Spearman 0.362** over the thirty units.
 The one thing the selection certainly did was drop every intra-zonal pair, which
 is unavoidable — a trip that starts and ends in one zone has no line — and which
 is 9.3% of 2019's bicycle travel.
@@ -2999,7 +2999,7 @@ that begins and ends in one zone has no line to draw.
 
 **So it is an unexplained 9.6% sample, and it does not preserve the ranking.**
 Against the 2023 survey's own bicycle exposure the delivered layer's variable
-correlates at **Spearman 0.377** over the thirty units. Kennedy is the most
+correlates at **Spearman 0.362** over the thirty units. Kennedy is the most
 cycled unit the survey knows and the delivered layer ranks it sixteenth; the
 layer's own top unit, Edén, is sixth in the survey. Two variables that order the
 same thirty places that differently are not two measurements of one quantity, and
@@ -3065,7 +3065,7 @@ the units covering that zone in proportion to area.** It has no desire line: one
 centroid, no length, nothing to apportion along.
 
 The alternative was to drop them, and the cost of dropping them is not a small
-loss of precision. They are **1,841,452 trips a day, 18.1%** of what the 2023
+loss of precision. They are **1,841,452 trips a day, 20.0%** of what the 2023
 survey measures in the four modes, and they are concentrated in exactly the mode
 the study cares most about: 39% of the walking under fifteen minutes and 22% of
 the walking over it, against 2.2% of motorcycle travel. Dropping them would
@@ -3078,6 +3078,74 @@ methodological one: a zero-length line cannot be apportioned along its length.
 The two endpoint allocations exported beside the variable use the same area rule,
 so that "a zone is in a unit" means one thing in the module and the alternatives
 differ from the variable only in which geometry they use.
+
+### The records the geometry contradicts, found by looking at the map
+
+**Decision — a record whose two zones are further apart than its mode could have
+covered in the duration it reports is dropped, and the run says how many and
+which mode they came from.**
+
+It was found by drawing the desire lines and looking at them. The pedestrian map
+was a tangle of lines crossing the whole city, for a mode whose trip-weighted
+median line is 1.3 km. Chasing it: the extreme record is **82.3 km in 15
+minutes**, and it is not an artefact of taking centroids for large peripheral
+zones — those two polygons are 61.8 km apart at their nearest points and do not
+touch.
+
+The duration is the trustworthy half of the record, and it was checked before it
+was used: 2023's `duracion_min` runs 3 to 14 minutes on the under-fifteen walking
+category and 15 to 439 on the over-fifteen one, so it agrees with a column derived
+independently of it. What is wrong is the pair of zones, or the mode, and the file
+does not say which. What is certain either way is that the line drawn from such a
+record is a line nobody travelled, and that it spreads pedestrian exposure across
+units the walker never entered.
+
+**The test is the most forgiving one available.** It compares the *shortest
+distance between the two zone polygons* — the best case the traveller could
+possibly have had, not the centroid distance the line will actually use — against
+a generous ceiling speed times the record's own duration. The ceilings are 6 km/h
+on foot, 25 by bicycle and 80 for the two motor modes, all well above what the
+city allows sustained over a whole trip. A record that fails could not have been
+made however the trip ran inside its own zones.
+
+What it removes from 2023:
+
+| Actor type | Records | Trips per day | Share of the mode |
+|---|---:|---:|---:|
+| `PEDESTRIAN` | | 889,649 | 14.6 % |
+| `BICYCLE` | | 53,600 | 4.8 % |
+| `MOTORCYCLE` | | 7,404 | 0.7 % |
+| `CAR` | | 10,257 | 0.5 % |
+| **All four** | **5,344** | **960,910** | |
+
+**It is almost entirely a pedestrian problem**, which is the worst place for it:
+a seventh of the walking, in the mode the study is most concerned with, was being
+spread along corridors nobody walked. The three motorised modes lose under one per
+cent between them, which is itself evidence the test is not catching ordinary
+variation — a threshold that removed a similar slice of every mode would be a
+threshold set too tight.
+
+**The ranking of the units does not move.** Bicycle on a typical weekday runs
+Kennedy, Patio Bonito, Bosa at the top and Usme-Entrenubes, San Cristóbal, Lucero
+at the bottom before and after. What changes is the pedestrian line kilometres
+inside the units, from 28,184 to 8,025, because the removed lines were long by
+construction. The map is the clearest evidence: the pedestrian figure goes from
+lines crossing the city to short local structure, which is what walking looks
+like.
+
+**What is given up, and it is real.** If the error was in the mode rather than in
+the zones — a bus journey recorded as walking — then a genuine trip has been
+removed rather than reclassified, and the survey's own published total for
+walking is no longer reproduced by the study's pedestrian figure. That is why the
+removal is a named cause in the balance and not a filter applied before counting:
+`960,910.3 impossible for their mode` sits in the accounting beside the 284
+records with no expansion factor, and the file's total still closes.
+
+**Declared per year, like everything else.** The ceilings are one table in the
+configuration and the duration column is a field of the survey. A year that
+reports no duration cannot be checked, and the run says so on every execution
+rather than passing a check it did not make — that year is not known to be free
+of these records, it is unexamined.
 
 ### How a zone reaches a unit, in the detail that turned out to matter
 
@@ -3171,6 +3239,63 @@ signal — while still splitting the sample three ways and leaving the Saturday 
 Sunday rows resting on 2,990 and 2,211 households instead of 22,755. The run says
 so on every execution, because a column that looks like a rate will be used as one.
 
+### The figures: two per combination, and the map shows a day
+
+Every combination of year, actor type and day type gets two figures — a
+choropleth of how much travel the unit ends up with, and the desire lines that
+put it there. Twelve of each for 2023, twenty-four files with the scale-bar
+variants, and the same for every year added.
+
+**The choropleth shows `TRIPS_PER_DAY_OF_TYPE` and not the variable.** This is
+the decision inside the figures that matters. A map titled "viajes por día" has
+to carry the trips of a day, and the variable counts a day type's share of an
+average day: on the Saturday map that is six times too small, for no reason
+except that a seventh of the households were surveyed about a Saturday. Drawing
+the variable would have made two of every three maps say something false in their
+title.
+
+The cost is visible and it is the right cost to pay. Rescaled, the Sunday map is
+the most intense of the three in all four modes — Bogotá does not cycle more on
+Sunday than on Tuesday, and the figure says so plainly instead of hiding it in a
+column nobody plots. The Sunday map is a diagnostic, the weekday map is the
+result, and both are labelled.
+
+**The colour ramp is shared across the day types of one mode and never across
+modes.** Sharing it within a mode is what makes the three days comparable at a
+glance, which is the whole point of the day being a dimension; without it all
+three fill their own ramp and look equally intense however different their levels
+are. The cost is small — in the worst case, bicycle on a typical weekday, the map
+uses 53% of its ramp — while sharing across modes would draw bicycle and
+motorcycle at a fifth of a ramp scaled by walking and leave neither pattern
+readable.
+
+**The desire-line map exists because this pipeline draws its own input.** No other
+figure in the study does: a predictor is measured on a layer somebody else built,
+and a reader can go and look at that layer. The lines here exist only because this
+code made them, so without a figure of them there is no way to see what was made.
+Three things about it differ from every other map in the pipeline, each for a
+reason:
+
+- **The units carry no numbers.** A label under three thousand crossing lines is
+  unreadable, and an unreadable label is worse than none — it says the figure was
+  never looked at.
+- **The frame is the city and not the lines.** They run to Zipaquirá and
+  Facatativá, 154 km apart against Bogotá's 23, so a map framed on them would put
+  the study area in 15% of its width. They are drawn whole and simply leave the
+  frame, which says what a clipped line could not: the travel continues past the
+  edge of the study.
+- **Width and opacity grow as the square root of the trips a line carries.** The
+  spread forces it: on a typical weekday the median pedestrian line carries 233
+  trips and the heaviest 7,474. Drawn uniformly the map would show which pairs
+  were surveyed rather than where the travel is, and the heaviest tenth of the
+  lines carries between a third and a half of all the trips. The heaviest are
+  drawn last so a corridor is not buried under the light lines that follow it.
+
+Only the inter-zonal trips have a line. The intra-zonal ones are on the
+choropleth and cannot be here, which is the same fact that made them need a rule
+of their own, and the caption says so rather than leaving the two figures
+silently disagreeing.
+
 ### The denominator gets its year back
 
 **Decision — the exposure table carries `POPULATION`, per unit and per year, and
@@ -3203,6 +3328,28 @@ checked: 556,997.5804 trips per week and 113,269.3056 per day in the layer,
 inside them, Spearman 0.813, 0.798 and 0.781 against the three alternatives, Torca
 still an observed zero.
 
+### Each year says for itself what its factor expands to
+
+**Decision — `weight_expands_to` and `published_total` are declared per year and
+never inherited.** 2023's factor expands one surveyed trip to an average day of
+the collection period, which is why the day types need rescaling. A year whose
+factor already expands to one day of the record's own kind declares that instead,
+its universe shares come out as one, and no rescaling happens.
+
+This is the field that must not be guessed, because guessing it is invisible:
+every figure stays plausible and every one of them is out by the ratio between
+the two readings. The point is sharper for the years still to come. 2015 has
+**four candidate columns** and none of them is identified yet; 2011 and 2019 have
+one each but neither has been checked. Inheriting 2023's answer would give all
+three a number that looks right.
+
+`published_total` is what turns the belief into a demonstration: the run
+reconstructs the survey's own published total from the column it declared and
+stops if the two disagree. For 2023 it reproduces 16,390,908 exactly. A year with
+no published total found yet declares none, and the run says on every execution
+that the reconstruction was checked against nothing — which is the state a
+missing check should be in, rather than silently passing.
+
 ### One reader, four declarations
 
 The machinery is written once. Adding 2019, 2015 or 2011 is one `MobilitySurvey`
@@ -3224,8 +3371,9 @@ The 2023 run reads 100,174 trip records and accounts for every one of them.
 
 | | Trips per day |
 |---|---:|
-| The four measured modes | 10,182,150.8 |
+| The four measured modes | 9,221,240.5 |
 | Modes deliberately outside the study | 6,208,757.0 |
+| Impossible for the mode that reported them | 960,910.3 |
 | Records with no origin or destination zone | 0.0 |
 | **Total in the file** | **16,390,907.8** |
 
@@ -3242,22 +3390,27 @@ opposite directions. Over the twelve combinations of 2023 the largest gap betwee
 what was apportioned to the units plus what fell outside and what the file holds
 is **0.000000 trips**.
 
-**1,860,306 trips a day fall outside the thirty units**, 18.3% of the four modes.
+**1,697,260 trips a day fall outside the thirty units**, 18.4% of the four modes.
 That is the twenty neighbouring municipalities the survey also covers plus the
 three rural units the study does not have, and it is measured rather than absorbed.
 
 ### What it produced
 
-24,354 desire lines built between zone centroids, 179,075 km in all with a median
-of 4.84 km, from 29,782 inter-zonal groupings; 1,197 intra-zonal groupings spread
+21,467 desire lines built between zone centroids, 145,460 km in all with a median
+of 4.26 km, from 26,316 inter-zonal groupings; 1,197 intra-zonal groupings spread
 by area. Apportioned to the units on a typical weekday:
 
-| Actor type | Trips per average day inside the units | Of which intra-zonal |
-|---|---:|---:|
-| `PEDESTRIAN` | 3,894,943 | 1,055,074 |
-| `CAR` | 1,251,736 | 31,036 |
-| `MOTORCYCLE` | 637,266 | 8,048 |
-| `BICYCLE` | 635,804 | 29,180 |
+| Actor type | Trips per average day inside the units | Of which intra-zonal | Desire line km inside |
+|---|---:|---:|---:|
+| `PEDESTRIAN` | 3,300,984 | 1,055,074 | 8,025 |
+| `CAR` | 1,244,327 | 31,036 | 39,028 |
+| `MOTORCYCLE` | 632,338 | 8,048 | 27,510 |
+| `BICYCLE` | 597,033 | 29,180 | 12,434 |
+
+The pedestrian kilometres are now the smallest of the four despite the mode being
+by far the largest in trips, which is what a mode of short local journeys should
+look like and what the figure showed it was not before the impossible records
+came out.
 
 The bicycle ranking is Kennedy, Patio Bonito, Bosa at the top and Usme-Entrenubes,
 San Cristóbal, Lucero at the bottom, which is the south-western flat against the
@@ -3268,10 +3421,13 @@ worrying about if it had been absent.
 **The lines are straight, and that limitation carries over from D35 unchanged.**
 The kilometres inside a unit are a share of a chord nobody rode. The two endpoint
 allocations are measured beside the variable on every run for exactly that reason,
-and on the 2023 weekday they order the units similarly to the variable for
-pedestrians (0.980 and 0.977) and much less similarly for motorcycles (0.774 and
-0.784) — the rules are different variables, not two scales of one, which is why
-the choice had to be made on an argument rather than on agreement.
+and on the 2023 weekday they order the units almost identically to the variable
+for pedestrians (0.995 and 0.993) and much less so for motorcycles (0.786 and
+0.794) — the rules are different variables, not two scales of one, which is why
+the choice had to be made on an argument rather than on agreement. The spread
+across modes is itself informative: a pedestrian trip is short enough that
+apportioning it along its corridor and counting it whole at its origin land in the
+same unit, and a motorcycle trip is not.
 
 ### What is still open
 

@@ -68,6 +68,11 @@ class SurveyTrips:
     survey: config.MobilitySurvey
     # One row per actor type, day type and origin-destination pair.
     pairs: pd.DataFrame
+    # The zones those pairs are keyed on, in the study's metric CRS. Read here
+    # rather than by the caller because the reader needs them itself: an
+    # origin-destination pair cannot be checked for plausibility without knowing
+    # how far apart its two zones are.
+    zones: gpd.GeoDataFrame
     # Share of the surveyed universe covered by each day type's households.
     universe_shares: pd.Series
     records_read: int
@@ -84,6 +89,11 @@ class SurveyTrips:
     # same column and therefore an actual check rather than a restatement.
     not_measured_totals: pd.Series
     unzoned_total: float
+    # Trips per day dropped because the two zones are further apart than the mode
+    # could have covered in the reported duration, by actor type. Kept so the
+    # balance can name them and the report can say how much of each mode went.
+    implausible_totals: pd.Series
+    implausible_records: int
 
 
 # ---------------------------------------------------------------------------
@@ -218,8 +228,16 @@ def _day_type_from_household_date(
     # only quantity that says the three day types are not three measurements of
     # the same thing: the weights represent the universe once over the whole
     # sample, so each day type covers a fraction of it.
+    #
+    # Unless the survey declares that its factor already expands to one day of the
+    # record's own kind, in which case there is nothing to convert and every share
+    # is one. That branch is what stops the next year from being forced through
+    # 2023's answer to a question each year answers for itself.
     weight_by_type = households.groupby(config.DAY_TYPE_COL)["_WEIGHT"].sum()
-    shares = weight_by_type / weight_by_type.sum()
+    if survey.weight_expands_to == config.WEIGHT_EXPANDS_TO_DAY_OF_TYPE:
+        shares = pd.Series(1.0, index=weight_by_type.index)
+    else:
+        shares = weight_by_type / weight_by_type.sum()
 
     log.info(
         "%s: reference day is %d day(s) before the interview; households by day type: %s",
@@ -314,6 +332,95 @@ def map_modes(trips: pd.DataFrame, survey: config.MobilitySurvey, log: RunLog) -
 
 
 # ---------------------------------------------------------------------------
+# Records the geometry contradicts
+# ---------------------------------------------------------------------------
+
+
+def implausible_records(
+    trips: pd.DataFrame,
+    zones: gpd.GeoDataFrame,
+    survey: config.MobilitySurvey,
+    log: RunLog,
+) -> pd.Series:
+    """Which records name two zones the mode could not have crossed in the time.
+
+    The test is deliberately the most forgiving one available. It compares the
+    **shortest distance between the two zone polygons** — the best case the
+    traveller could possibly have had, not the centroid distance the desire line
+    will actually use — against a generous ceiling speed for the mode times the
+    duration the record itself reports. A record that fails could not have been
+    made however the trip ran inside its own zones.
+
+    It exists because looking at the pedestrian map raised the question: lines
+    crossing the whole city, for a mode whose trip-weighted median line is 1.3 km.
+    The extreme case is 82.3 km in 15 minutes, and it is not an artefact of taking
+    centroids for large peripheral zones — those two polygons are 61.8 km apart at
+    their nearest points and do not touch. Something in the record is wrong, the
+    file does not say what, and the line drawn from it is a line nobody travelled.
+
+    Returns a boolean mask over `trips`. A record with no duration cannot be
+    judged and is kept, which the run reports: a check that quietly drops what it
+    cannot evaluate is worse than one that says how much it could not see.
+    """
+    verdict = pd.Series(False, index=trips.index)
+    if survey.duration_minutes_column is None:
+        log.warn(
+            "%s: no duration column is declared, so no origin-destination pair can be checked "
+            "against the mode that made it. A fifth of the 2023 pedestrian trips fail that "
+            "check, so this year is not known to be free of the same records — it is unexamined",
+            survey.label,
+        )
+        return verdict
+
+    require_columns(
+        trips, (survey.duration_minutes_column,), f"{survey.label} durations"
+    )
+    duration = to_number(trips[survey.duration_minutes_column], survey.trips.decimal)
+
+    # Measured once per distinct pair of zones and joined back, not once per
+    # record: the distance between two polygons is a property of the pair, and
+    # there are 24,354 pairs behind 62,055 records.
+    distinct = trips.loc[
+        trips[ZONE_ORIGIN_COL] != trips[ZONE_DESTINATION_COL],
+        [ZONE_ORIGIN_COL, ZONE_DESTINATION_COL],
+    ].drop_duplicates()
+    if distinct.empty:
+        return verdict
+
+    geometry = zones.set_index(ZONE_CODE_COL).geometry
+    origins = gpd.GeoSeries(geometry.loc[distinct[ZONE_ORIGIN_COL]].to_numpy(), crs=zones.crs)
+    destinations = gpd.GeoSeries(
+        geometry.loc[distinct[ZONE_DESTINATION_COL]].to_numpy(), crs=zones.crs
+    )
+    distinct = distinct.assign(
+        _GAP_KM=origins.distance(destinations, align=False).to_numpy() / 1000.0
+    )
+
+    gap = trips[[ZONE_ORIGIN_COL, ZONE_DESTINATION_COL]].merge(
+        distinct, on=[ZONE_ORIGIN_COL, ZONE_DESTINATION_COL], how="left"
+    )["_GAP_KM"]
+    gap.index = trips.index
+    # An intra-zonal pair never appears in `distinct` and its gap is zero, which
+    # is right: it is a trip inside one zone and no distance is implied.
+    gap = gap.fillna(0.0)
+
+    ceiling = trips[config.ACTOR_TYPE_COL].map(config.MODE_SPEED_CEILING_KMH)
+    reachable = ceiling * duration / 60.0
+    verdict = (gap > reachable) & reachable.notna() & duration.notna()
+
+    unjudged = int(duration.isna().sum())
+    if unjudged:
+        log.warn(
+            "%s: %d record(s) carry no %s, so whether the mode could have covered the distance "
+            "cannot be decided; they are kept",
+            survey.label,
+            unjudged,
+            survey.duration_minutes_column,
+        )
+    return verdict
+
+
+# ---------------------------------------------------------------------------
 # Reading a survey
 # ---------------------------------------------------------------------------
 
@@ -371,6 +478,43 @@ def read(survey: config.MobilitySurvey, log: RunLog) -> SurveyTrips:
     frame[config.DAY_TYPE_COL] = day_type
 
     file_total = float(weights.sum())
+
+    # The reconstructed total against the one the survey publishes. This is the
+    # check that turns "we believe this column is the expansion factor" into
+    # something demonstrated: the 2023 factor arrives as text with a comma decimal
+    # and a trailing space, so a column read the obvious way sums to zero without
+    # complaining, and several plausible-looking columns sit beside it.
+    if survey.published_total is None:
+        log.warn(
+            "%s: no published total is declared for %s, so the reconstruction is checked "
+            "against nothing. Find one in the survey's own documentation before any figure "
+            "drawn from this year is quoted",
+            survey.label,
+            survey.weight_column,
+        )
+    elif not np.isclose(file_total, survey.published_total, rtol=config.SURVEY_CONTROL_TOTAL_RTOL):
+        raise ValueError(
+            f"{survey.label}: {survey.weight_column} sums to {file_total:,.1f} but the survey "
+            f"publishes {survey.published_total:,.1f} ({survey.published_total_source}). "
+            "Either the column is not the expansion factor, or it is being read or filtered "
+            "differently from the way it was published; both are decisions, not rounding"
+        )
+    else:
+        log.info(
+            "%s: %s sums to %s, matching the published %s (%s)",
+            survey.label,
+            survey.weight_column,
+            f"{file_total:,.1f}",
+            f"{survey.published_total:,.1f}",
+            survey.published_total_source,
+        )
+    log.info(
+        "%s: one unit of %s is a trip on %s",
+        survey.label,
+        survey.weight_column,
+        survey.weight_expands_to,
+    )
+
     weighted = frame[frame[TRIPS_COL].notna()]
     not_measured_totals = (
         weighted[weighted[config.ACTOR_TYPE_COL].isna()]
@@ -401,6 +545,32 @@ def read(survey: config.MobilitySurvey, log: RunLog) -> SurveyTrips:
         )
         measured = measured[~unzoned]
 
+    # The zoning is read here rather than by the caller because the next step
+    # needs it: whether a record's two zones are too far apart for the mode that
+    # made it cannot be asked without the polygons.
+    zones = read_zoning(survey, log)
+    _require_known_zones(measured, zones, survey)
+
+    impossible = implausible_records(measured, zones, survey, log)
+    implausible_totals = measured.loc[impossible].groupby(config.ACTOR_TYPE_COL)[TRIPS_COL].sum()
+    implausible_count = int(impossible.sum())
+    if implausible_count:
+        log.warn(
+            "%s: %d record(s) name two zones further apart than the mode could cover in the "
+            "duration they report, %s trips per day, and are dropped. By mode: %s. The "
+            "shortest distance between the two polygons is what was compared, so these could "
+            "not have happened however the trip ran inside its zones",
+            survey.label,
+            implausible_count,
+            f"{float(implausible_totals.sum()):,.1f}",
+            "; ".join(
+                f"{actor} {float(value):,.0f} "
+                f"({100 * value / measured[measured[config.ACTOR_TYPE_COL] == actor][TRIPS_COL].sum():.1f}%)"
+                for actor, value in implausible_totals.items()
+            ),
+        )
+        measured = measured[~impossible]
+
     totals = measured.groupby([config.ACTOR_TYPE_COL, config.DAY_TYPE_COL])[TRIPS_COL].sum()
 
     pairs = (
@@ -419,8 +589,13 @@ def read(survey: config.MobilitySurvey, log: RunLog) -> SurveyTrips:
         changes=[
             (-without_weight, f"records with no {survey.weight_column}, outside the file's own total"),
             (
-                -(records_read - without_weight - len(measured)),
+                -(records_read - without_weight - implausible_count - len(measured)),
                 "records of a mode outside the four measured, or with no origin or destination zone",
+            ),
+            (
+                -implausible_count,
+                "records naming two zones further apart than the mode could cover in the "
+                "duration they report",
             ),
             (
                 len(pairs) - len(measured),
@@ -446,6 +621,7 @@ def read(survey: config.MobilitySurvey, log: RunLog) -> SurveyTrips:
     return SurveyTrips(
         survey=survey,
         pairs=pairs,
+        zones=zones,
         universe_shares=universe_shares,
         records_read=records_read,
         records_measured=len(measured),
@@ -454,6 +630,8 @@ def read(survey: config.MobilitySurvey, log: RunLog) -> SurveyTrips:
         totals=totals,
         not_measured_totals=not_measured_totals,
         unzoned_total=unzoned_total,
+        implausible_totals=implausible_totals,
+        implausible_records=implausible_count,
     )
 
 
@@ -517,40 +695,33 @@ def read_zoning(survey: config.MobilitySurvey, log: RunLog) -> gpd.GeoDataFrame:
     return zones[[ZONE_CODE_COL, "geometry"]]
 
 
-def check_zone_coverage(
-    trips: SurveyTrips,
+def _require_known_zones(
+    trips: pd.DataFrame,
     zones: gpd.GeoDataFrame,
-    log: RunLog,
+    survey: config.MobilitySurvey,
 ) -> None:
     """Every zone the trips name has to exist in the zoning, or the trip is nowhere.
 
-    Checked before any geometry is built, because a zone code with no polygon
-    produces a line with a missing endpoint, and a line with a missing endpoint
-    is dropped by the overlay without a word.
+    Checked before any geometry is measured, because a zone code with no polygon
+    produces a line with a missing endpoint, and a line with a missing endpoint is
+    dropped by the overlay without a word. It is also what makes the distance
+    lookups downstream safe to index directly.
     """
     known = set(zones[ZONE_CODE_COL])
-    pairs = trips.pairs
-    missing_origin = ~pairs[ZONE_ORIGIN_COL].isin(known)
-    missing_destination = ~pairs[ZONE_DESTINATION_COL].isin(known)
+    missing_origin = ~trips[ZONE_ORIGIN_COL].isin(known)
+    missing_destination = ~trips[ZONE_DESTINATION_COL].isin(known)
     unknown = missing_origin | missing_destination
     if not unknown.any():
-        log.info(
-            "%s: every zone code the trips name is in the zoning (%d distinct origins, "
-            "%d distinct destinations)",
-            trips.survey.label,
-            pairs[ZONE_ORIGIN_COL].nunique(),
-            pairs[ZONE_DESTINATION_COL].nunique(),
-        )
         return
 
     codes = sorted(
-        set(pairs.loc[missing_origin, ZONE_ORIGIN_COL])
-        | set(pairs.loc[missing_destination, ZONE_DESTINATION_COL])
+        set(trips.loc[missing_origin, ZONE_ORIGIN_COL])
+        | set(trips.loc[missing_destination, ZONE_DESTINATION_COL])
     )
     raise ValueError(
-        f"{trips.survey.label}: {len(codes)} zone code(s) named by the trips are not in "
-        f"{trips.survey.zoning.shapefile.name}, carrying "
-        f"{float(pairs.loc[unknown, TRIPS_COL].sum()):,.1f} trips per day: "
+        f"{survey.label}: {len(codes)} zone code(s) named by the trips are not in "
+        f"{survey.zoning.shapefile.name}, carrying "
+        f"{float(trips.loc[unknown, TRIPS_COL].sum()):,.1f} trips per day: "
         f"{', '.join(codes[:20])}{' ...' if len(codes) > 20 else ''}. A trip whose zone has no "
         "polygon has no place, and dropping it silently is how a mode ends up smaller than it is"
     )

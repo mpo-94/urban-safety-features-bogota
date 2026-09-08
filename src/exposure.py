@@ -1026,6 +1026,13 @@ class SurveyApportionment:
     per_unit: pd.DataFrame
     # Trips per day that fell outside every unit, per actor type and day type.
     outside: pd.Series
+    # The lines themselves, one per distinct zone pair, and the trips each carries
+    # per actor type and day type. Kept rather than discarded because this
+    # pipeline builds its own desire lines, so the figure that draws them is the
+    # only way anyone can see what was built. Nothing else in the study draws its
+    # own input, and nothing else has to.
+    lines: gpd.GeoDataFrame
+    line_trips: pd.DataFrame
     zones_read: int
     zones_reaching_a_unit: int
     pairs_built: int
@@ -1396,6 +1403,10 @@ def apportion_survey(
         trips=trips,
         per_unit=per_unit,
         outside=outside,
+        lines=lines[[_PAIR_ID_COL, _PAIR_KM_COL, "geometry"]],
+        line_trips=between[
+            [config.ACTOR_TYPE_COL, config.DAY_TYPE_COL, _PAIR_ID_COL, surveys.TRIPS_COL]
+        ],
         zones_read=len(zones),
         zones_reaching_a_unit=int(zone_shares[surveys.ZONE_CODE_COL].nunique()),
         pairs_built=len(lines),
@@ -1437,9 +1448,7 @@ def build_from_surveys(
 
     for survey in survey_list:
         trips = surveys.read(survey, log)
-        zones = surveys.read_zoning(survey, log)
-        surveys.check_zone_coverage(trips, zones, log)
-        allocation = apportion_survey(trips, zones, projected, log)
+        allocation = apportion_survey(trips, trips.zones, projected, log)
         apportionments[survey.year] = allocation
 
         # The full grid first, so that a combination nothing reached arrives as a
@@ -1670,59 +1679,164 @@ def export_from_surveys(
 def render_survey_figures(
     table: pd.DataFrame,
     units: gpd.GeoDataFrame,
+    apportionments: dict[int, SurveyApportionment],
     log: RunLog,
     survey_list: tuple[config.MobilitySurvey, ...] | None = None,
 ) -> tuple[list[Path], list[int]]:
-    """One choropleth per survey year and actor type, on the typical weekday.
+    """Two figures for every combination of survey year, actor type and day type.
 
-    The weekday and not an average of the three, because the map is one number
-    per unit and the day type is a dimension of the table rather than something a
-    figure can carry. Which day type is drawn is therefore a choice, and the
-    weekday is the one nearly every casualty in the series happened on.
+    A choropleth of how much travel each unit ends up with, and beside it the
+    desire lines that put it there. The second exists because this pipeline
+    builds its own lines instead of receiving them drawn, so without a figure of
+    them nobody can see what was built.
+
+    **The choropleth shows `TRIPS_PER_DAY_OF_TYPE` and not the variable**, which
+    is the one thing about these figures that has to be said out loud. A map
+    titled "trips per day" has to carry the trips of a day, and the variable
+    counts a day type's share of an average day — on a Saturday map that is six
+    times too small, for no reason except that a seventh of the households were
+    surveyed about a Saturday. See D38.
+
+    **The colour scale is shared across the day types of one mode and never
+    across modes.** Sharing it within a mode is what makes the three days
+    comparable at a glance, which is the point of having the day as a dimension
+    at all; sharing it across modes would draw bicycle and motorcycle at a fifth
+    of a ramp scaled by walking and leave neither pattern readable.
     """
     survey_list = survey_list or config.MOBILITY_SURVEYS
     directory = log.run_dir / config.FIGURES_SUBDIR / config.EXPOSURE_FIGURES_SUBDIR
+    mapped = config.TRIPS_PER_DAY_OF_TYPE_COL
 
     out_paths: list[Path] = []
     overflowing: list[int] = []
     for survey in survey_list:
+        allocation = apportionments[survey.year]
+        year_rows = table[table[config.YEAR_COL] == survey.year]
+        day_types = [
+            day for day in config.DAY_TYPES if day in set(year_rows[config.DAY_TYPE_COL])
+        ]
+
         for actor in survey.actor_types:
-            drawn = table[
-                (table[config.YEAR_COL] == survey.year)
-                & (table[config.ACTOR_TYPE_COL] == actor)
-                & (table[config.DAY_TYPE_COL] == config.WEEKDAY_TYPE)
-            ]
-            if drawn.empty:
+            for_actor = year_rows[year_rows[config.ACTOR_TYPE_COL] == actor]
+            if for_actor.empty:
                 continue
 
-            stem = (
-                f"{config.EXPOSURE_FIGURES_SUBDIR}__{survey.year}_{actor.lower()}"
-                f"_{config.WEEKDAY_TYPE.lower()}"
+            # One ramp for the mode, taken over its day types together. Computed
+            # before any of the three is drawn, because a scale derived from the
+            # first map would not be a shared scale.
+            ceiling = float(for_actor[mapped].max())
+            shared = (
+                (0.0, ceiling)
+                if config.MAP_CHOROPLETH_SHARE_SCALE_ACROSS_DAY_TYPES and ceiling > 0
+                else None
             )
-            plain = directory / f"{stem}.{config.MAP_FIGURE_FORMAT}"
-            with_bar = directory / f"{stem}{config.MAP_SCALEBAR_SUFFIX}.{config.MAP_FIGURE_FORMAT}"
 
-            values = drawn.set_index(config.AREA_CODE_COL)[config.TRIPS_PER_AVERAGE_DAY_COL]
-            caption = f"{config.ROAD_USER_LABELS_ES[actor]}, viajes por día ({survey.year})"
+            for day_type in day_types:
+                drawn = for_actor[for_actor[config.DAY_TYPE_COL] == day_type]
+                if drawn.empty:
+                    continue
+                stem = (
+                    f"{config.EXPOSURE_FIGURES_SUBDIR}__{survey.year}_{actor.lower()}"
+                    f"_{day_type.lower()}"
+                )
+                values = drawn.set_index(config.AREA_CODE_COL)[mapped]
+                caption = (
+                    f"{config.ROAD_USER_LABELS_ES[actor]}, viajes por día · "
+                    f"{config.DAY_TYPE_LABELS_ES[day_type]} {survey.year}"
+                )
 
-            spilling = maps.render_choropleth(units, values, plain, caption, scalebar=False)
-            maps.render_choropleth(units, values, with_bar, caption, scalebar=True)
-            out_paths.extend([plain, with_bar])
-            overflowing.extend(spilling)
+                plain = directory / f"{stem}.{config.MAP_FIGURE_FORMAT}"
+                with_bar = (
+                    directory / f"{stem}{config.MAP_SCALEBAR_SUFFIX}.{config.MAP_FIGURE_FORMAT}"
+                )
+                spilling = maps.render_choropleth(
+                    units, values, plain, caption, scalebar=False, value_range=shared
+                )
+                maps.render_choropleth(
+                    units, values, with_bar, caption, scalebar=True, value_range=shared
+                )
+                out_paths.extend([plain, with_bar])
+                overflowing.extend(spilling)
 
-            log.info(
-                "choropleth %d %s: %d units, range %s to %s trips per day, %d observed zero(s)",
-                survey.year,
-                actor,
-                len(values),
-                f"{values.min():,.0f}",
-                f"{values.max():,.0f}",
-                int((values == 0).sum()),
-            )
+                log.info(
+                    "choropleth %d %s %s: %d units, %s to %s trips per day, ramp to %s, "
+                    "%d observed zero(s)",
+                    survey.year,
+                    actor,
+                    day_type,
+                    len(values),
+                    f"{values.min():,.0f}",
+                    f"{values.max():,.0f}",
+                    f"{ceiling:,.0f}",
+                    int((values == 0).sum()),
+                )
+
+                lines_drawn, line_paths = _render_desire_line_map(
+                    allocation, units, actor, day_type, survey, directory, log
+                )
+                out_paths.extend(line_paths)
+                log.info(
+                    "desire lines %d %s %s: %d line(s) drawn over the %d units",
+                    survey.year,
+                    actor,
+                    day_type,
+                    lines_drawn,
+                    len(units),
+                )
 
     for path in out_paths:
         log.info("wrote %s", path)
     return out_paths, overflowing
+
+
+def _render_desire_line_map(
+    allocation: SurveyApportionment,
+    units: gpd.GeoDataFrame,
+    actor: str,
+    day_type: str,
+    survey: config.MobilitySurvey,
+    directory: Path,
+    log: RunLog,
+) -> tuple[int, list[Path]]:
+    """The desire lines of one mode and day, drawn over the units.
+
+    Only the inter-zonal trips have a line to draw. The intra-zonal ones are on
+    the choropleth and cannot be here, because a trip that begins and ends in one
+    zone has no line — which is exactly the fact that made them need a rule of
+    their own. The caption says so rather than leaving the difference between the
+    two figures unexplained.
+    """
+    selected = allocation.line_trips[
+        (allocation.line_trips[config.ACTOR_TYPE_COL] == actor)
+        & (allocation.line_trips[config.DAY_TYPE_COL] == day_type)
+    ]
+    if selected.empty:
+        log.warn(
+            "%d %s %s: no inter-zonal trip at all, so no desire-line map is drawn",
+            survey.year,
+            actor,
+            day_type,
+        )
+        return 0, []
+
+    geometry = allocation.lines.merge(
+        selected[[_PAIR_ID_COL, surveys.TRIPS_COL]], on=_PAIR_ID_COL, how="inner"
+    )
+    stem = (
+        f"{config.EXPOSURE_LINES_FIGURE_PREFIX}__{survey.year}_{actor.lower()}"
+        f"_{day_type.lower()}"
+    )
+    plain = directory / f"{stem}.{config.MAP_FIGURE_FORMAT}"
+    with_bar = directory / f"{stem}{config.MAP_SCALEBAR_SUFFIX}.{config.MAP_FIGURE_FORMAT}"
+    caption = (
+        f"{config.ROAD_USER_LABELS_ES[actor]}, líneas de deseo entre zonas · "
+        f"{config.DAY_TYPE_LABELS_ES[day_type]} {survey.year}"
+    )
+
+    weights = geometry[surveys.TRIPS_COL].to_numpy(dtype=float)
+    drawn = maps.render_desire_lines(units, geometry, weights, plain, caption, scalebar=False)
+    maps.render_desire_lines(units, geometry, weights, with_bar, caption, scalebar=True)
+    return drawn, [plain, with_bar]
 
 
 # ---------------------------------------------------------------------------
@@ -1833,17 +1947,20 @@ def verify_from_surveys(
         # of the same column, so it is a check and not a restatement — a mode
         # quietly dropped between the mapping and the totals would show here and
         # nowhere else.
+        implausible = float(allocation.trips.implausible_totals.sum())
         accounted = (
             measured_total
             + float(allocation.trips.not_measured_totals.sum())
             + allocation.trips.unzoned_total
+            + implausible
         )
         checks.append((
             f"{survey.year}: every trip the file weights is measured or named as set aside",
             bool(np.isclose(accounted, allocation.trips.file_total, rtol=rtol)),
             f"{measured_total:,.1f} measured + "
             f"{float(allocation.trips.not_measured_totals.sum()):,.1f} in modes outside the "
-            f"study + {allocation.trips.unzoned_total:,.1f} unzoned = {accounted:,.1f} "
+            f"study + {allocation.trips.unzoned_total:,.1f} unzoned + {implausible:,.1f} "
+            f"impossible for their mode = {accounted:,.1f} "
             f"against {allocation.trips.file_total:,.1f}",
         ))
 

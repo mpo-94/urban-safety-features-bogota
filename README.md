@@ -142,11 +142,25 @@ Adding a survey year is one `MobilitySurvey` in `src/config.py`. The one thing a
 year may also need is a rule for how it says which kind of day a trip was made
 on, because no two of the four surveys say it the same way.
 
+Records the geometry contradicts are dropped and counted. A record whose two
+zones are further apart than its mode could have covered in the duration it
+reports could not have happened however the trip ran, and the line drawn from it
+is a line nobody travelled; in 2023 that is a seventh of the walking. Each year
+declares its own duration column and the ceiling speeds are one table in the
+configuration, so a year that reports no duration is not silently assumed clean —
+the run says it was not checked.
+
 The route checks, every run, that every trip the file weights is either measured
 or named as deliberately set aside, and that what was apportioned to the units
 plus what fell outside them equals what the file holds — per actor type and per
 kind of day, not in aggregate, because an aggregate can close while two modes are
 wrong in opposite directions.
+
+Two figures come out per year, actor type and kind of day: a choropleth of the
+trips each unit ends up with on a day of that kind, and the desire lines that put
+them there. The second exists because this route draws its own input, so there is
+no other way to see what was built — and it is what turned up the impossible
+records above, by showing walking trips that crossed the whole city.
 
 Two trip columns come out, not one, and the difference matters. The survey's
 expansion factor represents the population once over all seven reference days, so

@@ -345,6 +345,7 @@ def render_choropleth(
     out_path: Path,
     legend_label: str,
     scalebar: bool,
+    value_range: tuple[float, float] | None = None,
 ) -> list[int]:
     """Draw the thirty units shaded by a value, and return the labels that spill.
 
@@ -361,6 +362,13 @@ def render_choropleth(
     was measured and found to have none, which is an observation and takes the
     bottom of the ramp like any other number; the legend names both cases when
     they occur, which is the only way a reader can tell them apart.
+
+    `value_range` imposes the ends of the ramp instead of taking them from the
+    values drawn. It is what lets a set of maps meant to be compared share one
+    scale: three maps of the same mode on three kinds of day each fill their own
+    ramp otherwise, and all three then look equally intense however different
+    their levels are. Left out, each map takes its own range, which is right for
+    a map that stands alone.
     """
     metric = units.to_crs(epsg=config.PROJECTED_CRS)
     ordered = values.reindex(metric[config.AREA_CODE_COL]).to_numpy(dtype=float)
@@ -369,7 +377,12 @@ def render_choropleth(
     if observed.size == 0:
         raise ValueError("the choropleth has no measured unit to set its colour scale from")
     colormap = matplotlib.colormaps[config.MAP_CHOROPLETH_COLORMAP]
-    normalise = matplotlib.colors.Normalize(vmin=float(observed.min()), vmax=float(observed.max()))
+    low, high = value_range if value_range is not None else (observed.min(), observed.max())
+    if not np.isfinite(low) or not np.isfinite(high) or high < low:
+        raise ValueError(
+            f"the choropleth was given the colour range {low} to {high}, which is not a range"
+        )
+    normalise = matplotlib.colors.Normalize(vmin=float(low), vmax=float(high))
 
     minx, miny, maxx, maxy = metric.total_bounds
     height = config.MAP_FIGURE_HEIGHT_IN
@@ -516,6 +529,132 @@ def render_choropleth(
     figure.savefig(out_path, bbox_inches="tight", pad_inches=0.02, transparent=True)
     plt.close(figure)
     return overflowing
+
+
+def render_desire_lines(
+    units: gpd.GeoDataFrame,
+    lines: gpd.GeoDataFrame,
+    weights: np.ndarray,
+    out_path: Path,
+    caption: str,
+    scalebar: bool,
+) -> int:
+    """Draw the desire lines of one mode and day over the units, and say how many.
+
+    The companion of the choropleth and the reason it exists: the lines are built
+    by this pipeline rather than delivered, so without this figure there is no way
+    to see what was built. Where the choropleth says how much travel a unit ends
+    up with, this says which lines put it there.
+
+    Three things are deliberately unlike every other map here. **The units carry
+    no numbers**, because a label under a few thousand crossing lines is
+    unreadable and an unreadable label is worse than none. **The fill is flat**,
+    because the fill is a backdrop here and not a value. And **the frame is the
+    city rather than the lines**: they run to Zipaquirá and Facatativá, 154 km
+    apart against the city's 23, so a map framed on them would put the study area
+    in a seventh of its width. They are drawn whole and leave the frame, which is
+    what says the travel continues past the edge of the study.
+
+    `weights` is the trips per day each line carries, in the order of `lines`.
+    Both the width and the opacity grow as its square root, and the heaviest lines
+    are drawn last so they land on top of the rest.
+    """
+    metric = units.to_crs(epsg=config.PROJECTED_CRS)
+    drawn = lines.to_crs(epsg=config.PROJECTED_CRS)
+
+    minx, miny, maxx, maxy = metric.total_bounds
+    height = config.MAP_FIGURE_HEIGHT_IN
+    width = height * (maxx - minx) / (maxy - miny)
+    figure, axis = plt.subplots(figsize=(width, height))
+
+    metric.plot(
+        ax=axis,
+        color=config.MAP_DESIRE_UNIT_FACE_COLOR,
+        edgecolor=config.MAP_BOUNDARY_COLOR,
+        linewidth=config.MAP_BOUNDARY_WIDTH,
+        zorder=1,
+    )
+
+    # Scaled against the heaviest line of this figure, so each map uses the whole
+    # of its own width range. The maps of one mode are compared through the
+    # choropleth's shared colour bar; here what matters is that the structure
+    # inside each one is visible.
+    magnitude = np.sqrt(np.clip(weights.astype(float), 0.0, None))
+    ceiling = magnitude.max() if magnitude.size and magnitude.max() > 0 else 1.0
+    strength = magnitude / ceiling
+
+    widths = (
+        config.MAP_DESIRE_LINE_MIN_WIDTH
+        + strength * (config.MAP_DESIRE_LINE_MAX_WIDTH - config.MAP_DESIRE_LINE_MIN_WIDTH)
+    )
+    alphas = (
+        config.MAP_DESIRE_LINE_MIN_ALPHA
+        + strength * (config.MAP_DESIRE_LINE_MAX_ALPHA - config.MAP_DESIRE_LINE_MIN_ALPHA)
+    )
+
+    # Ascending, so a heavy corridor is not buried under the hundreds of light
+    # lines that happen to be drawn after it.
+    order = np.argsort(magnitude, kind="stable")
+    segments = [list(drawn.geometry.iloc[position].coords) for position in order]
+    colour = matplotlib.colors.to_rgb(config.MAP_DESIRE_LINE_COLOR)
+    axis.add_collection(
+        matplotlib.collections.LineCollection(
+            segments,
+            linewidths=widths[order],
+            colors=[(*colour, alpha) for alpha in alphas[order]],
+            capstyle="round",
+            zorder=2,
+        )
+    )
+
+    span_x, span_y = maxx - minx, maxy - miny
+    margin = config.MAP_DESIRE_FRAME_MARGIN
+    axis.set_xlim(minx - margin * span_x, maxx + margin * span_x)
+    axis.set_ylim(miny - margin * span_y, maxy + margin * span_y)
+    axis.set_aspect("equal")
+    axis.set_axis_off()
+
+    north_arrow(
+        axis,
+        location=config.MAP_NORTH_ARROW_LOCATION,
+        scale=config.MAP_NORTH_ARROW_SCALE,
+        base={"facecolor": config.MAP_LABEL_COLOR, "edgecolor": config.MAP_LABEL_COLOR, "linewidth": 0.4},
+        fancy=False,
+        label={
+            "text": "N",
+            "position": "bottom",
+            "ha": "center",
+            "fontsize": config.MAP_LABEL_FONT_PT + 1,
+            "color": config.MAP_LABEL_COLOR,
+            "fontweight": "normal",
+            "stroke_width": 0,
+        },
+        shadow=False,
+    )
+    if scalebar:
+        axis.add_artist(
+            ScaleBar(
+                1,
+                units="m",
+                location=config.MAP_SCALEBAR_LOCATION,
+                length_fraction=config.MAP_SCALEBAR_LENGTH_FRACTION,
+                frameon=False,
+                color=config.MAP_LABEL_COLOR,
+                font_properties={"size": config.MAP_LABEL_FONT_PT},
+            )
+        )
+
+    axis.set_title(
+        caption,
+        fontsize=config.MAP_LABEL_FONT_PT + 1,
+        color=config.MAP_LABEL_COLOR,
+        pad=6,
+    )
+
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    figure.savefig(out_path, bbox_inches="tight", pad_inches=0.02, transparent=True)
+    plt.close(figure)
+    return len(drawn)
 
 
 def _labels_that_do_not_fit(figure, axis, metric: gpd.GeoDataFrame, texts: list) -> list[int]:

@@ -95,7 +95,7 @@ subset may not measure what the whole would.
 *And check whether the selection preserves the ranking, which is the thing that
 actually matters.* The delivered layer is 9.6 % of its parent and was not
 selected by volume, which sounded reassuring until it was compared: it orders the
-thirty units at Spearman 0.377 against the full survey. A subset can be unbiased
+thirty units at Spearman 0.362 against the full survey. A subset can be unbiased
 in its total and useless in its ordering, and the ordering is what a panel model
 uses.
 
