@@ -3,7 +3,12 @@
 The study's exposure is built from the household mobility survey: the desire
 lines are constructed here rather than received, one per pair of zones, and each
 gives every unit it crosses the share of its trips matching the share of its
-length inside that unit. **2023, 2019 and 2015 are implemented. 2011 is not.**
+length inside that unit. **2023, 2019 and 2015 are implemented. 2011 is not, and it
+is the one year that will not fit this shape without changing it** — its two day
+types live in two Access databases, which no field of `MobilitySurvey` can express.
+That is reported rather than absorbed, in
+[`implementing-2011.md`](implementing-2011.md), along with what was measured of the
+delivery in advance.
 
 **2015 was the third and it held again, at a lower price.** One declaration, two
 registry entries — a `day_type_rule` reading the flag the delivery already wrote on
@@ -40,6 +45,9 @@ identical.
 
 Read first, in this order:
 
+0. **[`implementing-2011.md`](implementing-2011.md)**, if the year is 2011. It is
+   the only year with a document of its own, because it is the only one that asks
+   for a change to the machinery rather than a declaration.
 1. **[`mobility-surveys-inventory.md`](mobility-surveys-inventory.md) §6b** — the
    contract. What must not change, the six things that must be established from
    the year's own files, and the 2023 baseline the result is checked against.

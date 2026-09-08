@@ -55,16 +55,16 @@ pairs appear among the pairs the pipeline builds from that survey, which they do
 | Columns | 34 | 33 | 36 | 47 |
 | Mode column | `Modo_Principal` | `ID_MEDIO_PREDOMINANTE` | `modo_principal` | `modo_principal_agrupado` |
 | Mode as | label | numeric code | label | label |
-| Weight | `F_EXP` | `PONDERADOR_CALIBRADO_VIAJES` **— declared**, confirmed against the published matrices | `f_exp` | `fexp_vj` |
+| Weight | `F_EXP`, and it is the same number on the trip, the person and the household | `PONDERADOR_CALIBRADO_VIAJES` **— declared**, confirmed against the published matrices | `f_exp` | `fexp_vj` |
 | Expanded trips/day | 17,611,061 | 17,251,733 weekday + 15,730,551 Saturday | 18,996,286 | 16,390,908 |
 | Origin/destination zone | `ZAT_ORIG` / `ZAT_DEST` | `ZAT_ORIGEN` / `ZAT_DESTINO` | `zat_origen` / `zat_destino` | `zat_ori` / `zat_des` |
 | Zone nulls (origin) | 21,515 (17.6 %) | 43 (0.03 %) | 7,134 (5.3 %) | 0 |
 | UPL in the trip record | no | no | no | **yes**, `upl_ori` / `upl_des` |
 | Endpoint coordinates | no | **yes**, lat/lon | no | no |
-| Zoning shapefile | **none delivered** | `ZATs_2012_MAG`, 948 zones | `ZAT` 1,141 + `UTAM` 141 | `ZAT2023` 1,215 + `UTAM2023` 142 |
+| Zoning shapefile | **none delivered**; every code it names is in the 2015 zoning | `ZATs_2012_MAG`, 948 zones | `ZAT` 1,141 + `UTAM` 141 | `ZAT2023` 1,215 + `UTAM2023` 142 |
 | Saturday | separate database, 4,035 records | `DIA_NOHABIL`, 17,730 records — **it is a Saturday, and there is no Sunday** | **none observed**; `p32_sabado` is declared recurrence, 13,436 records | surveyed, 2,876 households |
 | Reference day | day before the interview | flag on the record, and the flag *is* the day before the interview | day before the interview, one typical day only | day before the interview |
-| Trip duration | unresolved | `HORA_INICIO`/`HORA_FIN` as `HH:MM:SS`, derived and **not** rounded | derived from two clock columns held as fractions of a day | `duracion_min`, in minutes |
+| Trip duration | `Min_Inicio`/`Min_Fin`, whole minutes from midnight | `HORA_INICIO`/`HORA_FIN` as `HH:MM:SS`, derived and **not** rounded | derived from two clock columns held as fractions of a day | `duracion_min`, in minutes |
 
 The exact paths are in `docs/data-layout.md`. Everything else published alongside
 — the EMME model of 2011, the intercept surveys, the reports, the forms — is out
@@ -238,8 +238,14 @@ The decision taken is to count typical weekday and Saturday **separately**, as a
 average them or drop Saturday. Every year distinguishes the two, and no two do it
 the same way:
 
-- **2011 — two separate databases.** `DiaTipico` with 122,361 trip records and
-  `DiaSabado` with 4,035. Different samples of different households.
+- **2011 — two separate databases, and they are a clean weekday/Saturday split.**
+  `DiaTipico` with 122,361 trip records over 15,592 households and `DiaSabado` with
+  4,035 over 565. Different samples of different households, and the day is not
+  inferred: both the household and the trip carry a `DIA` column, which runs 1–5 in
+  the weekday database and is 6 in every row of the Saturday one. The two agree on
+  every record. So the day type is read rather than derived, as in 2015 — but from
+  which file the record came out of, which is a shape no field of `MobilitySurvey`
+  can express today. See [`implementing-2011.md`](implementing-2011.md).
 - **2015 — a flag on the record.** `DIA_HABIL` on 129,521 records and
   `DIA_NOHABIL` on 17,730. There is also a peak/off-peak split for each.
 - ~~**2019 — day-of-week flags on the trip.**~~ **Resolved, and the decision it
@@ -472,16 +478,105 @@ like `3 4 5 6`. Tomo VII's own foreign key says as much: *fk_id_predominancia
 (id_modo_predominante) ref medio_predominante (predominancia)*. All twelve codes
 occur in the file and each one is either mapped or declared out.
 
-### 2011 — no zoning was delivered
+### 2011 — measured in advance, and the blocking question is answered
 
-The trips carry `ZAT_ORIG` and `ZAT_DEST` over 912 distinct zones and there is no
-shapefile anywhere in the 2011 folder. The 2015 delivery carries
-`ZATs_2012_MAG` with 948 zones, and its name suggests the zoning the 2011 model
-used. **Whether the 2011 codes fall inside that set has to be shown and not
-assumed**, and if they do not, 2011 has no geometry at all.
+*This is not the implementation pass. It is what the session of 2026-09-08
+measured after 2015 landed, so that the session which implements 2011 starts from
+facts instead of from the folder. Nothing here is declared in `config.py`, and the
+six things §6b requires still have to be established by that session against the
+year's own documents — what follows narrows them, it does not settle them.*
 
-`ZAT_ORIG` is also null on 21,515 records, 17.6 % of them — by far the worst zone
-coverage of the four years, and enough to matter.
+**The delivery is 357 files, of which 323 are the Emme model and 34 are the
+survey.** The model is out of scope. What is in scope: two Access databases, the
+questionnaire (`110719_Formulario_EM_Bogota 26 de julio.pdf`), three volumes of the
+final report, two database manuals — `Manual base de datos Encuesta de Hogares.pdf`
+and `120927_InformeFinal_ManualEncuestasDomiciliarias.pdf` — a training deck on the
+databases and another on the matrices, and **published matrices**:
+`Matrices Finales/` holds eight Emme text matrices split peak/off-peak for
+`Bicicleta`, `Moto`, `TP` and `VP`, and `120927_Matrices_Proposito.xlsx` holds them
+by purpose. **There is no pedestrian matrix**, so 2011's strongest external control
+covers three of the four modes and not the one the study cares most about.
+
+**The two Access databases read through the installed 64-bit driver**, and this was
+verified rather than assumed. The weekday database is 128 MB with 83 tables and the
+Saturday one 11.5 MB. The tables that matter:
+
+| Table | Rows | What it is |
+|---|---:|---|
+| `Mod_D_VIAJES2_BaseImputacion_Definitiva` | 122,361 | the trips to read: `Modo_Principal`, `F_EXP`, `ZAT_ORIG`, `ZAT_DEST`, `Min_Inicio`, `Min_Fin` |
+| `MOD_D_VIAJES_Tipico` | 100,846 | 78 columns, one per stage, a single household `ZAT` and no origin or destination zone — **not** the one to read |
+| `MOD_A_ID_HOGAR_Tipico` | 15,592 | the households: `ORDEN`, `ZAT`, `DIA`, `F_EXP` |
+| `MOD_B_PERSONAS_Tipico` | 58,313 | the people |
+| `Aux_Modos` | 25 | the mode lookup, and its `Modo_Agregado` column is what `Modo_Principal` holds |
+
+The Saturday database repeats the shape with `_Sabado` suffixes:
+`Mod_D_VIAJES2_BaseImputacion_Definitiva_Sabado` has 4,035 rows over 565 households.
+
+**The blocking question is answered: the 2015 zoning serves.** 2011 ships no
+zoning of any kind, and this document said whether its codes fall inside the 2015
+one had to be shown and not assumed. Shown: the trips name **913 distinct codes on
+the weekday and 607 on the Saturday, and every single one of them is in
+`ZATs_2012_MAG`** — zero absent, in either database, carrying zero trips. So 2011
+can be built, on a zoning borrowed from a neighbouring year with a written reason,
+and `SurveyZoning` already expresses that because it is declared beside the trips
+rather than found next to them.
+
+**The duration is resolved and it needs no new rule.** This document recorded it as
+unresolved. `Min_Inicio` and `Min_Fin` are whole minutes from midnight — verified,
+because `Min_Inicio` equals `HR_INI × 60 + MIN_INI` on all 122,361 records — so
+`DurationFromClockColumns` reads them with `minutes_per_unit=1.0` and nothing new is
+written. The median trip is 26 minutes. Nothing wraps: the columns run 240 to 1,680,
+which is 04:00 to 04:00 the next day, the same reference window the other three
+surveys state in their questionnaires, so a trip after midnight is 1,500 rather than
+60 and `wrap_at_midnight` must be **off** or it will do nothing and hide that.
+
+**The weight is one number at all three levels.** `F_EXP` on a trip equals its
+person's and its household's on all 122,361 records, which is simpler than 2015 and
+means the household check for `weight_expands_to` needs no join. Its shape already
+points the same way the other two years do: the weekday households' `F_EXP` sums to
+**2,444,260** over 15,592 and the Saturday's to **2,149,087** over 565, so each
+subsample expands to something near a whole universe on its own rather than to a
+share of one. **That is not yet a demonstration** — it needs the published household
+count, which is what `Anexo`-equivalent reading is for — but a year read as 2023's
+would be wrong by a factor of eight and this says so in advance.
+
+**`F_EXP` over the weekday trips sums to 17,611,061.3**, and 17,611,061 is the
+figure Tomo I of the *2015* delivery quotes for 2011 — *"la proyección de viajes
+para un día hábil fue de 17'611.061 viajes"*. So a control total exists before the
+2011 documents are opened, from a neighbouring survey.
+
+**Everything joins on `ORDEN`.** Trip to household is `ORDEN`; trip to person is
+`(ORDEN, ID_PERSO)`. All 122,361 trips find both. 15,080 of the 15,592 households
+have at least one trip, so 512 made none. The household `ZAT` has no nulls at all,
+which makes a per-zone control possible in the way 2019's per-UTAM check was.
+
+**`Modo_Principal` holds `Aux_Modos.Modo_Agregado`, not its code**, and twelve
+labels occur in both databases: `Pie`, `Bicicleta`, `Moto`, `Privado`, `TPC`, `TM`,
+`Taxi`, `Alimentador`, `Intermunicipal`, `Escolar`, `Informal`, `Otro`. Four map to
+the study's actor types and eight do not. **The bicitaxi and the mototaxi are inside
+`Informal`**, exactly as they are inside 2015's `ILEGAL`, so 2011 has the same
+limitation and it is now the second year to have it rather than an exception.
+
+**What is still genuinely open for 2011**, and none of it is a lookup:
+
+- **Its two day types live in two files, and no field of `MobilitySurvey` can say
+  so.** This is the one place where the fourth year does not fit the shape the first
+  three did, and it is written up on its own in
+  [`implementing-2011.md`](implementing-2011.md).
+- **`ZAT_ORIG` or `ZAT_DEST` is missing on 21,515 weekday records, 16.1 % of the
+  expanded trips** — by far the worst zone coverage of the four years, against 6.1 %
+  in 2019 and none in 2023. It is not a code that names no place; the field is
+  simply empty. Whether that is acceptable, or whether it biases the result by
+  place, is a question for the advisor and not a default to pick.
+- **The Saturday is too thin and should be expected to fail.** 4,035 records
+  expanding to 14,022,328 trips means one record stands for about 3,475 of them;
+  over 30 units and four modes that is roughly 34 records a cell before any zone
+  apportionment. The number will exist and it will not mean anything, and D38
+  already says a combination like that should be marked rather than published
+  quietly.
+- **The published matrices cover three modes, not four.** No pedestrian matrix
+  exists, so the check that made 2015 the best-verified year cannot be repeated in
+  full for 2011 — and pedestrian is the mode the study is most concerned with.
 
 ### ~~2023 — the delivered desire lines carry a tenth of the trips~~ Resolved, and against the wrong year
 

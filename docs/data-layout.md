@@ -200,7 +200,7 @@ What each year holds for that purpose, out of everything published:
 
 | Year | Household trip records | Zoning |
 |---|---|---|
-| 2011 | `120927_ConsultaEODH2011_DiaTipico (1).accdb`, table `Mod_D_VIAJES2_BaseImputacion_Definitiva` | **none delivered** |
+| 2011 | `120927_ConsultaEODH2011_DiaTipico (1).accdb` table `Mod_D_VIAJES2_BaseImputacion_Definitiva`, **and** `…_DiaSabado (1).accdb` table `Mod_D_VIAJES2_BaseImputacion_Definitiva_Sabado` | **none delivered**; every code its trips name is in the 2015 `ZATs_2012_MAG` |
 | 2015 | `Base de Datos Completa/VIAJES_ANONIMIZADOS.csv`, 35 MB **— declared** | `ZATs/ZATs_2012_MAG.shp`, 948 features over 945 zones **— declared** |
 | 2019 | `BD EODH2019 FINAL v14022020/Archivos CSV/ViajesEODH2019.csv`, 23 MB **— declared** | `Zonificación (shapefiles)/ZONAS/ZONAS/ZAT.shp` 1,141 **— declared**; `UTAM.shp` 141 |
 | 2023 | `05_Base datos procesada/CSV/d. Modulo viajes.csv`, 59 MB **— declared** | `ZAT2023.shp` 1,215 **— declared**; `UTAM2023.shp` 142 |
@@ -281,14 +281,21 @@ of this was declared, and the session that declares a year starts from it.
 
 Two things about the delivery belong here rather than there:
 
-- **2011 carries no zoning of any kind**, so its trips cannot become geometry
-  from its own folder. Whether the 2015 zoning serves is an open question, not an
-  assumption.
-- **2011 is an Access database** where the others are CSV. `pyodbc` reads it
-  through the 64-bit Access ODBC driver installed on this machine, with the
-  environment's 64-bit Python. It is installed but **not yet in
-  `requirements.txt`**, because nothing declared reads it yet; the commit that
-  first reads 2011 adds it.
+- **2011 carries no zoning of any kind**, so its trips cannot become geometry from
+  its own folder. **The 2015 zoning serves, and that is now measured rather than
+  assumed**: the trips name 913 distinct codes on the weekday and 607 on the
+  Saturday, and every one of them is in `ZATs_2012_MAG`. Why a 2012 zoning is the
+  right frame for 2011 travel is an argument the implementing session still owes.
+- **2011 is two Access databases** where the others are one CSV, and the second one
+  is not a duplicate: the weekday and the Saturday are separate samples of separate
+  households in separate files, which is the one place the fourth year does not fit
+  the shape. See `docs/implementing-2011.md`.
+- **`pyodbc` reads them** through the 64-bit Access ODBC driver installed on this
+  machine, with the environment's 64-bit Python; a 32-bit driver would not have
+  worked. Both databases were opened and their tables listed on 2026-09-08, so the
+  route is verified and not assumed. It is installed but **not yet in
+  `requirements.txt`**, because nothing declared reads it yet; the commit that first
+  reads 2011 adds it.
 
 Each year also publishes its records twice, as CSV and as XLSX, and 2023 publishes
 both a raw and a processed database. The table above names the one file per year

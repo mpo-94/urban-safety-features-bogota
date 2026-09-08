@@ -2980,8 +2980,12 @@ predictor bundle until then, which is exactly what having the constant is for.
 what source, at what shape, and it retires the variable every earlier exposure
 figure was measured on.
 
-**Status:** Closed for 2023, 2019 and 2015, and for the machinery the fourth year
-will use. **Two things are open** and both are named at the end: which day type
+**Status:** Closed for 2023, 2019 and 2015. **Not closed for the machinery the
+fourth year needs**: 2011 splits its two day types across two Access databases, and
+a year is declared with one source, so it asks for a change to `MobilitySurvey`
+rather than an entry in `MOBILITY_SURVEYS`. That is the case the §6b contract says
+must be reported rather than bent, and it is reported in
+`docs/implementing-2011.md`. **Two things are open** and both are named at the end: which day type
 the models take, and whether a day-type comparison is supportable at all — a
 question 2019 made sharper and 2015 has now made answerable.
 
@@ -3401,8 +3405,10 @@ row per mode there is nothing left to collide.
 nothing reached is a measured zero the code materialised on purpose, while a day
 type a year cannot support is simply not in the table. That distinction is D10
 applied to a dimension that is ragged by construction, and 2011 is the year it
-will matter: its Saturday is 4,035 records, about 34 per cell after four modes and
-thirty units, and it should be expected to fail rather than published quietly.
+will matter: its Saturday is 4,035 records expanding to 14,022,328 trips, so one
+record stands for about 3,475 of them and a cell holds roughly 34 records after four
+modes and thirty units. It should be expected to fail rather than published quietly,
+and whether it is marked or excluded outright is a decision for a person.
 
 ### The day type, and the thing the survey's own weighting turns out to say
 

@@ -1290,8 +1290,13 @@ survey rather than received as finished desire lines. The decision is D38, which
 supersedes D35 for the variable and part of D36 for the denominator.
 
 **Three of the four years are measured: 2023, 2019 and 2015.** The machinery is
-written for four and 2011 is a declaration; what it still needs is in
-`docs/mobility-surveys-inventory.md`.
+written for four, and **2011 is not a declaration** — that sentence stood here until
+its delivery was inspected. Its two day types live in two Access databases and
+`MobilitySurvey.trips` is a single source, so the fourth year asks for a change to
+the shape rather than an entry in it. What it needs, what was measured of it in
+advance, and the three ways that change could be made are in
+`docs/implementing-2011.md`; what its files contain is in
+`docs/mobility-surveys-inventory.md` §5.
 
 **Adding 2019 changed no measurement.** The reading, the geometry, the
 apportionment, the balance, the checks and the figures are the same code, and
