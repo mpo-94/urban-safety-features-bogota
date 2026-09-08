@@ -23,7 +23,7 @@ and each has a root declared in `config.py`:
 | `CARTOGRAPHY_DIR` | `data/geo/` | The territorial units and the two other divisions |
 | `CASUALTIES_DIR` | `data/data_siniestros_bogota/` | The delivered crash records |
 | `PREDICTORS_DIR` | `data/shp_properties_sorted/` | The urban layers the predictors are measured on |
-| `EXPOSURE_DIR` | `data/shp_properties_sorted/` | The delivered desire lines, now a reference and not the variable |
+| `EXPOSURE_DIR` | `data/shp_properties_sorted/` | The delivered desire lines, retired when 2019 landed and read by nothing |
 | `SURVEYS_DIR` | `data/incoming/encuestas_movilidad/` | The mobility surveys the study's exposure is built from |
 | `POPULATION_DIR` | `data/population/` | The demographic file the denominators come from |
 | `INCOMING_DIR` | `data/incoming/` | Deliveries not yet merged into the sources above |
@@ -31,10 +31,10 @@ and each has a root declared in `config.py`:
 
 **`SURVEYS_DIR` points inside `data/incoming/` and that is not a contradiction.**
 The rule below is that a delivery leaves `incoming/` once it has been inspected
-and declared, and 2023 now is both. It stays where it is because the other three
-years are not, and moving one year of a four-year delivery out of the folder its
-siblings sit in would file the same source two ways. The four move together, once
-2011, 2015 and 2019 are declared and the shape they finally want is known.
+and declared, and 2023 and 2019 now are both. They stay where they are because
+2011 and 2015 are not, and moving half of a four-year delivery out of the folder
+its siblings sit in would file the same source two ways. The four move together,
+once all of them are declared and the shape they finally want is known.
 
 **`PREDICTORS_DIR` and `EXPOSURE_DIR` point at the same folder today, and they are
 still two roots.** The desire lines were delivered inside the bundle of predictor
@@ -43,6 +43,11 @@ a predictor, it sits on the other side of a rate model, and a path that reached 
 through the predictor root said the opposite of what the rest of the pipeline is
 careful to say. Separating the declaration means the day the files move it is one
 line of configuration. See D35 and D37.
+
+`EXPOSURE_DIR` now reaches nothing the pipeline reads, because the one layer ever
+declared under it was retired when the 2019 survey replaced it. The root stays for
+the same reason it was separated in the first place: the day another exposure layer
+arrives, it must not have to come in through the predictor root.
 
 **`data/integrated/` is the one place under `data/` that is not raw.** The
 `integrate` route writes it and every other route reads it as an input, which is
@@ -68,7 +73,7 @@ data/
 ├── incoming/
 │   ├── afectados_2024.csv                the updated 2024 extract, already integrated
 │   └── encuestas_movilidad/              the four mobility survey publications, 2026-09-05,
-│       └── <year>/                       inspected for shape only; 1.8 GB, 546 files
+│       └── <year>/                       1.8 GB, 546 files; 2023 and 2019 declared and read
 ├── integrated/                           written by `integrate`, read by everything else
 │   ├── fatalities__2024_updated_extract.parquet
 │   └── injuries__2024_updated_extract.parquet
@@ -111,7 +116,7 @@ Thirteen variables are measured over eleven layers. The declaration in
 | `points/camaras_salvavidas_bogota` | point | speed camera density |
 | `points/estacion_localidad` | point | TransMilenio station density |
 | `points/arbolado_urbano` | point | the three tree variables |
-| `lines/Líneas de deseo Matriz Origen Destino` | line | **exposure**, not a predictor |
+| `lines/Líneas de deseo Matriz Origen Destino` | line | **nothing, since 2019 landed** — the retired exposure layer |
 
 ### Delivered and not read
 
@@ -181,11 +186,13 @@ carry `zat_origen` and `zat_destin` — so the geometry is built rather than
 declared. That stage now exists: `src/surveys.py` reads a declared survey and
 `src/exposure.py` builds the lines and apportions them. See D38.
 
-**Three files of 2023 are read and nothing else in the four folders is.**
+**Five files are read across the four folders and nothing else is.**
 `config.SURVEY_2023` names the trip module, the household module — which is where
-the day type comes from, and only there — and the ZAT zoning. Everything else in
-the 2023 publication, and all of 2011, 2015 and 2019, is delivered and not yet
-declared.
+its day type comes from, and only there — and the ZAT zoning. `config.SURVEY_2019`
+names its trip module and its ZAT zoning, and needs nothing else: its day type is
+the same for every record and its duration is derived from two columns of the trip
+file. Everything else in the two publications, and all of 2011 and 2015, is
+delivered and not yet declared.
 
 What each year holds for that purpose, out of everything published:
 
@@ -193,7 +200,7 @@ What each year holds for that purpose, out of everything published:
 |---|---|---|
 | 2011 | `120927_ConsultaEODH2011_DiaTipico (1).accdb`, table `Mod_D_VIAJES2_BaseImputacion_Definitiva` | **none delivered** |
 | 2015 | `Base de Datos Completa/VIAJES_ANONIMIZADOS.csv`, 35 MB | `ZATs_2012_MAG.shp`, 948 zones |
-| 2019 | `BD EODH2019 FINAL v14022020/Archivos CSV/ViajesEODH2019.csv`, 23 MB | `ZONAS/`, `ZAT.shp` 1,141 and `UTAM.shp` 141 |
+| 2019 | `BD EODH2019 FINAL v14022020/Archivos CSV/ViajesEODH2019.csv`, 23 MB **— declared** | `Zonificación (shapefiles)/ZONAS/ZONAS/ZAT.shp` 1,141 **— declared**; `UTAM.shp` 141 |
 | 2023 | `05_Base datos procesada/CSV/d. Modulo viajes.csv`, 59 MB **— declared** | `ZAT2023.shp` 1,215 **— declared**; `UTAM2023.shp` 142 |
 
 2023 also reads `05_Base datos procesada/CSV/a. Modulo hogares.csv`, which the
@@ -201,7 +208,32 @@ table above does not list because it holds no trips. It is where the interview
 date and the household expansion factor are, and therefore where the day type of
 every trip comes from. A year's day-type source belongs in its declaration
 alongside its trips, and this is the note that says why a second file appears
-there.
+there. **2019 needs no such second file**, because it surveyed one kind of day and
+every record carries it.
+
+**The 2019 zoning folder is nested twice and that is how it was delivered.** The
+path really is `Zonificación (shapefiles)/ZONAS/ZONAS/ZAT.shp`, with `ZONAS`
+repeated, beside a `ZONAS.zip` holding the same thing. The folder name carries an
+accented character, which matters on this platform: a shell that normalises it
+differently will not find the directory, and the configuration builds the path
+from `Path` components rather than from a string for that reason.
+
+**Four files of the 2019 delivery were read for verification and are read by
+nothing.** `Anexos/Anexo D - Valores absolutos de indicadores/03_Anexo D_Movilidad.xlsx`
+holds the published per-mode and per-UTAM totals the reconstruction is checked
+against, `01_Anexo D_Muestra.xlsx` and `02_Anexo D_Socioeconomicos.xlsx` the
+sample and household universes, and `Formularios/190220_Módulo D_DPR (viajes).pdf`
+is the questionnaire that settles which day the trips belong to. They are named
+here because the figures they establish are quoted in `docs/design-decisions.md`
+and in section 15 of the verification report, and a quoted figure whose source is
+not written down cannot be checked later.
+
+**`Aux_DuraciónEODH2019.csv` is deliberately not read.** It holds the survey's own
+computed trip duration and it was used once, to verify that the pipeline's
+derivation from the two clock columns reproduces it — which it does on 134,496 of
+134,497 records. Reading it in the pipeline would be a second reader for a
+quantity the trip file already carries, and it has a defect of its own: one trip
+from 9:00 to 12:00 recorded as 81 minutes rather than 180.
 
 Each year also has a Saturday or non-weekday counterpart, encoded a different way
 in every one of them; `docs/mobility-surveys-inventory.md` has the detail.
@@ -234,16 +266,21 @@ that is to be read; the others are duplicates and must not be read instead.
 Where the files will finally live follows from all of that. Until then
 `EXPOSURE_DIR` still points into the predictor bundle.
 
-**The delivered desire-lines layer is quoted in finished work** — D35, section 13
-of the verification report, and `deliverables/plan.md` all carry figures measured
-on it. It must not be overwritten or removed; the superseded delivery has to
-remain reachable or those figures stop being reproducible.
+**The delivered desire-lines layer is no longer read, and its file must stay
+where it is.** D35, section 13 of the verification report and
+`deliverables/plan.md` all carry figures measured on it, so the delivery has to
+remain reachable or those figures stop being reproducible — but the layer left
+`config.EXPOSURE_LAYERS` when 2019 was implemented and no run touches it any more.
 
-It is still read on every `exposure` run for exactly that reason, and its table
-is now written as `reference__delivered_desire_lines_by_unit.csv` rather than as
-the analysis table. It also turned out to be worth keeping for a second reason:
-it is a 9.6 % sample of the **2019** survey, which is how its year was finally
-established. See D38.
+It was validated before it went, which is why it was kept this long: it is a 9.6 %
+sample of the **2019** survey, and all 160 of its origin-destination pairs appear
+among the pairs the pipeline builds from that survey, with none over-attributed.
+`config.BICYCLE_DESIRE_LINES` still names the file so a quoted figure can be
+recomputed by hand. See D38 and D35.
+
+Because of that, `EXPOSURE_DIR` currently points at a folder nothing reads. It
+stays declared: exposure is not a predictor, and the day another exposure layer
+arrives it should not have to reach it through the predictor root.
 
 **Eight `.DS_Store` files** are scattered through the delivered folders. They are
 Finder artefacts from the machine the data was prepared on, they are read by

@@ -1852,7 +1852,21 @@ TRIPS_WEEKLY_PER_PERSON_SUFFIX = "TRIPS_PER_WEEK_PER_INHABITANT_{population_year
 # Every exposure layer the pipeline measures. Adding one means adding it here and
 # nothing else: the columns, the dictionary, the figures and the checks all
 # follow from the declaration. See docs/adding-an-exposure-layer.md.
-EXPOSURE_LAYERS: tuple[SurveyLineLayer, ...] = (BICYCLE_DESIRE_LINES,)
+#
+# **Empty, and that is the finished state and not a gap.** The one layer ever
+# declared here was BICYCLE_DESIRE_LINES, and it was retired when 2019 landed:
+# it is a 9.6% sample of that survey, bicycle only, and the study now builds
+# those lines from the survey itself for four years and four modes. Its
+# declaration stays above because D35, section 13 of the verification report and
+# deliverables/plan.md all quote figures measured on it, and a declaration that
+# names the file is what lets those figures be recomputed by hand.
+#
+# It was not removed on trust. Before it went, all 160 of its origin-destination
+# pairs were found among the pairs the pipeline builds from the 2019 survey, with
+# no pair attributed more trips than the survey holds for it — two independent
+# readings of one source agreeing, which is the strongest confirmation the survey
+# reader could get. See D38.
+EXPOSURE_LAYERS: tuple[SurveyLineLayer, ...] = ()
 
 
 def exposure_columns(layers: tuple[SurveyLineLayer, ...] | None = None) -> tuple[str, ...]:
@@ -2193,6 +2207,49 @@ class DayTypeFromHouseholdDate:
     day_first: bool = True
 
 
+@dataclass(frozen=True)
+class DayTypeIsAlwaysOne:
+    """The survey measured one kind of day, so every record carries that one.
+
+    This is a rule and not the absence of one. A year that surveyed a single kind
+    of day has to say so, because the alternative — leaving the day type
+    unstated — is indistinguishable in the table from a year whose day types were
+    never resolved, and the two mean opposite things.
+
+    2019 is the year it was written for, and five independent statements in its
+    own delivery agree. The questionnaire's trip module is addressed "para las
+    personas del hogar con 5 años o más que se desplazaron el día anterior" and
+    reads "los desplazamientos que realizó el día de ayer, desde las 4 a.m. de
+    ayer a las 4 a.m. de hoy". The cartilla's glossary defines a *viajero* as a
+    person reporting at least one trip on that previous day. The report states
+    the total as "en un día típico, se realizan 18,996,286 viajes". The published
+    origin-destination matrices — the very artefact this pipeline rebuilds — come
+    only "en un día típico", with peak and off-peak hours as the sole further
+    breakdown and no Saturday or Sunday matrix anywhere. And the chapter
+    comparing 2019 against 2011 and 2015 lists every difference between the three
+    surveys without mentioning the reference day, because there is none.
+
+    The data agree with the documents: travel participation runs 79.1% to 80.6%
+    and trips per person 1.967 to 2.061 across all seven days the fieldwork ran,
+    and the trip motives are flat too — around 10% of trips are for study on
+    every one of them, which no real Sunday looks like.
+
+    The day-of-week flags `p32_lunes`..`p32_domingo` are not an alternative. The
+    questionnaire asks them as "¿Qué días de la semana realiza este viaje?", so
+    they are declared recurrence and not an observed day: a trip reported on a
+    Wednesday and flagged for Saturdays is not a Saturday anybody lived through,
+    and building a Saturday out of them would silently omit every trip made only
+    at weekends, since such a trip was never reported at all.
+    """
+
+    day_type: str = WEEKDAY_TYPE
+    # What in the year's own documents says so, quoted in the log on every run.
+    # Required, because "the survey only covers one day" is a claim about
+    # somebody else's fieldwork and it should never rest on an undocumented
+    # belief.
+    stated_by: str = ""
+
+
 # What a year's expansion factor expands one surveyed trip to. This is the field
 # that must never be inherited from another year, and it is declared rather than
 # derived because getting it wrong is invisible: every figure stays plausible and
@@ -2216,6 +2273,70 @@ WEIGHT_EXPANSIONS: tuple[str, ...] = (
     WEIGHT_EXPANDS_TO_AVERAGE_DAY,
     WEIGHT_EXPANDS_TO_DAY_OF_TYPE,
 )
+
+# -- how long a trip took ----------------------------------------------------
+# The duration is what makes an origin-destination pair checkable, and no two
+# surveys state it the same way. Declared as a rule object and dispatched through
+# a registry in `surveys.py`, for the same reason the day type is: a year adds a
+# small rule beside the others rather than a second way of reading a file, and a
+# declared rule with no handler fails with a message naming itself.
+@dataclass(frozen=True)
+class DurationFromMinutesColumn:
+    """The trip duration is one column, already in minutes.
+
+    2023's `duracion_min`, and the simplest case there is. It was still verified
+    against something outside itself before it was trusted: it runs 3 to 14
+    minutes on the under-fifteen walking category and 15 to 439 on the
+    over-fifteen one, which is a column derived independently of it.
+    """
+
+    column: str
+
+
+@dataclass(frozen=True)
+class DurationFromClockColumns:
+    """The trip duration is the gap between two clock columns.
+
+    2019 reports no duration at all. It reports a departure and an arrival, and
+    it stores them the way a spreadsheet does — `hora_inicio_viaje` holds
+    0.333333333333333 for eight in the morning — so every datetime parser refuses
+    them and returns nothing. A duration read from either column alone is empty
+    rather than wrong, which is the good failure; the bad one is searching the
+    column list for a duration and matching `p34_aplicacion_durante_viaje`,
+    because "durante" contains "dura". That column is about a mobile app, it
+    parses, it summarises, and every number out of it is meaningless.
+
+    The derivation was checked against two things outside itself. The delivery
+    publishes `Aux_DuraciónEODH2019.csv`, and this rule reproduces its `duracion`
+    on 134,496 of its 134,497 rows — the exception being a trip from 9:00 to
+    12:00 that the auxiliary file records as 81 minutes instead of 180, so the
+    disagreement is a defect in that file rather than in this. And walking of
+    fifteen minutes or more comes out at 3,956,916.53 trips a day against the
+    3,952,811.54 the survey publishes in indicator IND_104, a tenth of a per cent
+    apart.
+
+    This is a rule rather than a column name because the years genuinely differ:
+    2023 gives minutes, 2019 gives two fractions of a day, and 2015 gives
+    `HORA_INICIO` and `HORA_FIN` as `HH:MM:SS` text. Three surveys, three ways of
+    saying one quantity — the same shape the day type already has, and the reason
+    it is dispatched through a registry instead of being widened into a field
+    with three optional halves.
+    """
+
+    start_column: str
+    end_column: str
+    # How a clock time is stored. A fraction of a day in 2019; the constant is
+    # what the reader multiplies by to reach minutes.
+    minutes_per_unit: float = 1440.0
+    # A trip that arrives at a smaller clock value than it left crossed midnight,
+    # and the day wraps. 189 of 2019's records do. Declared because a year whose
+    # times carry the date would not want it.
+    wrap_at_midnight: bool = True
+    # Round the result to the minute. The survey's own auxiliary file holds whole
+    # minutes, and without this a 15-minute trip stored as two fractions comes out
+    # at 14.999999999 and falls on the wrong side of every threshold.
+    round_to_minute: bool = True
+
 
 # -- records the geometry contradicts ---------------------------------------
 # The fastest each mode is allowed to have travelled, straight line, before the
@@ -2288,14 +2409,14 @@ class MobilitySurvey:
     origin_zone_column: str
     destination_zone_column: str
     mode_column: str
-    # How long the trip took, in minutes. It is what makes an origin-destination
-    # pair checkable: without it there is no way to say a pair is too far apart
-    # for the mode, and the run says so rather than passing a check it could not
-    # make. Declared per year because not every survey reports it, and the one
-    # that does had to be verified against something else before it was trusted —
-    # 2023's agrees with its own fifteen-minute walking split, 3 to 14 minutes on
-    # one side and 15 to 439 on the other.
-    duration_minutes_column: str | None
+    # How the year states how long a trip took, as a rule rather than a column
+    # name, because three of the four surveys state it three different ways:
+    # 2023 gives minutes outright, 2019 gives a departure and an arrival stored
+    # as fractions of a day, 2015 gives them as `HH:MM:SS` text. It is what makes
+    # an origin-destination pair checkable — without it there is no way to say a
+    # pair is too far apart for the mode, and the run says so rather than passing
+    # a check it could not make. None means the year reports no duration at all.
+    duration_rule: DurationFromMinutesColumn | DurationFromClockColumns | None
     # Every value of the mode column that becomes one of the study's four actor
     # types. Two source labels may map to the same type: 2023 splits walking at
     # fifteen minutes and both halves are walking.
@@ -2308,8 +2429,18 @@ class MobilitySurvey:
     # survey counts the passengers of a system, and those are not the same
     # denominator.
     modes_not_measured: tuple[str, ...]
-    day_type_rule: DayTypeFromHouseholdDate
+    day_type_rule: DayTypeFromHouseholdDate | DayTypeIsAlwaysOne
     measures: str  # one line: what the variable is, for the log and the dictionary
+    # Zone codes that name no place, whether because the delivery uses them as a
+    # sentinel for a missing answer or because they are a capture error. Records
+    # carrying one are counted in the balance beside the records with no zone at
+    # all, which is where they belong: they cannot be put on the map either.
+    #
+    # Declared per year and per code, with the reason written at the declaration,
+    # because this is the one list that can quietly swallow a real zone. A code
+    # in neither the zoning nor this list still stops the run, which is what keeps
+    # it a declaration rather than a catch-all.
+    zone_codes_meaning_no_zone: tuple[str, ...] = ()
     # What one unit of `weight_column` expands a surveyed trip to. Declared per
     # year and never inherited: two of the four surveys have not had this
     # established yet, and a year read under the wrong one produces figures that
@@ -2356,11 +2487,11 @@ SURVEY_2023 = MobilitySurvey(
     origin_zone_column="zat_ori",
     destination_zone_column="zat_des",
     mode_column="modo_principal_agrupado",
-    duration_minutes_column="duracion_min",
+    duration_rule=DurationFromMinutesColumn(column="duracion_min"),
     mode_map={
         # 2023 is the only year that splits walking, and both halves are walking.
         # Excluding the short ones would leave 4.04 M trips a day against 2019's
-        # 6.94 M, and 48.3% of 2019's walking lasts under fifteen minutes — the
+        # 6.94 M, and 43.0% of 2019's walking lasts under fifteen minutes — the
         # gap would be the category and not the city. See D38.
         "A PIE > 15 MIN": PEDESTRIAN,
         "A PIE <15 MIN": PEDESTRIAN,
@@ -2403,8 +2534,119 @@ SURVEY_2023 = MobilitySurvey(
     published_total_source="EODH 2023, sum of fexp_vj over d. Modulo viajes.csv",
 )
 
+# The 2019 delivery. It publishes its records twice, as CSV and as XLSX; the CSV
+# is what is read and the XLSX copy must not be read instead.
+_EODH_2019 = SURVEYS_DIR / "2019" / "Encuesta de Movilidad 2019"
+
+SURVEY_2019 = MobilitySurvey(
+    year=2019,
+    label="Mobility survey 2019",
+    label_es="Encuesta de movilidad 2019",
+    trips=DelimitedTable(
+        path=_EODH_2019 / "BD EODH2019 FINAL v14022020" / "Archivos CSV" / "ViajesEODH2019.csv",
+        # utf-8 where 2023 is cp1252, and the decimal separator is the point where
+        # 2023's is the comma. Neither is visible from the column names and both
+        # were checked: the file decodes as utf-8 and fails as cp1252 on byte 0x8d,
+        # and f_exp arrives as 54.2865603523867.
+        encoding="utf-8",
+        decimal=".",
+    ),
+    zoning=SurveyZoning(
+        shapefile=_EODH_2019 / "Zonificación (shapefiles)" / "ZONAS" / "ZONAS" / "ZAT.shp",
+        code_column="ZAT",
+    ),
+    weight_column="f_exp",
+    origin_zone_column="zat_origen",
+    destination_zone_column="zat_destino",
+    mode_column="modo_principal",
+    # 2019 reports no duration. It reports a departure and an arrival as fractions
+    # of a day, and the rule that turns them into minutes reproduces the survey's
+    # own Aux_DuraciónEODH2019.csv on every record but one. See the rule.
+    duration_rule=DurationFromClockColumns(
+        start_column="hora_inicio_viaje",
+        end_column="p31_hora_llegada",
+    ),
+    mode_map={
+        # 2019 does not split walking, so this is every walking trip whatever its
+        # length — which is the definition all four years can measure. Its own
+        # under-fifteen-minute half is 2,984,881 trips a day, 43.0% of the mode,
+        # against the 43.1% the survey's indicator IND_104 implies.
+        "A pie": PEDESTRIAN,
+        "Bicicleta": BICYCLE,
+        # The pedal-powered taxi, 163 records and 29,379.85 trips a day, 2.5% of
+        # the year's cycling. It is here because the numerator already puts it
+        # here: the crash source maps BICITAXI to BICYCLE, so a rider hurt on one
+        # is counted as a cyclist, and leaving it out of the denominator would
+        # count those casualties against an exposure that excludes them. 2023 has
+        # no bicitaxi label at all, so the category is not identical across the
+        # two years and the verification report carries its weight separately, to
+        # let the effect of this be quantified without re-running the year.
+        "Bicitaxi": BICYCLE,
+        "Moto": MOTORCYCLE,
+        "Auto": CAR,
+    },
+    modes_not_measured=(
+        # Public transport, split five ways by this survey where 2023 groups it.
+        # Not a fifth mode, for the reason in D38.
+        "TransMilenio",
+        "SITP Zonal",
+        "SITP Provisional",
+        "Alimentador",
+        "Cable",
+        "Intermunicipal",
+        "Transporte publico individual",
+        "Transporte informal",
+        "Transporte Escolar",
+        # The scooter, 108 records and 13,503 trips a day. Outside the four modes
+        # and it has no counterpart in the casualty source either, which carries
+        # no scooter category to be hurt on.
+        "Patineta",
+        "Otro",
+    ),
+    # 2019 surveyed one kind of day and its own delivery says so five times over.
+    day_type_rule=DayTypeIsAlwaysOne(
+        day_type=WEEKDAY_TYPE,
+        stated_by=(
+            "EODH 2019: the trip module asks about \"el día de ayer\" from 4 a.m. to 4 a.m.; "
+            "the report states \"en un día típico, se realizan 18,996,286 viajes\"; and the "
+            "published origin-destination matrices come only \"en un día típico\", with no "
+            "Saturday or Sunday matrix anywhere in the publication"
+        ),
+    ),
+    measures="trips per day apportioned to the unit by the share of the desire line's length "
+             "inside it, with the intra-zonal trips apportioned by area share",
+    # A 0 in zat_origen or zat_destino on records that carry no municipality and
+    # no UTAM either, so it is this delivery's way of writing "not answered" and
+    # not a zone the shapefile is missing: 367 records of the measured modes.
+    #
+    # 1917 is a single record and a different thing — a code above the zoning's
+    # own range, which runs 1 to 1908, on a record whose municipality and UTAM are
+    # both empty. It is a capture error, it is declared here rather than left to
+    # stop the run over 180.6 trips a day, and it is named so that a reader can
+    # see it was decided and not overlooked.
+    zone_codes_meaning_no_zone=("0", "1917"),
+    # Established from the file against the survey's own published universe, and
+    # it is not 2023's answer. The household factors sum to 2,995,531.78 against
+    # the 2,995,531.78 households indicator IND_5 publishes for the study area —
+    # a ratio of 1.000000. The whole sample represents the universe once, over a
+    # single kind of day, so one factor already expands a trip to one day of that
+    # kind and nothing needs rescaling. 2023's summed to 3,623,413 against
+    # 3,667,331 spread over seven reference days, which is why it needs it.
+    weight_expands_to=WEIGHT_EXPANDS_TO_DAY_OF_TYPE,
+    # Published by the Secretaría, not summed by us. Indicator IND_102 of the
+    # delivery's Anexo D gives the trips of a typical day by mode to the decimal —
+    # A Pie 6,941,797.7696855096, Auto 2,291,876.6158069298, Bicicleta
+    # 1,177,867.7319962301, Moto 915,313.85802032996 — and the report states the
+    # total in words at paragraph 4.5.
+    published_total=18_996_285.5520,
+    published_total_source=(
+        "EODH 2019, Anexo D indicator IND_102, sum over the sixteen modes; stated as "
+        "18,996,286 trips \"en un día típico\" at paragraph 4.5 of the Etapa V report"
+    ),
+)
+
 # Every survey the pipeline measures. A year is added here and nowhere else.
-MOBILITY_SURVEYS: tuple[MobilitySurvey, ...] = (SURVEY_2023,)
+MOBILITY_SURVEYS: tuple[MobilitySurvey, ...] = (SURVEY_2019, SURVEY_2023)
 
 # -- how a zone reaches a unit ----------------------------------------------
 # The survey's zoning and the study's cartography are different files drawing the

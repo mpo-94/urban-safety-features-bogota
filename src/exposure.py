@@ -2173,8 +2173,11 @@ def report_from_surveys(
             )
 
         # Said on every run, because the number invites a reading it cannot carry.
-        # The survey's own weighting makes a Saturday look like a weekday, and a
-        # reader comparing the two day types has to know that before doing it.
+        # Only for a year whose factor spreads the universe over several reference
+        # days: there the two trip columns differ, the rescaled one makes a
+        # Saturday look like a weekday, and a reader comparing the day types has
+        # to know that before doing it. A year that surveyed one kind of day has
+        # nothing to rescale and saying this of it would be false.
         shares = allocation.trips.universe_shares
         rates = {
             day_type: float(
@@ -2184,17 +2187,28 @@ def report_from_surveys(
             )
             for day_type in shares.index
         }
-        log.warn(
-            "%d: rescaled to the universe the day types come out at %s trips per day. The "
-            "expansion factor represents the universe once over all seven reference days, so "
-            "%s counts a day type's share of an average day and %s counts one day of that "
-            "type; only the second is comparable between day types, and it says a Saturday "
-            "carries as much travel as a weekday. See D38",
-            survey.year,
-            "; ".join(f"{day_type} {value:,.0f}" for day_type, value in rates.items()),
-            config.TRIPS_PER_AVERAGE_DAY_COL,
-            config.TRIPS_PER_DAY_OF_TYPE_COL,
-        )
+        if survey.weight_expands_to == config.WEIGHT_EXPANDS_TO_AVERAGE_DAY:
+            log.warn(
+                "%d: rescaled to the universe the day types come out at %s trips per day. The "
+                "expansion factor represents the universe once over all the reference days "
+                "together, so %s counts a day type's share of an average day and %s counts one "
+                "day of that type; only the second is comparable between day types, and it says "
+                "a Saturday carries as much travel as a weekday. See D38",
+                survey.year,
+                "; ".join(f"{day_type} {value:,.0f}" for day_type, value in rates.items()),
+                config.TRIPS_PER_AVERAGE_DAY_COL,
+                config.TRIPS_PER_DAY_OF_TYPE_COL,
+            )
+        else:
+            log.info(
+                "%d: %s over one kind of day, %s, so %s and %s hold the same number and no "
+                "rescaling happened. The year carries no second day type to compare it against",
+                survey.year,
+                survey.weight_expands_to,
+                "; ".join(f"{day_type} {value:,.0f}" for day_type, value in rates.items()),
+                config.TRIPS_PER_AVERAGE_DAY_COL,
+                config.TRIPS_PER_DAY_OF_TYPE_COL,
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -2358,8 +2372,10 @@ def compare_years(
                 log.warn(
                     "%s orders the units at Spearman %.3f between %d and %d, below the %.2f "
                     "floor. The geography of a mode does not reinvent itself between two "
-                    "surveys, so suspect the zoning or the zone codes of %d. It is the same "
-                    "measurement that showed the delivered layer was not what it claimed. See D38",
+                    "surveys, so suspect the zoning or the zone codes of either year before "
+                    "reading it as a change in the city — the one already verified is the less "
+                    "likely of the two, not the innocent one. It is the same measurement that "
+                    "showed the delivered layer was not what it claimed. See D38",
                     actor, agreement, earlier, later,
-                    config.EXPOSURE_YEAR_RANK_AGREEMENT_FLOOR, later,
+                    config.EXPOSURE_YEAR_RANK_AGREEMENT_FLOOR,
                 )

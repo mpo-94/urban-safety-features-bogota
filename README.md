@@ -130,30 +130,38 @@ between the two zone centroids of every pair. Each unit a line crosses gets the
 share of that line's trips matching the share of its length inside the unit — a
 line crosses several units, so the rule is not optional. A trip that begins and
 ends in the same zone has no line at all and is spread over the units covering
-that zone by area instead; those are 18% of the travel measured and dropping them
-would take a quarter of the walking out of the study.
+that zone by area instead; those are 20% of the travel measured in 2023 and 22%
+in 2019, and dropping them would take a third of the walking out of the study.
 
 The table is long: one row per unit, year, actor type and kind of day. It joins
 the casualty matrix on unit, year and actor type, and it has to be interpolated
 over the years no survey covers, and both are natural in that shape. The mode is
 therefore a column value and not part of a column name.
 
-Adding a survey year is one `MobilitySurvey` in `src/config.py`. The one thing a
-year may also need is a rule for how it says which kind of day a trip was made
-on, because no two of the four surveys say it the same way — each was
-commissioned by a different city administration and catalogues its data its own
-way, so nothing about a year's files can be inherited from the year before while
-everything downstream of them has to come out identical.
+Adding a survey year is one `MobilitySurvey` in `src/config.py`. Two things a
+year may also need are rules — for how it says which kind of day a trip was made
+on, and for how it states the trip duration — because no two of the four surveys
+say either the same way. Each was commissioned by a different city administration
+and catalogues its data its own way, so nothing about a year's files can be
+inherited from the year before while everything downstream of them has to come
+out identical. **2023 and 2019 are built**; adding the second changed no
+measurement and left the first's figures identical to the last decimal.
 `docs/adding-a-survey-year.md` is the procedure, and §6b of
 `docs/mobility-surveys-inventory.md` is the contract it has to satisfy.
+
+A year need not have a kind of day at all. 2019 surveyed one typical working day
+and nothing else, which its questionnaire, its glossary, its report and its
+published matrices all say, so its Saturday and Sunday rows are **absent** from
+the table rather than zero.
 
 Records the geometry contradicts are dropped and counted. A record whose two
 zones are further apart than its mode could have covered in the duration it
 reports could not have happened however the trip ran, and the line drawn from it
-is a line nobody travelled; in 2023 that is a seventh of the walking. Each year
-declares its own duration column and the ceiling speeds are one table in the
-configuration, so a year that reports no duration is not silently assumed clean —
-the run says it was not checked.
+is a line nobody travelled; that is a seventh of the walking in 2023 and a fifth
+in 2019, and under 1.2% of every motorised mode in both. Each year declares how
+it states its duration and the ceiling speeds are one table in the configuration,
+so a year that reports no duration is not silently assumed clean — the run says
+it was not checked.
 
 The route checks, every run, that every trip the file weights is either measured
 or named as deliberately set aside, and that what was apportioned to the units
@@ -167,22 +175,27 @@ them there. The second exists because this route draws its own input, so there i
 no other way to see what was built — and it is what turned up the impossible
 records above, by showing walking trips that crossed the whole city.
 
-Two trip columns come out, not one, and the difference matters. The survey's
-expansion factor represents the population once over all seven reference days, so
-summing it within one kind of day gives that day's share of an average day and
-not the trips of one such day. `TRIPS_PER_AVERAGE_DAY` is the first,
-`TRIPS_PER_DAY_OF_TYPE` the second, and `DAY_TYPE_UNIVERSE_SHARE` converts
-between them in the table itself. Three alternative allocations are exported
+Two trip columns come out, not one, and the difference matters where a year has
+more than one kind of day. 2023's expansion factor represents the population once
+over all seven reference days, so summing it within one kind of day gives that
+day's share of an average day and not the trips of one such day.
+`TRIPS_PER_AVERAGE_DAY` is the first, `TRIPS_PER_DAY_OF_TYPE` the second, and
+`DAY_TYPE_UNIVERSE_SHARE` converts between them in the table itself. 2019's
+factor already expands to its one day, so for that year the two columns coincide
+and the share is one — which is why each year declares this and none inherits it. Three alternative allocations are exported
 beside the variable and none is a model variable: they exist so the sensitivity
 of a result to the allocation rule can be shown rather than asserted.
 
-The route also still measures the delivered desire-lines layer the pipeline read
-before the surveys arrived, and writes it as a reference table. It is kept
-because finished figures were measured on it, and because it turned out to be a
-9.6% sample of the 2019 survey that orders the thirty units quite differently
-from the full survey — which is the reason it is no longer the variable.
-`docs/adding-an-exposure-layer.md` is the procedure for a delivered layer of that
-kind, starting with what to verify in the file before declaring anything.
+The delivered desire-lines layer the pipeline read before the surveys arrived is
+**retired**. It turned out to be a 9.6% sample of the 2019 survey, and once that
+year was built there was no reason to keep measuring a tenth of something the
+pipeline reads in full. It was checked against the survey first, which is the
+strongest confirmation this stage has: all 160 of its origin-destination pairs
+appear among the pairs built from the survey, with none attributed more trips
+than the survey holds — two independent readings of one source agreeing exactly.
+The route measures a delivered layer only when one is declared, and none is.
+`docs/adding-an-exposure-layer.md` is the procedure for a layer of that kind,
+starting with what to verify in the file before declaring anything.
 
 `population` builds the denominator. Casualty counts become rates only when
 divided by the people who were there to be hurt, and that number is a panel:

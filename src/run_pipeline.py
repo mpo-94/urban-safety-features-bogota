@@ -13,7 +13,7 @@ resolution should not have to rebuild fifty-seven figures first.
     python -m src.run_pipeline rho             # the rho(t) diagnostic
     python -m src.run_pipeline predictors      # the static urban predictors
     python -m src.run_pipeline population      # the denominator, per unit and per year
-    python -m src.run_pipeline exposure        # travel exposure from the desire lines
+    python -m src.run_pipeline exposure        # travel exposure from the mobility surveys
     python -m src.run_pipeline completeness    # do the sources cover every month?
     python -m src.run_pipeline integrate       # rebuild the layers from the updated extract
     python -m src.run_pipeline loading --dump-intermediates
@@ -198,11 +198,11 @@ def run_exposure(log: RunLog) -> None:
     separation exists to prevent. Like that route it reads the unit layer and its
     own sources and nothing else.
 
-    Both measurements run and both are checked, in that order. The surveys
-    produce the study's exposure; the delivered layer produces the reference
-    table the finished figures were measured on. Running the second is not
-    optional maintenance — it is what keeps a quoted figure reproducible after
-    the variable underneath it changed.
+    The surveys produce the study's exposure. A declared delivered layer, if
+    there is one, is measured beside them and checked the same way; there is none
+    now that the 2019 survey has retired the single layer this ever read, and the
+    route runs the second half only when one is declared rather than carrying a
+    call that measures nothing.
     """
     units = loading.load_territorial_units(log)
 
@@ -210,14 +210,17 @@ def run_exposure(log: RunLog) -> None:
     paths = exposure.export_from_surveys(table, log)
     exposure.render_survey_figures(table, units, apportionments, log)
 
-    delivered, allocations, lines_by_layer = exposure.build(units, log)
-    paths.update(exposure.export(delivered, log))
-    exposure.render_figures(delivered, units, log)
+    delivered_ok = True
+    if config.EXPOSURE_LAYERS:
+        delivered, allocations, lines_by_layer = exposure.build(units, log)
+        paths.update(exposure.export(delivered, log))
+        exposure.render_figures(delivered, units, log)
 
     log.table("record funnel:", log.funnel())
 
     survey_ok = exposure.verify_from_surveys(table, apportionments, units, log, paths=paths)
-    delivered_ok = exposure.verify(delivered, allocations, lines_by_layer, units, log)
+    if config.EXPOSURE_LAYERS:
+        delivered_ok = exposure.verify(delivered, allocations, lines_by_layer, units, log)
     if not (survey_ok and delivered_ok):
         raise RouteFailed("the exposure tables do not agree with the sources they were built from")
 
@@ -227,7 +230,16 @@ def run_exposure(log: RunLog) -> None:
     # one will be read against; with more, it is what catches a year whose
     # declaration is subtly wrong in a way no check inside that year can see.
     exposure.compare_years(table, apportionments, log)
-    exposure.report(delivered, allocations, log)
+    if config.EXPOSURE_LAYERS:
+        exposure.report(delivered, allocations, log)
+    else:
+        log.info(
+            "no delivered exposure layer is declared. The one that used to be here was a 9.6% "
+            "sample of the 2019 survey and was retired when that year landed, after its 160 "
+            "origin-destination pairs were all found among the pairs built from the survey "
+            "itself. Its figures stay reproducible from section 13 of the verification report "
+            "and from config.BICYCLE_DESIRE_LINES, which still names the file. See D38"
+        )
 
 
 def run_map(log: RunLog) -> None:
@@ -384,7 +396,7 @@ ROUTES: tuple[Route, ...] = (
     Route("loading", "sources only: read them, locate them, verify the counts", run_loading),
     Route("predictors", "the static urban predictors, with histograms and their correlation", run_predictors),
     Route("population", "the resident population of every unit, in every year of the study", run_population),
-    Route("exposure", "travel exposure per unit, from the origin-destination desire lines", run_exposure),
+    Route("exposure", "travel exposure per unit, year, mode and day, from the mobility surveys", run_exposure),
     Route("rho", "rho(t): share of two-party crashes where both parties were hurt", run_rho),
     Route("map", "the reference map of the territorial units, with and without a scale bar", run_map),
     Route("completeness", "month-by-month coverage of the casualty layers", run_completeness),

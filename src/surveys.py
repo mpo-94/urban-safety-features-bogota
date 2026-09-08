@@ -253,12 +253,58 @@ def _day_type_from_household_date(
     return assigned, shares
 
 
+def _day_type_is_always_one(
+    rule: config.DayTypeIsAlwaysOne,
+    trips: pd.DataFrame,
+    survey: config.MobilitySurvey,
+    log: RunLog,
+) -> tuple[pd.Series, pd.Series]:
+    """One kind of day for the whole survey, and a universe share of one.
+
+    A year that surveyed a single kind of day has nothing to split and nothing to
+    convert: its factor already expands to one day of that kind, so the two trip
+    columns coincide and the run says so rather than dividing by a share of one
+    and implying a conversion happened.
+
+    The claim is quoted on every run from the year's own documents. "This survey
+    only covers one day" is a statement about somebody else's fieldwork, and the
+    cost of getting it wrong is a Saturday that silently never existed, so it is
+    said out loud where it can be disputed.
+    """
+    if rule.day_type not in config.DAY_TYPES:
+        raise ValueError(
+            f"{survey.label} declares its only day type as {rule.day_type!r}, which is not one "
+            f"of {', '.join(config.DAY_TYPES)}. The exposure table joins on this value and the "
+            "casualty side has to be able to name the same one"
+        )
+
+    assigned = pd.Series(rule.day_type, index=trips.index, dtype="object")
+    shares = pd.Series([1.0], index=pd.Index([rule.day_type], name=config.DAY_TYPE_COL))
+
+    log.info(
+        "%s: every record is %s and the survey distinguishes no other kind of day, so its two "
+        "trip columns coincide. Stated by %s",
+        survey.label,
+        rule.day_type,
+        rule.stated_by or "nothing declared, which is a gap and not a licence",
+    )
+    if not rule.stated_by:
+        log.warn(
+            "%s declares a single day type but names nothing in the delivery that says so. A "
+            "year covering one day is a strong claim about someone else's fieldwork; find the "
+            "statement before any figure drawn from this year is quoted",
+            survey.label,
+        )
+    return assigned, shares
+
+
 # Which handler resolves which declared rule. A registry rather than a chain of
 # isinstance checks, so that the year whose day type arrives as a flag on the
 # record or as a separate database adds an entry here and a declaration in the
 # configuration, and touches nothing else in this module.
 _DAY_TYPE_HANDLERS = {
     config.DayTypeFromHouseholdDate: _day_type_from_household_date,
+    config.DayTypeIsAlwaysOne: _day_type_is_always_one,
 }
 
 
@@ -276,6 +322,91 @@ def assign_day_type(
             f"in surveys._DAY_TYPE_HANDLERS resolves. Every year says which kind of day a trip "
             "was made on differently, so the rule is declared and dispatched; add the handler "
             "beside the others rather than reading the file a second way"
+        )
+    return handler(rule, trips, survey, log)
+
+
+# ---------------------------------------------------------------------------
+# How long a trip took
+# ---------------------------------------------------------------------------
+
+
+def _duration_from_minutes_column(
+    rule: config.DurationFromMinutesColumn,
+    trips: pd.DataFrame,
+    survey: config.MobilitySurvey,
+    log: RunLog,
+) -> pd.Series:
+    """The column, as declared, in the delivery's own decimal notation."""
+    require_columns(trips, (rule.column,), f"{survey.label} durations")
+    return to_number(trips[rule.column], survey.trips.decimal)
+
+
+def _duration_from_clock_columns(
+    rule: config.DurationFromClockColumns,
+    trips: pd.DataFrame,
+    survey: config.MobilitySurvey,
+    log: RunLog,
+) -> pd.Series:
+    """Minutes between a departure and an arrival stored as clock values.
+
+    2019 stores both as fractions of a day, the way a spreadsheet does, so the
+    duration is the gap times the minutes in a day. Two details are not cosmetic.
+    A trip arriving at a smaller clock value than it left crossed midnight and its
+    gap has to wrap; 189 of 2019's records do. And the result is rounded to the
+    minute, because 0.302083333333333 minus 0.291666666666667 is 14.999999999
+    rather than 15, and every threshold in the study would take that trip for a
+    shorter one than the survey does.
+    """
+    require_columns(trips, (rule.start_column, rule.end_column), f"{survey.label} durations")
+    start = to_number(trips[rule.start_column], survey.trips.decimal)
+    end = to_number(trips[rule.end_column], survey.trips.decimal)
+
+    minutes = (end - start) * rule.minutes_per_unit
+    wrapped = 0
+    if rule.wrap_at_midnight:
+        crossing = minutes < 0
+        wrapped = int(crossing.sum())
+        minutes = minutes.where(~crossing, minutes + rule.minutes_per_unit)
+    if rule.round_to_minute:
+        minutes = minutes.round()
+
+    log.info(
+        "%s: duration derived from %s and %s as clock values, %d record(s) crossing midnight; "
+        "median %.0f min",
+        survey.label,
+        rule.start_column,
+        rule.end_column,
+        wrapped,
+        float(minutes.median()),
+    )
+    return minutes
+
+
+# The same registry pattern as the day type, and for the same reason: three of
+# the four surveys state the duration three different ways, so a year adds a rule
+# beside the others rather than a second way of reading a file.
+_DURATION_HANDLERS = {
+    config.DurationFromMinutesColumn: _duration_from_minutes_column,
+    config.DurationFromClockColumns: _duration_from_clock_columns,
+}
+
+
+def trip_duration_minutes(
+    trips: pd.DataFrame,
+    survey: config.MobilitySurvey,
+    log: RunLog,
+) -> pd.Series | None:
+    """Minutes per trip under the year's declared rule, or None if it declares none."""
+    rule = survey.duration_rule
+    if rule is None:
+        return None
+    handler = _DURATION_HANDLERS.get(type(rule))
+    if handler is None:
+        raise NotImplementedError(
+            f"{survey.label} declares its duration as {type(rule).__name__}, which no handler "
+            f"in surveys._DURATION_HANDLERS resolves. Add the handler beside the others rather "
+            "than reading the file a second way"
         )
     return handler(rule, trips, survey, log)
 
@@ -363,19 +494,15 @@ def implausible_records(
     cannot evaluate is worse than one that says how much it could not see.
     """
     verdict = pd.Series(False, index=trips.index)
-    if survey.duration_minutes_column is None:
+    duration = trip_duration_minutes(trips, survey, log)
+    if duration is None:
         log.warn(
-            "%s: no duration column is declared, so no origin-destination pair can be checked "
+            "%s: no duration rule is declared, so no origin-destination pair can be checked "
             "against the mode that made it. A fifth of the 2023 pedestrian trips fail that "
             "check, so this year is not known to be free of the same records — it is unexamined",
             survey.label,
         )
         return verdict
-
-    require_columns(
-        trips, (survey.duration_minutes_column,), f"{survey.label} durations"
-    )
-    duration = to_number(trips[survey.duration_minutes_column], survey.trips.decimal)
 
     # Measured once per distinct pair of zones and joined back, not once per
     # record: the distance between two polygons is a property of the pair, and
@@ -411,11 +538,11 @@ def implausible_records(
     unjudged = int(duration.isna().sum())
     if unjudged:
         log.warn(
-            "%s: %d record(s) carry no %s, so whether the mode could have covered the distance "
-            "cannot be decided; they are kept",
+            "%s: %d record(s) yield no duration under %s, so whether the mode could have "
+            "covered the distance cannot be decided; they are kept",
             survey.label,
             unjudged,
-            survey.duration_minutes_column,
+            type(survey.duration_rule).__name__,
         )
     return verdict
 
@@ -533,15 +660,32 @@ def read(survey: config.MobilitySurvey, log: RunLog) -> SurveyTrips:
         # that would then match nothing at all.
         measured[target] = measured[source_column].astype("string")
 
-    unzoned = measured[ZONE_ORIGIN_COL].isna() | measured[ZONE_DESTINATION_COL].isna()
+    # A zone is missing in two ways and both end the same place. It can be absent,
+    # and it can be a code the delivery uses for "no answer" or wrote in error —
+    # 2019 does both, with a 0 on records that carry no municipality and no UTAM
+    # either, and one record naming a code above the top of its own zoning. A
+    # declared code is counted here rather than left to fail the zone lookup,
+    # because the lookup failing is what should happen to a code nobody decided
+    # about, and these were decided about.
+    absent = measured[ZONE_ORIGIN_COL].isna() | measured[ZONE_DESTINATION_COL].isna()
+    placeless = pd.Series(False, index=measured.index)
+    if survey.zone_codes_meaning_no_zone:
+        named = list(survey.zone_codes_meaning_no_zone)
+        placeless = measured[ZONE_ORIGIN_COL].isin(named) | measured[ZONE_DESTINATION_COL].isin(
+            named
+        )
+    unzoned = absent | placeless
     unzoned_total = float(measured.loc[unzoned, TRIPS_COL].sum())
     if unzoned.any():
         log.warn(
-            "%s: %d record(s) of the measured modes carry no origin or destination zone, "
-            "%s trips per day, and cannot be placed",
+            "%s: %d record(s) of the measured modes cannot be placed, %s trips per day — "
+            "%d with no zone at all and %d naming a code declared to be no place (%s)",
             survey.label,
             int(unzoned.sum()),
             f"{unzoned_total:,.1f}",
+            int(absent.sum()),
+            int((placeless & ~absent).sum()),
+            ", ".join(survey.zone_codes_meaning_no_zone) or "none declared",
         )
         measured = measured[~unzoned]
 

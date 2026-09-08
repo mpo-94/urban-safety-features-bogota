@@ -2445,12 +2445,30 @@ attributed to a unit, and which side of the model the variable sits on.
 questions this decision left open are now **answered, and superseded by D38**:
 the layer is a 9.6% sample of the **2019** survey, not of 2023, and its 181 lines
 were not selected by volume. It is no longer the study's exposure — D38 builds
-that from the surveys — and it stays in the pipeline as the reference the figures
-below were measured on. Read this for the allocation rule, which D38 inherits
-unchanged, and D38 for what the variable now is.
+that from the surveys.
 
-**Built:** Yes. `src/exposure.py`, route `exposure`. Run `run_20260901_003409`;
-the same figures on `run_20260907_231531`, which is how the change was checked.
+**And the layer is now retired.** It left `config.EXPOSURE_LAYERS` when 2019 was
+implemented, so it is no longer read on any run and no longer produces a table or
+a figure. Its declaration stays in `config.BICYCLE_DESIRE_LINES`, naming the file,
+and section 13 of the verification report stays in place, because the figures
+below are quoted in finished work and have to remain recomputable by hand.
+
+**It was validated against the survey before it went, and that check was the
+reason to keep it this long.** All **160 of its origin-destination pairs** appear
+among the pairs the pipeline builds from the 2019 survey, and no pair is
+attributed more trips than the survey holds for it — two independent readings of
+one source, one received as finished geometry and one built from the trip records,
+agreeing exactly. The comparison also showed that **the plausibility test removes
+15 of those 160 pairs**, 7.9% of the layer's trips, so the delivered layer carried
+records this study judges impossible. See D38.
+
+Read this for the allocation rule, which D38 inherits unchanged, and D38 for what
+the variable now is.
+
+**Built:** Yes, and now retired. `src/exposure.py`, route `exposure`. Run
+`run_20260901_003409`; the same figures on `run_20260907_231531`, which is how the
+replacement was checked; last measured there, and absent from
+`run_20260908_005529` onward.
 
 ### What the layer turned out to be
 
@@ -2962,13 +2980,18 @@ predictor bundle until then, which is exactly what having the constant is for.
 what source, at what shape, and it retires the variable every earlier exposure
 figure was measured on.
 
-**Status:** Closed for 2023 and for the machinery the other three years will use.
-**Two things are open** and both are named at the end: which day type the models
-take, and whether the survey's own weighting can support a day-type comparison at
-all.
+**Status:** Closed for 2023 and 2019 and for the machinery the other two years
+will use. **Two things are open** and both are named at the end: which day type
+the models take, and whether a day-type comparison is supportable at all — a
+question 2019 has since made sharper rather than easier.
 
 **Built:** Yes. `src/surveys.py` and the second half of `src/exposure.py`, route
-`exposure`. Run `run_20260907_231531`.
+`exposure`. Run `run_20260908_011605`.
+
+**Amended by 2019**, in four places, each marked below: the day type is not a
+dimension every year carries; the duration is a declared rule and not a column
+name; a zone code can name no place; and the delivered layer is retired, having
+first been used for the strongest check the survey reader could get.
 
 ### What replaced what, and why it had to
 
@@ -3037,9 +3060,12 @@ from pedestrian exposure carries this sentence.
 **The walking trips of under fifteen minutes are in.** 2023 is the only year that
 splits walking, at 4,039,259 trips a day over fifteen minutes and 2,059,528 under
 it. Excluding the short ones would put 2023 at 4.04 M against 2019's 6.94 M, a
-42% collapse that never happened — 48.3% of 2019's walking, 3,351,414 trips a
-day, lasts under fifteen minutes when its durations are computed from the
-reported times. The other three years count short walks and cannot separate them,
+42% collapse that never happened — 43.0% of 2019's walking, 2,984,881 trips a
+day, lasts under fifteen minutes when its durations are derived from the reported
+times, and the survey's own indicator IND_104 implies 43.1%. (This corrects
+3,351,414 and 48.3%, quoted here and in the inventory before the duration rule
+existed: that figure came from an unrounded derivation, which puts a
+fifteen-minute walk at 14.999999999 and on the wrong side of the threshold.) The other three years count short walks and cannot separate them,
 so including them is the only definition all four years measure.
 
 **The motorised bicycle is in `BICYCLE`.** 2023 lists it separately, 364 records
@@ -3142,10 +3168,51 @@ removal is a named cause in the balance and not a filter applied before counting
 records with no expansion factor, and the file's total still closes.
 
 **Declared per year, like everything else.** The ceilings are one table in the
-configuration and the duration column is a field of the survey. A year that
-reports no duration cannot be checked, and the run says so on every execution
-rather than passing a check it did not make — that year is not known to be free
-of these records, it is unexamined.
+configuration and the duration is a field of the survey. A year that reports no
+duration cannot be checked, and the run says so on every execution rather than
+passing a check it did not make — that year is not known to be free of these
+records, it is unexamined.
+
+**Amended by 2019 — the duration is a declared rule, not a column name.** The
+field was `duration_minutes_column`, on the assumption that every survey has a
+duration column and only its name changes. Three of the four do not have one at
+all in the same sense: 2023 gives minutes outright, 2019 gives a departure and an
+arrival stored as fractions of a day, and 2015 gives them as `HH:MM:SS` text. So
+it is now `duration_rule`, a small object dispatched through a registry in
+`surveys.py` exactly as the day type is, with `DurationFromMinutesColumn` and
+`DurationFromClockColumns` written and a third waiting for 2015.
+
+This is not a second reader and it is not the shape bending. It is the same
+mechanism the day type already had, applied to the second field that turns out to
+vary with whoever ran the survey — and it surfaced at the second year, which is
+where `docs/mobility-surveys-inventory.md` §7 said such a thing should surface if
+it was going to. Nothing downstream changed and 2023's numbers are identical.
+
+**2019's derivation was verified twice before it was trusted**, which is the rule
+that made the field worth generalising rather than guessing. Rounded to the
+minute it reproduces the delivery's own `Aux_DuraciónEODH2019.csv` on 134,496 of
+134,497 records — the exception is a trip from 9:00 to 12:00 that the auxiliary
+file records as 81 minutes rather than 180, so the defect is in that file. And
+walking of fifteen minutes or more comes out at 3,956,916.53 trips a day against
+the 3,952,811.54 the survey publishes in indicator IND_104, 0.10 % apart. The
+rounding is not cosmetic: without it, `(0.302083333333333 − 0.291666666666667) ×
+1440` is 14.999999999 and a tenth of the walking falls on the wrong side of the
+threshold.
+
+What the test removes from 2019, against what it removed from 2023:
+
+| Actor type | 2019 trips per day | Share of the mode | 2023 share |
+|---|---:|---:|---:|
+| `PEDESTRIAN` | 1,297,400 | 18.7 % | 14.6 % |
+| `BICYCLE` | 73,007 | 6.0 % | 4.8 % |
+| `CAR` | 16,365 | 0.7 % | 0.5 % |
+| `MOTORCYCLE` | 10,975 | 1.2 % | 0.7 % |
+| **All four** | **1,397,746** | | |
+
+The same shape in both years — overwhelmingly a pedestrian problem, under 1.2 %
+of each motorised mode — which is what a threshold catching a real defect rather
+than ordinary variation looks like, now confirmed on a second survey run by a
+different administration.
 
 ### How a zone reaches a unit, in the detail that turned out to matter
 
@@ -3165,6 +3232,27 @@ ten-thousandth to a hundredth gives the identical answer. What comes out is **90
 zones inside the study area, 896 of them wholly within one unit and 11 genuinely
 divided between two**, with the discarded fragments totalling 4,762.90 m² over the
 whole city.
+
+**Amended by 2019 — a zone code can name no place, and that is declared per
+year.** 2023's trips carry a zone on every record. 2019's do not: 3,994 records of
+the measured modes have no zone at all, and 368 more name a code that is not a
+zone. Two codes do that. `0` appears on records that carry no municipality and no
+UTAM either, so it is that delivery's way of writing "not answered"; `1917`
+appears once, above the top of its own zoning's range of 1 to 1908, on a record
+whose municipality and UTAM are likewise empty, so it is a capture error.
+
+Both are declared in `zone_codes_meaning_no_zone` and counted in the balance
+beside the records with no zone at all, because that is where they belong: they
+cannot be put on the map either. Together they are 695,819.3 trips a day, 6.1 % of
+what 2019 measures in the four modes. The alternative for `1917` was to let the
+run stop over 180.6 trips a day, and the alternative for `0` was to let 54,567.7
+disappear into a failed zone lookup; naming both is what makes the decision
+visible instead of either.
+
+**The list is declared and never inferred, and a code in neither the zoning nor
+the list still stops the run.** This is the one field that could quietly swallow a
+real zone, so the reason for each code is written at the declaration rather than
+inferred from the fact that it failed to match.
 
 Not renormalising is the other half of the decision. A zone's shares are left as
 they come out, so they sum to one where the zone lies wholly inside the study area
@@ -3229,6 +3317,45 @@ one of the two a weekday and a Saturday can be compared on. Carrying the share i
 the table rather than in the log is what lets a reader derive either column from
 the other and check it.
 
+**Amended by 2019 — the day type is not a dimension every year carries.** This
+decision was written as though the ragged case would be a year with a Saturday too
+thin to publish. It is not. **2019 surveyed one kind of day and no other**, so its
+block of the table is 30 units × 4 modes × 1 day type = 120 rows, and `SATURDAY`
+and `SUNDAY` are absent from it rather than zero. That is D10 applied to a
+dimension ragged by construction, and 2019 exercised it before 2011 got the
+chance.
+
+The evidence is not one statement but five, all from the year's own delivery. The
+questionnaire's trip module is addressed *"para las personas del hogar con 5 años
+o más que se desplazaron el día anterior"* and reads *"los desplazamientos que
+realizó el día de ayer, desde las 4 a.m. de ayer a las 4 a.m. de hoy"*. The
+cartilla's glossary defines a *viajero* as a person reporting at least one trip on
+that previous day. The report states the total as *"en un día típico, se realizan
+18,996,286 viajes"*. The published origin-destination matrices — the artefact this
+pipeline rebuilds — come only *"en un día típico"*, with peak and off-peak hours
+as the sole further breakdown and **no Saturday or Sunday matrix anywhere**. And
+the chapter comparing 2019 against 2011 and 2015 lists every difference between
+the three surveys without mentioning the reference day.
+
+The data agree: travel participation runs 79.1 % to 80.6 % and trips per person
+1.967 to 2.061 across all seven days the fieldwork ran, and about 10 % of trips
+are for study on every one of them, which no real Sunday looks like.
+
+**The day-of-week flags were the trap and they were declined.** `p32_lunes` to
+`p32_domingo` are asked as *"¿Qué días de la semana realiza este viaje?"* — 13,436
+records carry the Saturday flag, and using them would have produced a `SATURDAY`
+row that looked exactly like 2023's and measured something else entirely.
+Declared recurrence is not an observed day, and a Saturday built that way would
+omit by construction every trip made only at weekends, since such a trip was never
+reported at all. The column named `DAY_TYPE` has to mean one thing across four
+years or it should not exist.
+
+**So the year is declared as `DayTypeIsAlwaysOne`, and the declaration carries its
+own evidence.** The rule has a `stated_by` field quoted in the log on every run,
+because "this survey covers one day" is a claim about somebody else's fieldwork
+and the cost of getting it wrong is a Saturday that silently never existed. A
+declaration with no statement warns.
+
 **What the second column then says is not credible, and it is a property of the
 survey and not of the arithmetic.** Rescaled to the universe, the region makes
 1.778 trips per person on a weekday, 1.802 on a Saturday and 1.749 on a Sunday.
@@ -3256,18 +3383,22 @@ figures/exposure/
 │   │   ├── choropleth/     exposure__2023_bicycle_weekday.pdf      (3 + 3 scalebar)
 │   │   └── desire_lines/   desire_lines__2023_bicycle_weekday.pdf  (3 + 3 scalebar)
 │   ├── car/  motorcycle/  pedestrian/
-├── 2019/  2015/  2011/     the same shape, one folder per session
-└── delivered_2019_bicycle/
-    └── choropleth/         the superseded layer, deleted when 2019 lands
+├── 2019/                   the same shape, one file per kind: it has one day type
+└── 2015/  2011/            the same shape again, one folder per session
 ```
 
 The year is outermost because it is the unit of work and of provenance: a session
 implements one survey and creates one folder without touching the others. The
 mode is next because a choropleth and the desire lines behind it explain each
 other and are read together. The kind is innermost, and **every figure in the tree
-sits under one of the two kinds, the delivered layer included**, so that a
-recursive match on `*/choropleth/*.pdf` means "every choropleth of every year"
-with no exception to remember.
+sits under one of the two kinds**, so that a recursive match on
+`*/choropleth/*.pdf` means "every choropleth of every year" with no exception to
+remember.
+
+**A year folder holds as many files as the year has day types, which is the tree
+saying something true.** 2023 has three and 2019 has one, so 2023 contributes
+twenty-four figures and 2019 eight. The `delivered_2019_bicycle/` folder that used
+to sit at the end of this tree is gone with the layer.
 
 **The names are repeated between the tree and the file names on purpose.** A
 figure has to be copied into the document's own folder before LaTeX can see it,
@@ -3408,20 +3539,49 @@ reference and its figures have to stay reproducible — and, since the layer is
 2019 and not 2023, that column is also now known to divide by the wrong year,
 which is recorded in D36 rather than silently corrected in a table nothing models.
 
-### The delivered layer stays, as a reference and not as the variable
+### ~~The delivered layer stays, as a reference and not as the variable~~ Retired by 2019
 
-**Decision — the 181 lines keep being measured on every run, and their table is
-filed under `reference__` rather than `analysis__`.** D35, section 13 of the
-verification report and `deliverables/plan.md` all quote figures measured on it,
-and a figure whose source stopped being computed cannot be checked later. Leaving
-it in the analysis table beside a variable that is actually analysed would invite
-the wrong one into a model.
+*What this said, and it was right while it lasted: the 181 lines kept being
+measured on every run and their table was filed under `reference__` rather than
+`analysis__`, because D35, section 13 of the verification report and
+`deliverables/plan.md` all quote figures measured on it. Its numbers were
+unchanged by the survey work, which is how the reimplementation was checked:
+556,997.5804 trips per week and 113,269.3056 per day in the layer, 530,018.5282
+and 107,844.3591 apportioned to the units, 1,087.5609 km of 1,219.2583 inside
+them, Spearman 0.813, 0.798 and 0.781 against the three alternatives, Torca still
+an observed zero.*
 
-Its numbers are unchanged by this work, which is how the reimplementation was
-checked: 556,997.5804 trips per week and 113,269.3056 per day in the layer,
-530,018.5282 and 107,844.3591 apportioned to the units, 1,087.5609 km of 1,219.2583
-inside them, Spearman 0.813, 0.798 and 0.781 against the three alternatives, Torca
-still an observed zero.
+**Amended by 2019 — the layer is out of `EXPOSURE_LAYERS` and is no longer
+measured.** The reason it was kept was that the study had no other reading of the
+2019 bicycle travel it sampled. It now has one, for four modes and thirty units,
+and continuing to measure a 9.6 % sample of a survey the pipeline reads in full
+would be computing a worse version of something it already has.
+
+**It was not removed on trust, and the check it made possible was worth more than
+the tidiness.** The layer is a subset of the same records the survey holds, so
+every one of its origin-destination pairs had to appear among the pairs the
+pipeline builds from that survey, with no pair attributed more trips than the
+survey holds for it. Both hold: **160 of 160 pairs present, none over-attributed**,
+compared on the records the two readings share. Two independent readings of one
+source — one received as finished geometry, one built from the trip records —
+agreeing on 160 pairs is the strongest confirmation the survey reader could get.
+
+The comparison also says something about the layer. **The plausibility test
+removes 15 of those 160 pairs outright**, 8,905.8 of the layer's 113,269.3 trips a
+day and 7.9 % of it, and takes part of a sixteenth. The delivered layer therefore
+carried records this study judges impossible for the mode that reported them, and
+the fifteen come in symmetric pairs — a there-and-back between the same two zones
+— which is what an outbound and return trip of one household looks like.
+
+**What stays.** `config.BICYCLE_DESIRE_LINES` keeps its declaration, naming the
+file, so a quoted figure can be recomputed by hand; section 13 of the verification
+report stays in place as the record of what was measured on it; and the machinery
+that measures a declared line layer stays in `exposure.py`, because it is generic
+and a future delivery could use it. What goes is the entry in `EXPOSURE_LAYERS`,
+the `reference__delivered_*` tables and the `delivered_2019_bicycle/` figure
+folder. The route runs that half only when a layer is declared, so nothing is left
+behind computing an empty table — which is one of the legacy defects this project
+exists to avoid.
 
 ### Each year says for itself what its factor expands to
 
@@ -3502,54 +3662,96 @@ claimed, at 0.362.
 
 **All three warn and none fails.** A real change of that size is possible and the
 run cannot tell it from a misreading, so it refuses to let one pass unremarked
-rather than pretending to judge it. The 2023 baseline is in §6b of the inventory.
+rather than pretending to judge it. The baseline is in §6b of the inventory.
+
+**It fired on the first year it could, and the investigation is the point.**
+Pedestrian exposure orders the thirty units at **Spearman 0.662** between 2019 and
+2023, below the 0.70 floor, while car, motorcycle and bicycle sit at 0.947, 0.893
+and 0.886. Everything else agrees: no mode share moves ten points, no trip rate
+moves 35 %, and the two years set aside almost the same fractions for the same
+three reasons.
+
+It was chased to the bottom and it is not a misread declaration.
+
+- **The reading is verified against a published sub-city table.** Indicator IND_64
+  of the 2019 delivery gives the trips of each of its 134 UTAM. Grouping our
+  reading by the household's UTAM under the indicator's own rule reproduces **132
+  of the 134 within 0.01 %, 130 of them to the last decimal**, and the total over
+  them is 15,965,583 against 15,961,478. That single comparison exercises the
+  expansion factor, the mode labels, the derived duration and the household key at
+  once, which the city total cannot.
+- **It is not the geometry.** The disagreement concentrates in the north-west —
+  Tibabuyes falls from 8th to 28th, Rincón de Suba from 7th to 21st, Suba from
+  23rd to 29th, Niza rises from 29th to 10th — and over that stretch the two
+  zonings are nearly identical: 8 zones against 8 in Tibabuyes, 14 against 14 in
+  Rincón, 28 against 28 in Niza, and the area each zoning assigns to each unit
+  differs by under a tenth of a per cent.
+- **It is not the intra-zonal rule.** Split into its two halves the correlation
+  barely moves: 0.690 on the inter-zonal part alone against 0.662 on the whole.
+
+So it is what the two samples say about walking in Suba, and **the study cannot
+tell a real change from sampling variation there**. That is the honest answer and
+it is the reason the check warns rather than fails. It is material for the report:
+a jury reading a pedestrian rate for Tibabuyes in 2019 and another in 2023 will
+see them differ by a factor of four, and the answer is that two surveys run four
+years apart by different administrations disagree about that corner of the city
+more than the study can resolve.
 
 ### The balance, and what the run checks
 
-The 2023 run reads 100,174 trip records and accounts for every one of them.
+The run reads 100,174 trip records for 2023 and 134,497 for 2019, and accounts for
+every one of them.
 
-| | Trips per day |
-|---|---:|
-| The four measured modes | 9,221,240.5 |
-| Modes deliberately outside the study | 6,208,757.0 |
-| Impossible for the mode that reported them | 960,910.3 |
-| Records with no origin or destination zone | 0.0 |
-| **Total in the file** | **16,390,907.8** |
+| | 2019 | 2023 |
+|---|---:|---:|
+| The four measured modes | 9,262,670.3 | 9,221,240.5 |
+| Modes deliberately outside the study | 7,640,049.7 | 6,208,757.0 |
+| Impossible for the mode that reported them | 1,397,746.3 | 960,910.3 |
+| Records with no origin or destination zone | 695,819.3 | 0.0 |
+| **Total in the file** | **18,996,285.6** | **16,390,907.8** |
 
 The two sides of that check are different groupings of the same column, so it is a
 check and not a restatement: a mode lost between the mapping and the totals would
-show there and nowhere else. **284 records carry no expansion factor and are
-dropped**; the survey's own published total is the sum that excludes them, so they
-are outside the universe the file describes rather than a hole in it, and imputing
-a weight for them would be inventing trips. The run says so on every execution.
+show there and nowhere else. **284 of the 2023 records carry no expansion factor
+and are dropped**; the survey's own published total is the sum that excludes them,
+so they are outside the universe the file describes rather than a hole in it, and
+imputing a weight for them would be inventing trips. The run says so on every
+execution. Every 2019 record carries one.
 
 Then the apportionment balances, per actor type and per day type rather than in
 aggregate — an aggregate over four modes can close while two of them are wrong in
-opposite directions. Over the twelve combinations of 2023 the largest gap between
-what was apportioned to the units plus what fell outside and what the file holds
-is **0.000000 trips**.
+opposite directions. Over the twelve combinations of 2023 and the four of 2019 the
+largest gap between what was apportioned to the units plus what fell outside and
+what the file holds is **0.000000 trips**.
 
-**1,697,260 trips a day fall outside the thirty units**, 18.4% of the four modes.
-That is the twenty neighbouring municipalities the survey also covers plus the
-three rural units the study does not have, and it is measured rather than absorbed.
+**1,697,260 trips a day fall outside the thirty units in 2023**, 18.4 % of the
+four modes, and **1,806,461 in 2019**, 19.5 %. That is the twenty neighbouring
+municipalities the survey also covers plus the three rural units the study does
+not have, and it is measured rather than absorbed. The two years agreeing to a
+point on that share is itself a check on the zoning of the newer one.
 
 ### What it produced
 
-21,467 desire lines built between zone centroids, 145,460 km in all with a median
-of 4.26 km, from 26,316 inter-zonal groupings; 1,197 intra-zonal groupings spread
-by area. Apportioned to the units on a typical weekday:
+For 2023, 21,467 desire lines built between zone centroids, 145,460 km in all with
+a median of 4.26 km, from 26,316 inter-zonal groupings; 1,197 intra-zonal
+groupings spread by area. For 2019, 27,437 lines, 178,248 km, median 4.16 km, from
+31,134 inter-zonal groupings and 1,078 intra-zonal ones. Apportioned to the units
+on a typical weekday:
 
-| Actor type | Trips per average day inside the units | Of which intra-zonal | Desire line km inside |
-|---|---:|---:|---:|
-| `PEDESTRIAN` | 3,300,984 | 1,055,074 | 8,025 |
-| `CAR` | 1,244,327 | 31,036 | 39,028 |
-| `MOTORCYCLE` | 632,338 | 8,048 | 27,510 |
-| `BICYCLE` | 597,033 | 29,180 | 12,434 |
+| Actor type | 2019 trips/day inside | Of which intra-zonal | Line km | 2023 trips/day inside | Of which intra-zonal | Line km |
+|---|---:|---:|---:|---:|---:|---:|
+| `PEDESTRIAN` | 4,160,690 | 1,270,486 | 13,040 | 3,300,984 | 1,055,074 | 8,025 |
+| `CAR` | 1,827,723 | 39,298 | 81,864 | 1,244,327 | 31,036 | 39,028 |
+| `BICYCLE` | 787,563 | 52,491 | 18,391 | 597,033 | 29,180 | 12,434 |
+| `MOTORCYCLE` | 680,233 | 12,830 | 35,104 | 632,338 | 8,047 | 27,510 |
 
-The pedestrian kilometres are now the smallest of the four despite the mode being
-by far the largest in trips, which is what a mode of short local journeys should
-look like and what the figure showed it was not before the impossible records
-came out.
+The pedestrian kilometres are the smallest of the four in both years despite the
+mode being by far the largest in trips, which is what a mode of short local
+journeys should look like and what the figure showed it was not before the
+impossible records came out. That it holds on a second survey, read through a
+different set of column names and a duration derived rather than given, is the
+strongest evidence available that the plausibility test measures the thing it was
+built to measure.
 
 The bicycle ranking is Kennedy, Patio Bonito, Bosa at the top and Usme-Entrenubes,
 San Cristóbal, Lucero at the bottom, which is the south-western flat against the
@@ -3584,6 +3786,15 @@ means reading the expansion document of the survey, not the technical sheet, and
 it should be resolved before any document compares a Saturday with a weekday. If
 it turns out to be an artefact, the honest answer is to publish the weekday only
 and say why, and the table already supports that.
+
+*2019 has made this both sharper and easier.* Sharper, because a day type only
+2023 has cannot enter a model with a time dimension: a Saturday series over four
+survey years would have one point in it. Easier, because the weekday is now the
+only day all the measured years share, so publishing the weekday alone — which was
+the fallback if the day-type signal turned out to be an artefact — is also the
+only choice the series allows. Unless 2015 or 2011 turns out to carry a usable
+Saturday, the day type is a property of one year and not a dimension of the study,
+and this decision should be closed that way rather than left open.
 
 **What the delivered layer's 181 lines were selected by** remains unknown, and now
 it does not matter for any result. It is recorded because the question was asked in
