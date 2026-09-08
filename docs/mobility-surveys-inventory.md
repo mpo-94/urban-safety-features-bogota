@@ -14,7 +14,7 @@ was computed from the delivered file in the session of 2026-09-05.
 **2023 and 2019 have since been built and are no longer structural notes.** They
 are declared in `config.SURVEY_2023` and `config.SURVEY_2019`, read by
 `src/surveys.py`, measured by `src/exposure.py` and checked on run
-`run_20260908_014143`; the decisions are D38. What those passes resolved is marked
+`run_20260908_020719`; the decisions are D38. What those passes resolved is marked
 below where it lands, and the entries for 2011 and 2015 are unchanged and still
 unverified. Several things this document listed as unresolved have been answered
 and three of its statements turned out to be wrong, which is said in full in
@@ -181,11 +181,12 @@ for cars and motorcycles.
 the table above suggests.* Over the four modes together the intra-zonal trips are
 **1,841,452 a day in 2023, 20.0 %** of what that survey measures, and **1,987,946
 in 2019, 21.5 %**; they are apportioned by area share over the units covering
-their zone. On a typical weekday **1,055,074** of the 2023 pedestrian exposure
-inside the thirty units arrives that way and **1,270,486** of the 2019, against
-31,036 and 39,298 for cars. Discarding them would have taken roughly a third of
-the walking out of the study in both years, and taken more of it from the units
-built of large zones.
+their zone. On one typical weekday **1,366,277** of the 2023 pedestrian exposure
+inside the thirty units arrives that way and **1,270,486** of the 2019 — 32.0 %
+and 30.5 % of the walking — against 2.5 % and 2.2 % for cars. Discarding them
+would have taken roughly a third of the walking out of the study in both years,
+and taken more of it from the units built of large zones. (Both figures are on
+`TRIPS_PER_DAY_OF_TYPE`, because they are two years side by side; see §6b.)
 
 ---
 
@@ -313,6 +314,39 @@ more, every other mode of any duration — **132 of the 134 agree within 0.01 %,
 130 of them to the last decimal**, and the total over them is 15,965,583 against
 15,961,478. That single check exercises the expansion factor, the mode labels, the
 derived duration and the household key at once, which no city total can.
+
+### 2015 — what the delivery holds for the session that implements it
+
+*Not measured, and deliberately so: the inspection belongs to that session. What
+is recorded here is which file should answer which question, established by
+listing the folder — 99 files — and by what 2019 taught about where answers live.*
+
+| Question | Where it should be |
+|---|---|
+| Which of the four candidates is the expansion factor | `Documentos/Tomo VII_BBDD_EODH_V2.pdf`, the database documentation |
+| Which day the reported trips belong to | `Documentos/FORMULARIO_DE_LA_ENCUESTA_2015.pdf`, the questionnaire — this is what settled 2019 |
+| Whether `DIA_NOHABIL` is a Saturday, a Sunday or both | the same two, and the matrices below |
+| A published total to check the reconstruction against | `Documentos/Tomo IV_Indicadores_Fe de erratas_enero 2017.pdf`, and the matrices |
+| What the fieldwork actually did | `Documentos/Tomo III_Informe de Campo_EODH_V6.pdf` |
+| The mode vocabulary | `Tablas Maestras Normalizadas/`, and the `.xls` lookups that are really CSV |
+
+**And there is something 2019 did not have: published origin-destination matrices,
+machine-readable.** `Documentos/MATRICES EODH/` holds twenty `.xlsx` files —
+`matriz_habil`, `matriz_nohabil`, `matriz_medio_habil`, `matriz_medio_nohabil`,
+plus peak and off-peak and purpose splits. `matriz_medio_habil` is a matrix by
+mode for a working day, which is the closest thing to what this pipeline builds
+and therefore the strongest external control available for any year so far. It
+should be used the way 2019's per-UTAM indicator was: not to reproduce the
+matrices, but to check that the reading of the trip file agrees with what the
+consultant published from the same file.
+
+**The existence of `matriz_habil` and `matriz_nohabil` side by side is also the
+first evidence that 2015 may genuinely support a day type**, which 2019 does not.
+It is evidence and not proof; the questionnaire decides.
+
+The zoning is `ZATs/ZATs_2012_MAG.shp`, 948 zones, and whether its codes and the
+2019/2023 numbering are the same set has to be shown — for 2019 and 2023 they are,
+which is what let the two be compared zone by zone.
 
 ### 2015 — which column is the expansion factor
 

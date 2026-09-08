@@ -91,6 +91,28 @@ _LINE_KM_COL = "_LINE_TOTAL_KM"
 _SHARE_COL = "_SHARE_INSIDE"
 _COVERED_COL = "_SHARE_COVERED"
 
+# The one column two years may be compared on, and it is not the one the balance
+# is checked against.
+#
+# TRIPS_PER_AVERAGE_DAY is what the file holds, so every within-year check uses
+# it and must. But what it holds depends on what that year's expansion factor
+# expands to: 2023's spreads the universe over seven reference days, so its
+# weekday rows carry 77.2% of a weekday, while 2019's expands to its one typical
+# day and its rows carry all of it. Comparing the two on that column compares a
+# whole day against three quarters of one.
+#
+# TRIPS_PER_DAY_OF_TYPE is that column divided by the universe share, so it counts
+# one day of its own kind in every year whatever the factor did. That is the only
+# footing on which a trip rate from one survey means the same as a trip rate from
+# another.
+#
+# This was invisible while one year was implemented, because a comparison with
+# nothing to compare against cannot be wrong. It became wrong the moment a second
+# year declared a different `weight_expands_to`, which is exactly the field D38
+# says must never be inherited — and the reason it must not be inherited is the
+# reason this column has to be the right one.
+_COMPARABLE_TRIPS_COL = config.TRIPS_PER_DAY_OF_TYPE_COL
+
 
 @dataclass(frozen=True)
 class Apportionment:
@@ -2124,14 +2146,23 @@ def report_from_surveys(
         )
 
         weekday = year_rows[year_rows[config.DAY_TYPE_COL] == config.WEEKDAY_TYPE]
+        # Reported on the comparable column, and the file's own total rescaled to
+        # match it, so the share is unchanged and the levels of two years printed
+        # one under the other mean the same thing. On the raw column they would
+        # not: a year whose factor spreads the universe over several reference
+        # days carries a fraction of its weekday here, and two such lines side by
+        # side under the same words invite exactly the comparison that is wrong.
+        share = float(allocation.trips.universe_shares.get(config.WEEKDAY_TYPE, 1.0))
         for actor in survey.actor_types:
             rows = weekday[weekday[config.ACTOR_TYPE_COL] == actor]
-            inside = float(rows[config.TRIPS_PER_AVERAGE_DAY_COL].sum())
-            total = float(allocation.trips.totals.get((actor, config.WEEKDAY_TYPE), np.nan))
-            top = rows.nlargest(3, config.TRIPS_PER_AVERAGE_DAY_COL)
+            inside = float(rows[_COMPARABLE_TRIPS_COL].sum())
+            total = float(
+                allocation.trips.totals.get((actor, config.WEEKDAY_TYPE), np.nan)
+            ) / share
+            top = rows.nlargest(3, _COMPARABLE_TRIPS_COL)
             log.info(
-                "%d %s on a typical weekday: %s of %s trips per day inside the units (%.1f%%); "
-                "most exposed %s",
+                "%d %s on one typical weekday: %s of %s trips per day inside the units "
+                "(%.1f%%); most exposed %s",
                 survey.year,
                 actor.lower(),
                 f"{inside:,.0f}",
@@ -2139,11 +2170,11 @@ def report_from_surveys(
                 100 * inside / total if total else float("nan"),
                 "; ".join(
                     f"{row[config.AREA_CODE_COL]} {row[config.AREA_NAME_COL]} "
-                    f"{row[config.TRIPS_PER_AVERAGE_DAY_COL]:,.0f}"
+                    f"{row[_COMPARABLE_TRIPS_COL]:,.0f}"
                     for _, row in top.iterrows()
                 ),
             )
-            empty = rows[rows[config.TRIPS_PER_AVERAGE_DAY_COL] == 0]
+            empty = rows[rows[_COMPARABLE_TRIPS_COL] == 0]
             if len(empty):
                 log.info(
                     "no %s trip reaches %s, which is an observed zero and not a missing value",
@@ -2214,28 +2245,6 @@ def report_from_surveys(
 # ---------------------------------------------------------------------------
 # One year against the years already measured
 # ---------------------------------------------------------------------------
-
-# The one column two years may be compared on, and it is not the one the balance
-# is checked against.
-#
-# TRIPS_PER_AVERAGE_DAY is what the file holds, so every within-year check uses
-# it and must. But what it holds depends on what that year's expansion factor
-# expands to: 2023's spreads the universe over seven reference days, so its
-# weekday rows carry 77.2% of a weekday, while 2019's expands to its one typical
-# day and its rows carry all of it. Comparing the two on that column compares a
-# whole day against three quarters of one.
-#
-# TRIPS_PER_DAY_OF_TYPE is that column divided by the universe share, so it counts
-# one day of its own kind in every year whatever the factor did. That is the only
-# footing on which a trip rate from one survey means the same as a trip rate from
-# another.
-#
-# This was invisible while one year was implemented, because a comparison with
-# nothing to compare against cannot be wrong. It became wrong the moment a second
-# year declared a different `weight_expands_to`, which is exactly the field D38
-# says must never be inherited — and the reason it must not be inherited is the
-# reason this column has to be the right one.
-_COMPARABLE_TRIPS_COL = config.TRIPS_PER_DAY_OF_TYPE_COL
 
 
 def _mode_share(weekday: pd.DataFrame, year: int, actor: str) -> float:
@@ -2336,6 +2345,31 @@ def compare_years(
         f"({_COMPARABLE_TRIPS_COL}, which is the only column two years are comparable on):",
         "\n".join(rendered),
     )
+
+    # Said whenever the declared years do not agree on what their factor expands
+    # to, because that is the exact condition under which the two trip columns
+    # stop meaning the same thing and anything reading the wrong one goes quietly
+    # wrong. The exported tables feed a dashboard this module cannot see, so the
+    # warning names the columns rather than assuming the reader knows.
+    expansions = {
+        apportionments[year].survey.weight_expands_to: [] for year in years
+    }
+    for year in years:
+        expansions[apportionments[year].survey.weight_expands_to].append(year)
+    if len(expansions) > 1:
+        log.warn(
+            "the declared years do not expand to the same thing: %s. So %s means a different "
+            "quantity in each of them and must not be compared or summed across years — %s is "
+            "the column that can be, and it is what this table and every cross-year figure "
+            "here use. Anything downstream that joins these tables across years, the dashboard "
+            "included, has the same obligation. See D38",
+            "; ".join(
+                f"{expands} — {', '.join(str(year) for year in sorted(group))}"
+                for expands, group in expansions.items()
+            ),
+            config.TRIPS_PER_AVERAGE_DAY_COL,
+            config.TRIPS_PER_DAY_OF_TYPE_COL,
+        )
 
     # What each year set aside, which is the other place a misread declaration
     # shows: a year dropping far more or far less than its neighbours is a year

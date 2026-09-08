@@ -2986,7 +2986,7 @@ the models take, and whether a day-type comparison is supportable at all — a
 question 2019 has since made sharper rather than easier.
 
 **Built:** Yes. `src/surveys.py` and the second half of `src/exposure.py`, route
-`exposure`. Run `run_20260908_014143`.
+`exposure`. Run `run_20260908_020719`.
 
 **Amended by 2019**, in four places, each marked below: the day type is not a
 dimension every year carries; the duration is a declared rule and not a column
@@ -3823,10 +3823,14 @@ on a typical weekday:
 
 | Actor type | 2019 trips/day inside | Of which intra-zonal | Line km | 2023 trips/day inside | Of which intra-zonal | Line km |
 |---|---:|---:|---:|---:|---:|---:|
-| `PEDESTRIAN` | 4,160,690 | 1,270,486 | 13,040 | 3,300,984 | 1,055,074 | 8,025 |
-| `CAR` | 1,827,723 | 39,298 | 81,864 | 1,244,327 | 31,036 | 39,028 |
-| `BICYCLE` | 787,563 | 52,491 | 18,391 | 597,033 | 29,180 | 12,434 |
-| `MOTORCYCLE` | 680,233 | 12,830 | 35,104 | 632,338 | 8,047 | 27,510 |
+| `PEDESTRIAN` | 4,160,690 | 1,270,486 | 13,040 | 4,274,636 | 1,366,277 | 8,025 |
+| `CAR` | 1,827,723 | 39,298 | 81,864 | 1,611,352 | 40,190 | 39,028 |
+| `BICYCLE` | 787,563 | 52,491 | 18,391 | 773,132 | 37,787 | 12,434 |
+| `MOTORCYCLE` | 680,233 | 12,830 | 35,104 | 818,851 | 10,421 | 27,510 |
+
+The trip counts are on the comparable column, `TRIPS_PER_DAY_OF_TYPE`, because
+they put two years side by side; the kilometres are not a trip count and do not
+scale with the expansion factor, so they are as measured.
 
 The pedestrian kilometres are the smallest of the four in both years despite the
 mode being by far the largest in trips, which is what a mode of short local

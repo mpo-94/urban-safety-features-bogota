@@ -279,3 +279,109 @@ figures quoted from it have to remain reproducible.
 them against, so the cross-year comparison of section 3 is the only external check
 those years will get, which makes reading it carefully more important and not
 less.
+
+---
+
+## 7. Every mistake made so far, and what caught it
+
+**Read this before starting.** Each of these was made, found and fixed, and each
+would have been cheap to avoid and expensive to leave. They are ordered by how
+easy they are to repeat.
+
+### Comparing two years on a column whose meaning depends on the year
+
+`compare_years` read `TRIPS_PER_AVERAGE_DAY` — what the file holds, and what the
+balance closes on. But what it holds depends on `weight_expands_to`: 2023's
+weekday rows carry 77.2 % of a weekday and 2019's carry all of one, so the
+comparison measured a whole day against three quarters of one and made every 2023
+mode look 23 % smaller than it is. Car came out at −35.0 % against a 35 %
+threshold, one decimal from warning about an artefact of its own arithmetic.
+
+**Why it survived:** the check was written when one year existed, and a comparison
+with nothing to compare against cannot be wrong. It became wrong the instant a
+second year declared a different expansion.
+
+**What caught it:** all four modes falling by roughly the same amount. Four modes
+measured independently do not collapse in unison; a uniform factor across all of
+them is arithmetic and not a city.
+
+**What to do:** anything that puts two years side by side — a table, a rate, an
+interpolation, a model, a dashboard chart — reads `TRIPS_PER_DAY_OF_TYPE`. In
+`exposure.py` that is `_COMPARABLE_TRIPS_COL`, declared with the other module
+constants; use it rather than naming the column again. The run now warns whenever
+the declared years disagree on what their factor expands to, and the exported
+dictionary says which column is comparable, in capitals.
+
+**And expect the same class of defect elsewhere.** The rule generalises: any
+quantity computed *across* years from a column whose meaning `weight_expands_to`
+controls is suspect, and no check written inside one year can see it.
+
+### Deriving a duration without rounding it
+
+2019's `(0.302083333333333 − 0.291666666666667) × 1440` is 14.999999999, so an
+unrounded derivation puts a fifteen-minute walk under fifteen minutes. That moved
+a tenth of the year's walking across the threshold — 3,590,383 trips instead of
+3,956,917 — and the wrong figure reached D38 and the inventory before it was
+caught.
+
+**What caught it:** the survey publishes the same split. Ours was 48.3 % against a
+published 43.1 %, and rounding closed the gap to a tenth of a point.
+
+**What to do:** round a derived duration to the minute, and check it against a
+published figure rather than against its own plausibility.
+
+### Assuming a threshold's justification is general
+
+`ZONE_UNIT_MIN_AREA_SHARE` sits at a thousandth because the 2023 overlay has an
+empirical gap: no sliver above 0.035 % of its zone, no genuine split below 1.73 %.
+D38 stated that as though it were a property of the rule. It is a property of the
+2023 zoning. **On 2019 the fragment sizes run continuously across the cut** —
+0.0993 % below against 0.1002 % above — because that zoning does not nest inside
+the UPL.
+
+**What caught it:** re-running the measurement on the new year instead of citing
+the old one.
+
+**What to do:** every year must show one of two things — an empirical gap, or a
+measured indifference. Sweep the threshold across two orders of magnitude and
+report how far the per-unit figures move. For 2019 it was 0.16 %, which is why the
+constant stayed. A year that shows neither needs an argument of its own.
+
+### Believing a data dictionary
+
+2019's `Anexo B` calls the trip table's `fecha` column "Fecha del viaje". It is
+the date of the **interview**; the trips are the previous day's. Taking the
+dictionary at its word would have filed every trip one day late.
+
+**What caught it:** the questionnaire, which states the reference period in the
+words the interviewer read out, plus a test on the data — among trips the
+respondent makes on exactly one weekday, 1,884 of 3,448 match `fecha` minus a day
+against 190 matching `fecha` itself.
+
+**What to do:** the delivered dictionary is a claim like any other. The instrument
+outranks it.
+
+### Asking before finishing the reading
+
+The 2019 session nearly put a decision to the advisor with the questionnaire, the
+glossary and the indicator annex still unopened — the three files that between
+them answered it. He stopped it.
+
+**What to do:** inventory the folder, every file with its size, then read the
+instrument, the methodology chapter, the glossary and the indicator annexes.
+*Then* formulate the question, if there is still one.
+
+### Printing a statement about one year's weighting for a year it does not fit
+
+The run warned, for 2019, that "the expansion factor represents the universe once
+over all seven reference days" — which is true of 2023 and false of 2019.
+
+**What to do:** any sentence the run prints about what the factor expands to must
+be conditioned on `weight_expands_to`, not written once for the year in front of
+you.
+
+### And the one from the inventory pass, still the best example
+
+Searching a column list for a duration matches `p34_aplicacion_durante_viaje`,
+because "durante" contains "dura". It parses, it summarises, and every number out
+of it is meaningless.

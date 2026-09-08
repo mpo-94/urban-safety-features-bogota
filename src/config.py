@@ -2723,16 +2723,24 @@ SURVEY_EXPOSURE_QUANTITIES: tuple[SurveyExposureQuantity, ...] = (
               "on a day of this type, apportioned to the unit by the share of each desire "
               "line's length inside it, with the intra-zonal trips apportioned by area share. "
               "Summed over the day types it is what the file holds, which is what the balance "
-              "check compares against; it counts an average day of the collection period, so "
-              "the three day types are not comparable with one another",
+              "check compares against. WHAT IT COUNTS DEPENDS ON THE YEAR: where the survey's "
+              "factor spreads the universe over several reference days it is that day type's "
+              "share of an average day, and where the factor expands to one day of the "
+              "record's own kind it is that whole day. So it is NOT comparable between day "
+              "types, and NOT comparable between years — use TRIPS_PER_DAY_OF_TYPE for either "
+              "comparison. See D38",
     ),
     SurveyExposureQuantity(
         name=TRIPS_PER_DAY_OF_TYPE_COL,
         unit="trips per day",
         means="the same apportionment divided by DAY_TYPE_UNIVERSE_SHARE, which counts the "
               "trips of one day of this type rather than this day type's share of an average "
-              "day. This is the one of the two that can be compared between a weekday and a "
-              "Saturday; see D38 for what it exposes about the survey's own weighting",
+              "day. THIS IS THE ONLY COLUMN COMPARABLE ACROSS DAY TYPES AND ACROSS YEARS, "
+              "because it counts one day of its own kind whatever each year's expansion "
+              "factor happens to expand to. Anything that puts two years side by side — a "
+              "chart, a rate, an interpolation, a model — has to read this one; reading the "
+              "other made every 2023 mode look 23% smaller than 2019 until it was caught. "
+              "See D38",
     ),
     SurveyExposureQuantity(
         name=DAY_TYPE_UNIVERSE_SHARE_COL,

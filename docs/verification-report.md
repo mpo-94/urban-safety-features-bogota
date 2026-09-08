@@ -1282,7 +1282,7 @@ says which years are which.
 
 ## 15. Travel exposure from the mobility survey
 
-Run `run_20260908_014143`, route `exposure`, command
+Run `run_20260908_020719`, route `exposure`, command
 `python -m src.run_pipeline exposure`. **Every check passed.** This is the
 study's exposure: how much travel of each of four road user types passes through
 each unit, per survey year and per kind of day, built from the household mobility
@@ -1639,10 +1639,14 @@ On a typical weekday, inside the thirty units:
 
 | Actor type | 2019 trips/day | Of which intra-zonal | Line km | 2023 trips/day | Of which intra-zonal | Line km |
 |---|---:|---:|---:|---:|---:|---:|
-| `PEDESTRIAN` | 4,160,690 | 1,270,486 | 13,040 | 3,300,984 | 1,055,074 | 8,025 |
-| `CAR` | 1,827,723 | 39,298 | 81,864 | 1,244,327 | 31,036 | 39,028 |
-| `BICYCLE` | 787,563 | 52,491 | 18,391 | 597,033 | 29,180 | 12,434 |
-| `MOTORCYCLE` | 680,233 | 12,830 | 35,104 | 632,338 | 8,047 | 27,510 |
+| `PEDESTRIAN` | 4,160,690 | 1,270,486 | 13,040 | 4,274,636 | 1,366,277 | 8,025 |
+| `CAR` | 1,827,723 | 39,298 | 81,864 | 1,611,352 | 40,190 | 39,028 |
+| `BICYCLE` | 787,563 | 52,491 | 18,391 | 773,132 | 37,787 | 12,434 |
+| `MOTORCYCLE` | 680,233 | 12,830 | 35,104 | 818,851 | 10,421 | 27,510 |
+
+The trip counts are on `TRIPS_PER_DAY_OF_TYPE` because the table puts two years
+side by side. The kilometres are not a trip count and do not scale with the
+expansion factor, so they are as measured.
 
 **Roughly a third of the pedestrian exposure arrives through the intra-zonal
 route in both years** — 30.5 % in 2019 and 32.0 % in 2023. Dropping those trips
