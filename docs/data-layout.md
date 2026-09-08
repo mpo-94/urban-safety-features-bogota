@@ -150,7 +150,11 @@ failure that leaves nothing out of place to notice. The files move out of
 Then declare it. Nothing is read that is not declared:
 
 - a predictor layer goes in `config.STATIC_PREDICTORS`;
-- an exposure layer goes in `config.EXPOSURE_LAYERS` — the procedure is
+- a mobility survey goes in `config.MOBILITY_SURVEYS` — the procedure is
+  `docs/adding-a-survey-year.md`, and it starts with inspection because every
+  survey was commissioned by a different administration and catalogues its data
+  its own way;
+- a delivered exposure layer goes in `config.EXPOSURE_LAYERS` — the procedure is
   `docs/adding-an-exposure-layer.md`, and it starts with inspection because the
   first time round a column name lied;
 - anything delivered and deliberately not read goes in

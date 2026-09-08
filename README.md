@@ -140,7 +140,12 @@ therefore a column value and not part of a column name.
 
 Adding a survey year is one `MobilitySurvey` in `src/config.py`. The one thing a
 year may also need is a rule for how it says which kind of day a trip was made
-on, because no two of the four surveys say it the same way.
+on, because no two of the four surveys say it the same way — each was
+commissioned by a different city administration and catalogues its data its own
+way, so nothing about a year's files can be inherited from the year before while
+everything downstream of them has to come out identical.
+`docs/adding-a-survey-year.md` is the procedure, and §6b of
+`docs/mobility-surveys-inventory.md` is the contract it has to satisfy.
 
 Records the geometry contradicts are dropped and counted. A record whose two
 zones are further apart than its mode could have covered in the duration it

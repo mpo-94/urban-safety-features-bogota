@@ -3467,8 +3467,18 @@ the survey; none of it is knowable in advance and none of it can be inherited.
 What is fixed is everything downstream — the measurement, the four actor types,
 the shape of the table, the figures and where they are written — and a year that
 cannot be made to fit that shape is a finding to report rather than a shape to
-bend. `docs/mobility-surveys-inventory.md` §6b is the contract, and it is what a
-session implementing a year reads first.
+bend. `docs/mobility-surveys-inventory.md` §6b is the contract and
+`docs/adding-a-survey-year.md` is the order to work in; a session implementing a
+year reads both before it opens a survey folder.
+
+**2019's session has one job the others do not: it retires the delivered layer,
+and it should validate against it before doing so.** That layer is an incomplete
+2019 — 181 lines, bicycle only, every record an exact triple from the 2019 survey
+— so every one of its 160 origin-destination pairs must appear among the pairs
+the pipeline builds from that survey, with no more trips attributed than the
+survey's own total for each. Two independent readings of one source agreeing on
+160 pairs is the strongest confirmation the survey reader can get, and a
+disagreement is a defect found before anything rests on it.
 
 ### A year is checked against the years already measured
 

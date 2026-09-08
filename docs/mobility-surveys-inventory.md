@@ -21,8 +21,10 @@ which is said in full in section 5.
 
 **What the study needs from them.** Four modes — on foot, bicycle, motorcycle and
 car — as **trips per day apportioned to each UPL**, for 2011, 2015, 2019 and 2023.
-The pipeline currently measures one of those sixteen combinations, from a
-delivered desire-lines layer that these surveys replace.
+That is sixteen combinations. **Four of them are measured**, the four modes of
+2023; the delivered desire-lines layer that used to stand in for all of this
+turned out to be an incomplete 2019, bicycle only, and is now a reference the 2019
+session retires.
 
 ---
 
@@ -325,7 +327,11 @@ because they are the reason this pass exists.
 
 ## 6b. The contract for the sessions that implement 2019, 2015 and 2011
 
-**Read this before opening a survey folder.** Each of the four surveys was
+**Read this before opening a survey folder**, and
+[`adding-a-survey-year.md`](adding-a-survey-year.md) for the order to work in.
+This section is what must hold; that one is what to do.
+
+Each of the four surveys was
 commissioned by a different city administration, and each names and catalogues
 its data its own way — different column names, different mode vocabularies,
 different ways of saying which day a trip was made on, and in 2015's case four

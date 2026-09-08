@@ -1,10 +1,10 @@
 # Adding an exposure layer
 
-> **This is not the procedure for adding a survey year.** The study's exposure is
+> **This is not the procedure for adding a survey year.** That is
+> [`adding-a-survey-year.md`](adding-a-survey-year.md). The study's exposure is
 > now built from the mobility surveys, and adding 2019, 2015 or 2011 means one
 > `config.MobilitySurvey` plus, where the year needs it, a day-type rule in
-> `src/surveys.py`. D38 has the design and
-> `docs/mobility-surveys-inventory.md` has what each remaining year still needs.
+> `src/surveys.py`.
 >
 > What follows is the procedure for a **delivered line layer** — a file that
 > arrives with the geometry already drawn and a survey expansion factor on each
