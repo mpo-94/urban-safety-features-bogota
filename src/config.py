@@ -2172,6 +2172,19 @@ class SurveyZoning:
     # that declares no CRS at all can be told what it is instead of silently
     # being read as degrees.
     crs_if_undeclared: int | None = None
+    # Whether a zone may arrive as several features carrying one code, which is
+    # the delivery saying "these polygons are one zone" and not "two zones share a
+    # number". Off by default, so a repeated code still stops the run for a year
+    # that has not looked: two different zones numbered alike is a real defect and
+    # the reader cannot tell the two cases apart on its own.
+    #
+    # 2015 declares it on, and the delivery's own arithmetic is what says so: its
+    # `AREA` column is per feature, and for both repeated codes the features' areas
+    # sum to the area of their union — 794 as 8.36 + 7.17 km2 and 806 as 29.33 +
+    # 0.34 + 3.04. They are detached pieces of two peripheral zones north of the
+    # city, no trip in the file names either of them, and dissolving them by code
+    # is the only reading under which the shapefile can be read at all.
+    zone_delivered_in_parts: bool = False
 
 
 @dataclass(frozen=True)
@@ -2205,6 +2218,46 @@ class DayTypeFromHouseholdDate:
     # enough to matter. Declared, because a silent month/day swap moves a
     # Saturday to a weekday without failing.
     day_first: bool = True
+
+
+@dataclass(frozen=True)
+class DayTypeFromRecordFlags:
+    """The day type is a flag the delivery already wrote on the trip.
+
+    2015 is the year this was written for. Its trip record carries `DIA_HABIL`
+    and `DIA_NOHABIL`, one of them set and never both, and the two account for
+    every one of the 147,251 records — 129,521 and 17,730.
+
+    Reading the flag rather than deriving the day is a decision and not a
+    shortcut, because 2015 does carry an interview date and it was tested. The
+    date agrees with the flag on **every** record: shifted back one day, as that
+    year's questionnaire requires, it reproduces `DIA_HABIL`/`DIA_NOHABIL` on all
+    147,251. Two things then make the flag the better source. The delivery has one
+    household whose row is displaced by a column — `ENCUESTADOR_FECHA` holds the
+    UTC offset, `ENCUESTADOR_HORA` holds the date, `FECHA_UPLOAD` holds the
+    interviewer's name — so a rule reading the date stops the run over one
+    corrupted record while the flag on its eight trips is perfectly good. And the
+    flag is what the consultant themselves grouped by: the published matrices are
+    reproduced from it to the last decimal, which no derived column can claim.
+
+    What the flag means was established from the date and not from its name.
+    `DIA_NOHABIL` is set on exactly the 3,591 households interviewed on a Sunday,
+    and 2015 asks about the day before the interview, so the day it names is a
+    **Saturday**. No household was interviewed on a Monday, so no reference day of
+    the survey is a Sunday, and 2015 has two day types rather than three. Had the
+    flag been about the interview day instead, the 4,237 Saturday interviews would
+    have carried it and they do not.
+    """
+
+    # Column name -> the day type a set value in it means. Every record must have
+    # exactly one of them set: a record with none has no day and a record with two
+    # would be counted twice.
+    flags: dict[str, str]
+    # What in the year's own documents says which day the flag names, quoted in
+    # the log on every run. Required for the same reason DayTypeIsAlwaysOne needs
+    # it: the column name says "not a working day" and does not say which one, and
+    # a Saturday that is really a Sunday is invisible in every figure downstream.
+    stated_by: str = ""
 
 
 @dataclass(frozen=True)
@@ -2338,6 +2391,54 @@ class DurationFromClockColumns:
     round_to_minute: bool = True
 
 
+@dataclass(frozen=True)
+class DurationFromTextClockColumns:
+    """The trip duration is the gap between two `HH:MM:SS` clock columns.
+
+    2015's `HORA_INICIO` and `HORA_FIN`, written the way a clock is read. It is
+    the third of the three ways the surveys state one quantity, and the last one
+    expected: 2023 gives minutes outright, 2019 gives two fractions of a day, and
+    this gives two strings.
+
+    It is a separate rule from `DurationFromClockColumns` rather than a flag on
+    it because the two share no arithmetic. That one reads a number and scales it;
+    this one splits text on colons and has no scale factor to get wrong. Folding
+    them together would mean one handler with a branch on how its own input is
+    stored, which is the shape the registry exists to avoid.
+
+    **Verified twice before it was trusted, and both checks are exact.** The
+    delivery ships `DIFERENCIA_HORAS` in the same notation, and this derivation
+    reproduces it on **all 147,251 records** with nothing left over — no defective
+    row, unlike 2019's auxiliary file. And the survey publishes the walking split
+    at fifteen minutes for each of its two day types: 1,976,421 trips a day under
+    fifteen minutes on a weekday and 1,037,075 on a Saturday, and the derivation
+    reproduces both to the trip.
+
+    **And that is why this year does not round.** Rounding to the minute exists to
+    repair a storage defect 2019 has and 2015 does not: a fraction of a day comes
+    back as 14.999999999 for a quarter of an hour and falls on the wrong side of
+    every threshold, so 2019 rounds and its figures only agree with its publication
+    once it does. Here the clock is exact, the derivation is exact, and rounding
+    would *introduce* the error rather than remove it — it moves 619 Saturday
+    walking trips above fifteen minutes that the survey itself counts below, and
+    the published Saturday figure stops being reproduced. The field stays on the
+    rule because the next delivery may need it; 2015 declares it off and says why.
+    """
+
+    start_column: str
+    end_column: str
+    # A trip arriving at a smaller clock value than it left crossed midnight and
+    # its gap has to wrap; 503 of 2015's records do. Declared because a delivery
+    # whose clock columns carry the date would not want it.
+    wrap_at_midnight: bool = True
+    # Minutes in the day the clock wraps over. Named rather than written as 1440
+    # at the point of use, so the wrap and the notation are visibly the same idea.
+    minutes_per_day: float = 1440.0
+    # Off for 2015, and the docstring says why. On for a delivery whose clock is
+    # stored as something that cannot represent a whole minute exactly.
+    round_to_minute: bool = False
+
+
 # -- records the geometry contradicts ---------------------------------------
 # The fastest each mode is allowed to have travelled, straight line, before the
 # record is treated as impossible rather than merely surprising. They are
@@ -2416,7 +2517,9 @@ class MobilitySurvey:
     # an origin-destination pair checkable — without it there is no way to say a
     # pair is too far apart for the mode, and the run says so rather than passing
     # a check it could not make. None means the year reports no duration at all.
-    duration_rule: DurationFromMinutesColumn | DurationFromClockColumns | None
+    duration_rule: (
+        DurationFromMinutesColumn | DurationFromClockColumns | DurationFromTextClockColumns | None
+    )
     # Every value of the mode column that becomes one of the study's four actor
     # types. Two source labels may map to the same type: 2023 splits walking at
     # fifteen minutes and both halves are walking.
@@ -2429,7 +2532,7 @@ class MobilitySurvey:
     # survey counts the passengers of a system, and those are not the same
     # denominator.
     modes_not_measured: tuple[str, ...]
-    day_type_rule: DayTypeFromHouseholdDate | DayTypeIsAlwaysOne
+    day_type_rule: DayTypeFromHouseholdDate | DayTypeIsAlwaysOne | DayTypeFromRecordFlags
     measures: str  # one line: what the variable is, for the log and the dictionary
     # Zone codes that name no place, whether because the delivery uses them as a
     # sentinel for a missing answer or because they are a capture error. Records
@@ -2645,8 +2748,150 @@ SURVEY_2019 = MobilitySurvey(
     ),
 )
 
+# The 2015 delivery. It publishes its records twice, as CSV under `Base de Datos
+# Completa/` and as XLSX under `Tablas Maestras Normalizadas/`; the CSV is what is
+# read and the XLSX copy must not be read instead.
+_EODH_2015 = SURVEYS_DIR / "2015" / "Encuesta de Movilidad 2015"
+
+SURVEY_2015 = MobilitySurvey(
+    year=2015,
+    label="Mobility survey 2015",
+    label_es="Encuesta de movilidad 2015",
+    trips=DelimitedTable(
+        path=_EODH_2015 / "Base de Datos Completa" / "VIAJES_ANONIMIZADOS.csv",
+        # The file is pure ASCII, so both utf-8 and cp1252 decode it and neither
+        # can be wrong. utf-8 is declared because that is what the rest of the
+        # delivery is, and because a sibling file in the same folder — ETAPAS.xls,
+        # which nothing here reads — is neither: it fails as utf-8 on byte 0xc2
+        # and as cp1252 on byte 0x81. The encoding is a property of a file and not
+        # of a delivery, which is why it is declared per table.
+        encoding="utf-8",
+        decimal=".",
+    ),
+    zoning=SurveyZoning(
+        shapefile=_EODH_2015 / "ZATs" / "ZATs_2012_MAG.shp",
+        # Not `id`, which is the shapefile's own 0-based row number and lines up
+        # with nothing the trips carry. `Zona_Num_N` is the ZAT code, delivered as
+        # a float over 948 features and 945 distinct values.
+        code_column="Zona_Num_N",
+        zone_delivered_in_parts=True,
+    ),
+    # One of four candidates, and the only one the survey's own publications
+    # reproduce. See the notes on `weight_expands_to` and `published_total`.
+    weight_column="PONDERADOR_CALIBRADO_VIAJES",
+    origin_zone_column="ZAT_ORIGEN",
+    destination_zone_column="ZAT_DESTINO",
+    # A numeric code, and it keys on the `PREDOMINANCIA` column of
+    # `MEDIO_PREDOMINANTE.xls` and not on that table's `CODIGO`, which holds
+    # space-separated lists like "3 4 5 6" and joins to nothing. The lookup is one
+    # of two dozen `.xls` files in the delivery that are semicolon-separated text:
+    # `read_excel` refuses them and `read_csv` reads them.
+    mode_column="ID_MEDIO_PREDOMINANTE",
+    # HORA_INICIO and HORA_FIN as HH:MM:SS text, the third and last of the three
+    # ways the four surveys state a duration. It reproduces the delivery's own
+    # DIFERENCIA_HORAS on all 147,251 records and both of the survey's published
+    # fifteen-minute walking splits to the trip. See the rule for why it does not
+    # round where 2019 must.
+    duration_rule=DurationFromTextClockColumns(
+        start_column="HORA_INICIO",
+        end_column="HORA_FIN",
+    ),
+    # The keys are `PREDOMINANCIA` codes; the names beside them are the lookup's.
+    mode_map={
+        # PEATON. 2015 counts a walk of three minutes or more, the threshold it
+        # inherited from 2011 so the two could be compared; it does not split the
+        # mode at fifteen minutes the way 2023 does, though it publishes that
+        # split as an indicator. Every walking trip the file holds is in, which is
+        # the definition all four years can measure.
+        "13": PEDESTRIAN,
+        # "BICICLETA, BICICLETA CON MOTOR" — the motorised bicycle is inside the
+        # category and 2015 cannot separate it, which is one of the two reasons
+        # D38 keeps it inside BICYCLE for the years that can.
+        "10": BICYCLE,
+        # MOTO, driver and passenger together.
+        "7": MOTORCYCLE,
+        # AUTO, driver and passenger together.
+        "6": CAR,
+    },
+    modes_not_measured=(
+        # Public transport, split four ways by this survey. Not a fifth mode, for
+        # the reason in D38: the matrix counts the occupants of a bus in a crash
+        # and the survey counts the passengers of a system.
+        "1",  # Transmilenio
+        "2",  # TPC-SITP
+        "3",  # INTERMUNICIPAL
+        "4",  # ALIMENTADOR
+        "5",  # TAXI
+        "8",  # ESPECIAL, school and company transport
+        # ILEGAL, the informal modes together. This one costs the study something
+        # and the cost is measured rather than assumed: the bicitaxi lives here in
+        # 2015, where 2019 gives it a label of its own and D38 puts it in BICYCLE.
+        # The stages of these trips say 86 records and 46,840 trips a day used
+        # one, 3.0% of what this year measures as cycling, against 2.4% in 2019 —
+        # so the category is not identical across the years and the difference is
+        # about a thirtieth of one mode. Recovering it would mean taking the stage
+        # rather than the trip as the unit of analysis, which is a different study.
+        "9",
+        "12",  # OTROS: lorry, animal traction, train, and the unclassifiable
+    ),
+    # A flag the delivery already wrote on every record, and what it names was
+    # established from the interview date rather than from the column's name.
+    day_type_rule=DayTypeFromRecordFlags(
+        flags={"DIA_HABIL": WEEKDAY_TYPE, "DIA_NOHABIL": SATURDAY_TYPE},
+        stated_by=(
+            "EODH 2015: the trip module is addressed to \"las personas del hogar con 5 años o "
+            "más que viajaron el día anterior\" and asks for \"los viajes que hizo entre las "
+            "4:00 a.m. del día de ayer y las 4:00 a.m. del día de hoy\", so the reported day "
+            "is the day before the interview; DIA_NOHABIL is set on exactly the 3,591 "
+            "households interviewed on a Sunday and on no other, which makes the day it names "
+            "a Saturday, and Tomo IV titles its chapter on them \"INDICADORES DÍA SÁBADO\". "
+            "No household was interviewed on a Monday, so the survey has no Sunday at all"
+        ),
+    ),
+    measures="trips per day apportioned to the unit by the share of the desire line's length "
+             "inside it, with the intra-zonal trips apportioned by area share",
+    # Two codes name no place, and the consultant's own matrices are what show it:
+    # both published totals are reproduced to the last decimal once these are set
+    # aside, and not otherwise.
+    #
+    # 0 appears on 16 records, all of them in Soacha, and is this delivery's way of
+    # writing a zone that was never resolved — the same sentinel 2019 uses, in a
+    # different delivery by a different administration.
+    #
+    # 1000 is not a defect at all. It is the survey's code for a place outside the
+    # eighteen municipalities it covers: every record carrying it names
+    # municipality 19, "Otro", and its coordinates are 0,0. 2,229 records and
+    # 279,009 trips a day, 0.85% of the file. The zoning has no polygon for it and
+    # never could, so it is counted with the records that cannot be placed rather
+    # than being left to fail a lookup.
+    zone_codes_meaning_no_zone=("0", "1000"),
+    # Established from the file, and 2015 answers as 2019 does rather than as 2023
+    # does — which is why the field exists. Each day type's subsample expands to
+    # the whole universe on its own: the household weights sum to 2,967,290 over
+    # the 24,622 households whose reference day was a weekday and to 3,045,530
+    # over the 3,591 whose reference day was the Saturday, and the person weights
+    # to 9,059,251 and 9,023,719. Three and a half thousand households carrying as
+    # much weight as twenty-five thousand is what a factor that already expands to
+    # one day of its own kind looks like; read as 2023's, the Saturday would have
+    # come out an eighth of what it is.
+    weight_expands_to=WEIGHT_EXPANDS_TO_DAY_OF_TYPE,
+    # The sum of the two day types the survey publishes separately, because the
+    # file holds both and neither alone is its total. Tomo IV gives 17,251,733
+    # trips on a working day in Tabla 59, and the twelve modes of Tabla 119 sum to
+    # 15,730,551 on the Saturday; PONDERADOR_CALIBRADO_VIAJES reproduces both,
+    # mode by mode, and the three other candidate columns reproduce neither.
+    published_total=32_982_284.0,
+    published_total_source=(
+        "EODH 2015, Tomo IV: 17,251,733 trips on a working day (Tabla 59) and 15,730,551 on a "
+        "Saturday (sum of the twelve modes of Tabla 119, chapter 4 \"Indicadores día sábado\"); "
+        "the published matrices matriz_habil and matriz_nohabil are reproduced to the last "
+        "decimal once the codes naming no place are set aside"
+    ),
+)
+
+
 # Every survey the pipeline measures. A year is added here and nowhere else.
-MOBILITY_SURVEYS: tuple[MobilitySurvey, ...] = (SURVEY_2019, SURVEY_2023)
+MOBILITY_SURVEYS: tuple[MobilitySurvey, ...] = (SURVEY_2015, SURVEY_2019, SURVEY_2023)
 
 # -- how a zone reaches a unit ----------------------------------------------
 # The survey's zoning and the study's cartography are different files drawing the

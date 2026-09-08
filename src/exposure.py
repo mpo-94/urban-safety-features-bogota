@@ -2042,19 +2042,42 @@ def verify_from_surveys(
         )),
         f"compared to 1e-12 over {len(measured)} measured row(s)",
     ))
+    # What the shares have to satisfy depends on what the year's factor expands
+    # to, and there is no statement about them that is true of both kinds of year.
+    # A factor that spreads the universe over all the reference days together
+    # gives each day type a fraction of it, and the fractions partition the
+    # universe, so they sum to one. A factor that already expands to one day of
+    # the record's own kind converts nothing, so every share is one on its own and
+    # a year with two day types sums to two — which is not a defect and was not
+    # expressible until a year had both properties at once.
+    #
+    # This check read "they add to one" for every year, which was right while the
+    # only year with more than one day type was 2023. 2015 has two day types and
+    # expands to one day of its own kind, and it failed a check that was asking
+    # the wrong question of it. That is the second time a check written inside one
+    # year's assumptions has broken on the next; see section 7 of
+    # docs/adding-a-survey-year.md.
+    share_expectations = []
+    for survey in survey_list:
+        shares = apportionments[survey.year].trips.universe_shares
+        if survey.weight_expands_to == config.WEIGHT_EXPANDS_TO_AVERAGE_DAY:
+            share_expectations.append(
+                (survey.year, "partition the universe", float(shares.sum()), 1.0)
+            )
+        else:
+            share_expectations.append(
+                (survey.year, "each cover the universe once", float(shares.min()), 1.0)
+            )
     checks.append((
-        "the universe shares of a year add to one",
+        "the universe shares of a year are what its expansion implies",
         bool(np.allclose(
-            [
-                float(apportionments[survey.year].trips.universe_shares.sum())
-                for survey in survey_list
-            ],
-            1.0,
+            [observed for _, _, observed, _ in share_expectations],
+            [expected for _, _, _, expected in share_expectations],
             rtol=1e-9,
         )),
         ", ".join(
-            f"{survey.year}: {float(apportionments[survey.year].trips.universe_shares.sum()):.12f}"
-            for survey in survey_list
+            f"{year}: {observed:.12f}, which should {requirement}"
+            for year, requirement, observed, _ in share_expectations
         ),
     ))
 
@@ -2232,13 +2255,20 @@ def report_from_surveys(
             )
         else:
             log.info(
-                "%d: %s over one kind of day, %s, so %s and %s hold the same number and no "
-                "rescaling happened. The year carries no second day type to compare it against",
+                "%d: %s, %s, so %s and %s hold the same number and no rescaling happened. %s",
                 survey.year,
                 survey.weight_expands_to,
                 "; ".join(f"{day_type} {value:,.0f}" for day_type, value in rates.items()),
                 config.TRIPS_PER_AVERAGE_DAY_COL,
                 config.TRIPS_PER_DAY_OF_TYPE_COL,
+                # A year expanding to one day of its own kind may still have more
+                # than one kind, and 2015 does. Saying "no second day type to
+                # compare it against" of such a year is exactly the mistake
+                # section 7 of docs/adding-a-survey-year.md records: a sentence
+                # about one year's weighting printed for a year it does not fit.
+                "The day types are directly comparable, each being one whole day of its own kind"
+                if len(rates) > 1
+                else "The year carries no second day type to compare it against",
             )
 
 

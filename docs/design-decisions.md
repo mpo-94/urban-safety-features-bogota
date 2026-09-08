@@ -2980,18 +2980,27 @@ predictor bundle until then, which is exactly what having the constant is for.
 what source, at what shape, and it retires the variable every earlier exposure
 figure was measured on.
 
-**Status:** Closed for 2023 and 2019 and for the machinery the other two years
+**Status:** Closed for 2023, 2019 and 2015, and for the machinery the fourth year
 will use. **Two things are open** and both are named at the end: which day type
 the models take, and whether a day-type comparison is supportable at all — a
-question 2019 has since made sharper rather than easier.
+question 2019 made sharper and 2015 has now made answerable.
 
 **Built:** Yes. `src/surveys.py` and the second half of `src/exposure.py`, route
-`exposure`. Run `run_20260908_020719`.
+`exposure`. Run `run_20260908_044524`.
 
 **Amended by 2019**, in four places, each marked below: the day type is not a
 dimension every year carries; the duration is a declared rule and not a column
 name; a zone code can name no place; and the delivered layer is retired, having
 first been used for the strongest check the survey reader could get.
+
+**Amended by 2015**, in three places, also marked below: the day type is a real
+dimension of the study after all, carried by two of the three measured years; a
+zone may be delivered in pieces; and the year that expands to one day of its own
+kind *and* has more than one kind broke a check that no earlier year could have.
+2015 also brought the best external control the exposure stage has had — its own
+published origin-destination matrices, reproduced to the last decimal on both kinds
+of day — and nothing downstream moved: 2019 and 2023 come out of the run identical
+across all 480 of their rows.
 
 ### What replaced what, and why it had to
 
@@ -3181,6 +3190,7 @@ arrival stored as fractions of a day, and 2015 gives them as `HH:MM:SS` text. So
 it is now `duration_rule`, a small object dispatched through a registry in
 `surveys.py` exactly as the day type is, with `DurationFromMinutesColumn` and
 `DurationFromClockColumns` written and a third waiting for 2015.
+`DurationFromTextClockColumns` is now written too, and it is the last one expected.
 
 This is not a second reader and it is not the shape bending. It is the same
 mechanism the day type already had, applied to the second field that turns out to
@@ -3213,6 +3223,62 @@ The same shape in both years — overwhelmingly a pedestrian problem, under 1.2 
 of each motorised mode — which is what a threshold catching a real defect rather
 than ordinary variation looks like, now confirmed on a second survey run by a
 different administration.
+
+**Amended by 2015 — the derivation is exact, it is not rounded, and the test
+removes an order of magnitude less.** Both halves need saying because both look
+like defects and neither is.
+
+*The duration.* `HORA_INICIO` and `HORA_FIN` are `HH:MM:SS` text, 503 records cross
+midnight, and the derived gap reproduces the delivery's own `DIFERENCIA_HORAS` on
+**all 147,251 records** — where 2019's reproduced its auxiliary file on all but one.
+It also reproduces both of the survey's published fifteen-minute walking splits:
+1,976,421 trips a day under fifteen minutes on the weekday against a published
+1,976,421, and 1,037,074.9 on the Saturday against 1,037,075.
+
+*And it is not rounded to the minute, where 2019's must be.* The rounding is not a
+convention, it is a repair: 2019 stores a clock as a fraction of a day, so a
+quarter of an hour comes back as 14.999999999 and a tenth of that year's walking
+falls on the wrong side of the threshold. 2015's clock is exact and has nothing to
+repair, so rounding would introduce the error instead — it pushes 619 Saturday
+walking trips above fifteen minutes that the survey itself counts below, and the
+published Saturday figure stops being reproduced. It changes nothing else: the
+plausibility test rejects the same 1,096 records with rounding and without, and
+**not one record changes side**. So the choice costs the study nothing and buys an
+exact agreement with a published figure, which is the only reason to make it.
+
+*The test removes far less, and it is the delivery and not the declaration.*
+
+| Actor type | 2015 trips per day | Share of the mode | 2019 share | 2023 share |
+|---|---:|---:|---:|---:|
+| `PEDESTRIAN` | 312,674 | 3.3 % | 18.7 % | 14.6 % |
+| `BICYCLE` | 9,297 | 0.6 % | 6.0 % | 4.8 % |
+| `CAR` | 1,855 | 0.0 % | 0.7 % | 0.5 % |
+| `MOTORCYCLE` | 609 | 0.0 % | 1.2 % | 0.7 % |
+| **All four** | **324,435** | **1.9 %** | 13.1 % | 9.4 % |
+
+Each mode's share is against that mode's total as the file holds it, which is what
+the two tables above use; the last row is against what the year measures in the
+four modes together, which is what `compare_years` prints.
+
+A departure that large is the shape of a misread declaration, so it was chased
+until it was explained. It is not the durations: the three years' walking durations
+are distributed much alike and 2015 rejects an order of magnitude less in *every*
+band, 1.8 % of its fifteen-to-thirty-minute walks against 16.5 % and 13.4 %. It is
+not the coarseness of the zoning: the median zone is 0.410 km² in 2015, 0.412 in
+2019 and 0.421 in 2023. What it is, is that 2015's zone pairs are genuinely closer
+together — at the ninetieth percentile the two zones of a walking record are 1.45 km
+apart against 7.07 km in 2019 and 3.63 km in 2023 — and the test only ever removes
+the far tail.
+
+**And 2015 is the one year that can be checked against itself here**, because it
+reports the latitude and longitude of both endpoints and the pipeline does not use
+them. Those coordinates say **2.8 %** of its walking records imply a straight-line
+speed above 6 km/h. The zone test rejects **1.8 %**. Two independent readings agree
+on the order of magnitude, and the zone test comes out the more forgiving of the
+two, which is exactly what a test comparing the *nearest points of two polygons*
+should do against one comparing the reported endpoints themselves. The low figure
+is a better-geocoded delivery, and it is also the closest thing this study has to a
+direct validation of the test.
 
 ### How a zone reaches a unit, in the detail that turned out to matter
 
@@ -3254,6 +3320,22 @@ the list still stops the run.** This is the one field that could quietly swallow
 real zone, so the reason for each code is written at the declaration rather than
 inferred from the fact that it failed to match.
 
+**Amended by 2015 — a zone may be delivered in several pieces, and that is
+declared per year too.** `ZATs_2012_MAG.shp` has 948 features and 945 codes: 794
+arrives as two detached polygons and 806 as three. The reader refused repeated
+codes outright, because two different zones sharing a number would place a trip in
+both. What decides between the two cases is the delivery's own arithmetic: its
+`AREA` column is per feature and sums to the area of the union in both cases, 8.36 +
+7.17 km² and 29.33 + 0.34 + 3.04 km², so the delivery itself treats them as one
+zone each. Both are peripheral zones north of the city and no trip in the file
+names either.
+
+So `SurveyZoning` gains `zone_delivered_in_parts`, off by default. Declared on, the
+pieces are dissolved by code; declared off — which is every other year — a repeated
+code still stops the run. It is off by default because the reader cannot tell a
+delivered multipart zone from a genuine collision, and the year that has looked is
+the one that should say which it is.
+
 **Amended by 2019 — the empirical gap that justifies the sliver threshold is a
 property of the 2023 zoning and not a general one.** The threshold was set at a
 thousandth of a zone's area because on the 2023 overlay no sliver exceeded 0.035 %
@@ -3280,6 +3362,16 @@ a measured indifference in 2019.
 **What a year must now do is show one or the other.** A year whose overlay has
 neither a gap nor indifference would need a threshold argued on its own terms, and
 that is a question for a person and not a constant to reuse.
+
+**2015 has no gap either, and its indifference is tighter than 2019's.** Its 1,285
+fragments run continuously across the cut — the largest below it is 0.0994 % of its
+zone and the smallest above it 0.1007 % — so there is nothing for the threshold to
+sit inside. Swept across the same two orders of magnitude, from a ten-thousandth to
+a hundredth, **the largest per-unit pedestrian figure moves 0.096 %** and the city
+total moves 799 trips a day in 4,459,688, which is 0.018 %. 2019's equivalent was
+0.16 %. Two of the three measured years therefore keep the threshold on measured
+indifference and one on an empirical gap, which is the pattern this amendment
+predicted rather than the exception it feared.
 
 Not renormalising is the other half of the decision. A zone's shares are left as
 they come out, so they sum to one where the zone lies wholly inside the study area
@@ -3351,6 +3443,58 @@ block of the table is 30 units × 4 modes × 1 day type = 120 rows, and `SATURDA
 and `SUNDAY` are absent from it rather than zero. That is D10 applied to a
 dimension ragged by construction, and 2019 exercised it before 2011 got the
 chance.
+
+**Amended by 2015 — and the amendment goes the other way: the day type is a
+dimension of the study, not a property of 2023.** After 2019 it looked as though
+one year in the series carried a Saturday and the rest did not, which would have
+made a day-type comparison an artefact of a single delivery. 2015 has a Saturday,
+observed and separately weighted, so two of the three measured years carry one and
+the question of what the models take is a real question rather than a foregone one.
+
+**What 2015's Saturday is, and how its own flag was made to say so.** The trip
+record carries `DIA_HABIL` on 129,521 rows and `DIA_NOHABIL` on 17,730, one always
+set and never both. The name does not say which day the second is, and the
+interview date does: 2015 asks about the day *before* the interview — its module is
+addressed to *"las personas del hogar con 5 años o más que viajaron el día
+anterior"* and asks for *"los viajes que hizo entre las 4:00 a.m. del día de ayer y
+las 4:00 a.m. del día de hoy"* — and `DIA_NOHABIL` is set on exactly the 3,591
+households interviewed on a **Sunday** and on no other. So the day it names is a
+Saturday. Tomo IV agrees in its own chapter heading, *"Indicadores día sábado"*.
+
+**And the flag is the proof of the shift rather than a way around it.** Had it been
+about the interview day, the 4,237 households interviewed on a Saturday would have
+carried it; they do not, because they report a Friday. **No household was
+interviewed on a Monday**, so no reference day of the survey is a Sunday, and 2015
+has two day types rather than three.
+
+The date and the flag were checked against each other and agree on **all 147,251
+records**. The flag is nevertheless what the pipeline reads, for two reasons that
+are about the delivery and not about the method: it is what the consultant grouped
+by when publishing the matrices the reading is checked against, and one household's
+row in the household file is displaced by a column — the date field holds the UTC
+offset — so a rule reading the interview date would stop the entire run over one
+corrupted record whose eight trips carry a perfectly good flag. That is
+`DayTypeFromRecordFlags`, the third entry in a registry designed for four, and it
+carries the same `stated_by` field `DayTypeIsAlwaysOne` does, for the same reason.
+
+**Its expansion is 2019's answer and not 2023's, and it was established from the
+file.** Each day type's subsample expands to the whole universe on its own: the
+household weights sum to 2,967,290 over the 24,622 weekday households and to
+3,045,530 over the 3,591 Saturday ones, and the person weights to 9,059,251 and
+9,023,719. Three and a half thousand households carrying as much weight as
+twenty-five thousand is what a factor that already expands to one day of its own
+kind looks like from outside. Read as 2023's, 2015's Saturday would have come out
+an eighth of what it is — and it would have looked entirely reasonable.
+
+**Which is also why a check had to change.** `the universe shares of a year add to
+one` was true of every year that existed when it was written, because the only year
+with more than one day type spread its universe across them. 2015 is the first year
+with more than one day type *and* a factor that expands to one day of each, so its
+shares are 1.0 and 1.0 and they sum to two — correctly. The check now asks what the
+year's own `weight_expands_to` implies: that the shares partition the universe, or
+that each of them covers it once. This is the second time a check written inside
+one year's assumptions has broken on the next, and it is recorded in section 7 of
+`docs/adding-a-survey-year.md` beside the first.
 
 The evidence is not one statement but five, all from the year's own delivery. The
 questionnaire's trip module is addressed *"para las personas del hogar con 5 años
@@ -3874,14 +4018,32 @@ it should be resolved before any document compares a Saturday with a weekday. If
 it turns out to be an artefact, the honest answer is to publish the weekday only
 and say why, and the table already supports that.
 
-*2019 has made this both sharper and easier.* Sharper, because a day type only
-2023 has cannot enter a model with a time dimension: a Saturday series over four
-survey years would have one point in it. Easier, because the weekday is now the
-only day all the measured years share, so publishing the weekday alone — which was
-the fallback if the day-type signal turned out to be an artefact — is also the
-only choice the series allows. Unless 2015 or 2011 turns out to carry a usable
-Saturday, the day type is a property of one year and not a dimension of the study,
-and this decision should be closed that way rather than left open.
+*2019 made this both sharper and easier.* Sharper, because a day type only 2023
+has cannot enter a model with a time dimension: a Saturday series over four survey
+years would have one point in it. Easier, because the weekday was then the only day
+all the measured years shared, so publishing the weekday alone — the fallback if the
+day-type signal turned out to be an artefact — was also the only choice the series
+allowed. This decision was ready to be closed that way.
+
+**2015 reopened it, and gave the evidence that was missing.** It carries a real
+Saturday: 3,591 households surveyed about one, separately weighted, expanding to a
+whole Saturday on their own. A Saturday series now has two points and would have
+three if 2011's turns out usable, so it is no longer a property of one year.
+
+**And 2015's Saturday behaves the way a Saturday should, which is what 2023's does
+not.** Against its own weekday, inside the thirty units, its car travel rises 50 %
+while walking falls 32 % and cycling 17 %; Tomo IV says the same of the whole
+region in words, car up "aproximadamente el 45 %" and walking down 29 %. 2023's
+Saturday, rescaled to the universe, says a Saturday carries as much travel as a
+Tuesday. So the flat trip rate is a property of the 2023 delivery and not of
+Bogotá's travel — which is the answer this section said had to come from an
+expansion document, arrived at instead from a second survey that did not need
+rescaling at all.
+
+That does not settle which day type the models take, and it changes what the
+question is. It is no longer "is a Saturday measurable"; it is whether a Saturday
+measured well in 2015 and badly in 2023 can be put in one series. **That is a
+decision for my advisor and it is not taken here.**
 
 **What the delivered layer's 181 lines were selected by** remains unknown, and now
 it does not matter for any result. It is recorded because the question was asked in

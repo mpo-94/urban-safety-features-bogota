@@ -31,9 +31,9 @@ and each has a root declared in `config.py`:
 
 **`SURVEYS_DIR` points inside `data/incoming/` and that is not a contradiction.**
 The rule below is that a delivery leaves `incoming/` once it has been inspected
-and declared, and 2023 and 2019 now are both. They stay where they are because
-2011 and 2015 are not, and moving half of a four-year delivery out of the folder
-its siblings sit in would file the same source two ways. The four move together,
+and declared, and 2023, 2019 and 2015 now are. They stay where they are because
+2011 is not, and moving three quarters of a four-year delivery out of the folder
+its sibling sits in would file the same source two ways. The four move together,
 once all of them are declared and the shape they finally want is known.
 
 **`PREDICTORS_DIR` and `EXPOSURE_DIR` point at the same folder today, and they are
@@ -73,7 +73,7 @@ data/
 ├── incoming/
 │   ├── afectados_2024.csv                the updated 2024 extract, already integrated
 │   └── encuestas_movilidad/              the four mobility survey publications, 2026-09-05,
-│       └── <year>/                       1.8 GB, 546 files; 2023 and 2019 declared and read
+│       └── <year>/                       1.8 GB, 546 files; 2023, 2019 and 2015 declared and read
 ├── integrated/                           written by `integrate`, read by everything else
 │   ├── fatalities__2024_updated_extract.parquet
 │   └── injuries__2024_updated_extract.parquet
@@ -173,8 +173,8 @@ control, so nothing else can catch the two drifting apart.
 
 ## Known and provisional
 
-**The mobility survey publications are in `incoming/`, and 2023 of them is now
-read.** They are the four complete publications from the Alcaldía de Bogotá,
+**The mobility survey publications are in `incoming/`, and three of the four are
+now read.** They are the four complete publications from the Alcaldía de Bogotá,
 placed on 2026-09-05, replacing an earlier partial delivery. They replace the
 single bicycle layer used for exposure until now, and their shape is not the
 shape of what they replace: they hold **survey trip records and the zoning those
@@ -186,22 +186,53 @@ carry `zat_origen` and `zat_destin` — so the geometry is built rather than
 declared. That stage now exists: `src/surveys.py` reads a declared survey and
 `src/exposure.py` builds the lines and apportions them. See D38.
 
-**Five files are read across the four folders and nothing else is.**
+**Seven files are read across the four folders and nothing else is.**
 `config.SURVEY_2023` names the trip module, the household module — which is where
 its day type comes from, and only there — and the ZAT zoning. `config.SURVEY_2019`
 names its trip module and its ZAT zoning, and needs nothing else: its day type is
 the same for every record and its duration is derived from two columns of the trip
-file. Everything else in the two publications, and all of 2011 and 2015, is
-delivered and not yet declared.
+file. `config.SURVEY_2015` needs two as well, its trip file and its ZAT zoning:
+its day type is a flag the delivery already wrote on every trip record and its
+duration is derived from two columns of the same file. Everything else in the three
+publications, and all of 2011, is delivered and not declared.
 
 What each year holds for that purpose, out of everything published:
 
 | Year | Household trip records | Zoning |
 |---|---|---|
 | 2011 | `120927_ConsultaEODH2011_DiaTipico (1).accdb`, table `Mod_D_VIAJES2_BaseImputacion_Definitiva` | **none delivered** |
-| 2015 | `Base de Datos Completa/VIAJES_ANONIMIZADOS.csv`, 35 MB | `ZATs_2012_MAG.shp`, 948 zones |
+| 2015 | `Base de Datos Completa/VIAJES_ANONIMIZADOS.csv`, 35 MB **— declared** | `ZATs/ZATs_2012_MAG.shp`, 948 features over 945 zones **— declared** |
 | 2019 | `BD EODH2019 FINAL v14022020/Archivos CSV/ViajesEODH2019.csv`, 23 MB **— declared** | `Zonificación (shapefiles)/ZONAS/ZONAS/ZAT.shp` 1,141 **— declared**; `UTAM.shp` 141 |
 | 2023 | `05_Base datos procesada/CSV/d. Modulo viajes.csv`, 59 MB **— declared** | `ZAT2023.shp` 1,215 **— declared**; `UTAM2023.shp` 142 |
+
+**The 2015 zoning is 948 features and 945 zones, and the reader is told so.** Codes
+794 and 806 arrive as two and three detached polygons, which the delivery's own
+per-feature `AREA` column shows to be pieces of one zone rather than zones sharing
+a number. `config.SURVEY_2015` declares `zone_delivered_in_parts`, and the pieces
+are dissolved by code at read time. No other year declares it, and for them a
+repeated code still stops the run.
+
+**Six files of the 2015 delivery were read for verification and are read by
+nothing.** `Documentos/Tomo IV_Indicadores_Fe de erratas_enero 2017.pdf` publishes
+the per-mode totals of the working day (Tabla 43), of the Saturday (Tabla 119) and
+the trips-per-household table (Tabla 59) the reconstruction is checked against, plus
+the fifteen-minute walking splits. `Documentos/MATRICES EODH/matriz_habil.xlsx`,
+`matriz_nohabil.xlsx`, `matriz_medio_habil.xlsx` and `matriz_medio_nohabil.xlsx` are
+the published origin-destination matrices the reading reproduces to the last
+decimal. `Documentos/FORMULARIO_DE_LA_ENCUESTA_2015.pdf` is the questionnaire that
+settles which day the trips belong to. They are named here because the figures they
+establish are quoted in `docs/design-decisions.md` and in section 15 of the
+verification report, and a quoted figure whose source is not written down cannot be
+checked later.
+
+**`ENCUESTAS_ANONIMIZADO.csv` is deliberately not read**, and it is the 2015
+counterpart of 2019's `Aux_Duración`. It was used once, to establish what
+`DIA_NOHABIL` means — its interview dates, shifted back a day, reproduce the flag on
+all 147,251 trip records and show that the day is a Saturday — and to establish what
+the expansion factor expands to, from the household weights. Reading it in the
+pipeline would be a second source for a day type the trip file already carries, and
+it has a defect of its own: one household's row is displaced by a column, so its
+interview date is unreadable.
 
 2023 also reads `05_Base datos procesada/CSV/a. Modulo hogares.csv`, which the
 table above does not list because it holds no trips. It is where the interview

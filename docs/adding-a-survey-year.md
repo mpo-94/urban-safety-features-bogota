@@ -3,7 +3,24 @@
 The study's exposure is built from the household mobility survey: the desire
 lines are constructed here rather than received, one per pair of zones, and each
 gives every unit it crosses the share of its trips matching the share of its
-length inside that unit. **2023 and 2019 are implemented. 2015 and 2011 are not.**
+length inside that unit. **2023, 2019 and 2015 are implemented. 2011 is not.**
+
+**2015 was the third and it held again, at a lower price.** One declaration, two
+registry entries — a `day_type_rule` reading the flag the delivery already wrote on
+the record, and the third and last `duration_rule` — plus one new `SurveyZoning`
+field for a zone that arrives in pieces. 2019 and 2023 come out of the run
+**identical to the last decimal over all 480 of their rows**. What 2015 added to
+the study is a second day type: its `DIA_NOHABIL` is a Saturday and only a
+Saturday, so the day type is a dimension two of the three measured years carry
+rather than a property of 2023, and D38's open question about it is now a real
+question instead of a foregone one.
+
+It also brought the strongest external control this stage has ever had. The
+delivery publishes twenty origin-destination matrices — the artefact this pipeline
+rebuilds — and the reading reproduces two of them **to the last decimal on both
+kinds of day**. That check is what identified the zone sentinels: the readings
+differed by 1,665 trips before they were set aside, and every disagreeing pair had
+a `0` at one end.
 
 **2019 was the year that tested this procedure and it held.** The shape did not
 bend: the measurement, the four actor types, the table, the figures and the
@@ -161,10 +178,19 @@ Add one beside the others; do not add a second way of reading a file. A declared
 rule with no handler fails with a message naming itself, which is the behaviour
 that keeps the gap visible.
 
-**2015 will need a third duration rule and it is the last one expected.** Its
+**2015 needed a third duration rule and it is the last one expected.** Its
 `HORA_INICIO` and `HORA_FIN` are `HH:MM:SS` strings, and it also ships
-`DIFERENCIA_HORAS` in the same notation, which gives the derivation something to
-be checked against exactly as 2019's `Aux_Duración` did.
+`DIFERENCIA_HORAS` in the same notation, which gave the derivation something to be
+checked against exactly as 2019's `Aux_Duración` did — and it reproduces it on all
+147,251 records rather than on all but one. `DurationFromTextClockColumns` is
+written.
+
+**And 2015 needed one thing this section did not predict, which is a field and not
+a reader.** Its zoning has 948 features and 945 codes, because two zones arrive as
+several detached polygons. `SurveyZoning.zone_delivered_in_parts` says so, and it
+is off by default: a repeated code still stops the run for a year that has not
+looked, because the reader cannot tell a multipart zone from two zones sharing a
+number and the year that has read its `AREA` column is the one that can.
 
 ---
 
@@ -275,10 +301,15 @@ is left behind measuring an empty table. The declaration stays in `config.py`
 naming the file, and section 13 of the verification report stays in place, because
 figures quoted from it have to remain reproducible.
 
-**2015 and 2011 have no equivalent.** There is no delivered layer left to check
-them against, so the cross-year comparison of section 3 is the only external check
-those years will get, which makes reading it carefully more important and not
-less.
+**2015 turned out to have something better, and 2011 has nothing.** This paragraph
+said the cross-year comparison would be the only external check either year would
+get. That was wrong about 2015: its delivery publishes the origin-destination
+matrices themselves, and the reading reproduces two of them to the last decimal on
+both kinds of day, mode by mode. That is a stronger control than 2019's per-UTAM
+table, because it exercises the origin *and* the destination of every pair rather
+than a household's own zone — and it is the check that found 2015's zone sentinels.
+
+2011 has no such thing, so for that year the sentence stands as written.
 
 ---
 
@@ -316,6 +347,49 @@ dictionary says which column is comparable, in capitals.
 quantity computed *across* years from a column whose meaning `weight_expands_to`
 controls is suspect, and no check written inside one year can see it.
 
+### Writing a check that only one shape of year can pass
+
+`the universe shares of a year add to one` was true of every year that existed when
+it was written. It stopped being true at the third. A year whose factor spreads the
+universe over all its reference days gives each day type a fraction of it and the
+fractions sum to one — that is 2023. A year whose factor already expands to one day
+of the record's own kind converts nothing, so each share is one on its own; 2019
+passed only because it has a single day type and 1.0 sums to 1.0 by accident.
+
+**2015 is the first year with more than one day type *and* a factor that expands to
+one day of each**, so its shares are 1.0 and 1.0 and they sum to two. Correctly. The
+check failed a year that was right.
+
+**Why it survived:** the combination did not exist. Neither of the first two years
+could have produced it, and a check that no available input can break looks like a
+check that works.
+
+**What caught it:** running the year. The check is inside the run and it failed
+loudly, which is the behaviour that made it cheap — five minutes rather than a
+figure quoted in a deliverable.
+
+**What to do:** it now asks what the year's own `weight_expands_to` implies —
+that the shares partition the universe, or that each of them covers it once. And
+the general form is the one already recorded above: **anything a check asserts about
+day types, universes or trip columns has to be conditioned on `weight_expands_to`,
+because that field is what those quantities mean.** This is the second entry in this
+section with the same root and it will not be the last; 2011 has yet to declare
+which of the two it is.
+
+### Printing a sentence about one day type for a year that has two
+
+The same run said of 2015 that "the year carries no second day type to compare it
+against" — a sentence written for 2019, which has one, printed for a year that has
+two. It was true of every year that had reached that branch before.
+
+**What caught it:** reading the log rather than the exit code, which is what
+section 3 of this document exists to insist on. The run passed every check while
+printing it.
+
+**What to do:** a sentence about a year's day types is conditioned on how many it
+has, exactly as a sentence about its weighting is conditioned on
+`weight_expands_to`.
+
 ### Deriving a duration without rounding it
 
 2019's `(0.302083333333333 − 0.291666666666667) × 1440` is 14.999999999, so an
@@ -329,6 +403,18 @@ published 43.1 %, and rounding closed the gap to a tenth of a point.
 
 **What to do:** round a derived duration to the minute, and check it against a
 published figure rather than against its own plausibility.
+
+**And 2015 is the year that shows the second half of that sentence is the rule and
+the first half is the remedy.** Its clock columns are exact `HH:MM:SS` text, so
+there is no floating-point loss to repair, and rounding *introduces* the error the
+rounding exists to remove: it moves 619 Saturday walking trips above fifteen
+minutes that the survey itself counts below, and the published Saturday figure
+stops being reproduced. Unrounded, both of that year's published fifteen-minute
+splits come out exactly. So `round_to_minute` is a declared field and 2015 declares
+it off — after measuring that it changes nothing else, the plausibility test
+rejecting the same 1,096 records either way with **not one record changing side**.
+Check against the published figure; round only if that is what makes the two
+agree.
 
 ### Assuming a threshold's justification is general
 

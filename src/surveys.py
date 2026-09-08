@@ -253,6 +253,99 @@ def _day_type_from_household_date(
     return assigned, shares
 
 
+def _day_type_from_record_flags(
+    rule: config.DayTypeFromRecordFlags,
+    trips: pd.DataFrame,
+    survey: config.MobilitySurvey,
+    log: RunLog,
+) -> tuple[pd.Series, pd.Series]:
+    """Day type per trip from flags the delivery already wrote on the record.
+
+    2015 ships `DIA_HABIL` and `DIA_NOHABIL`, one set and never both. The flags
+    are read rather than derived because they are what the consultant grouped by
+    when they published the origin-destination matrices this pipeline rebuilds,
+    and because that year's interview date is unreadable on one household whose
+    row is displaced by a column — a rule reading the date would stop the run over
+    one corrupted record while the flag on its eight trips is perfectly good.
+
+    What a flag names is not taken from what it is called. `DIA_NOHABIL` could be
+    a Saturday, a Sunday or both, and the declaration says which, with the year's
+    own statement quoted beside it.
+
+    Every record must carry exactly one flag. A record with none has no day, and a
+    record with two would be counted under both — either is a misreading of the
+    delivery rather than a case to resolve with a default.
+    """
+    for day_type in rule.flags.values():
+        if day_type not in config.DAY_TYPES:
+            raise ValueError(
+                f"{survey.label} maps one of its day-type flags to {day_type!r}, which is not "
+                f"one of {', '.join(config.DAY_TYPES)}. The exposure table joins on this value "
+                "and the casualty side has to be able to name the same one"
+            )
+    require_columns(trips, tuple(rule.flags), f"{survey.label} day types")
+
+    # A flag is "set" when it holds anything at all: these columns carry a 1 on
+    # the records they apply to and nothing on the rest, and reading them as
+    # presence rather than as the value 1 is what keeps a delivery that writes
+    # "SI" or "TRUE" from silently landing every record in no day type.
+    set_flags = pd.DataFrame(
+        {column: trips[column].notna() for column in rule.flags}, index=trips.index
+    )
+    how_many = set_flags.sum(axis=1)
+    if (how_many != 1).any():
+        none_set, several = int((how_many == 0).sum()), int((how_many > 1).sum())
+        raise ValueError(
+            f"{survey.label}: {none_set} record(s) carry none of "
+            f"{', '.join(rule.flags)} and {several} carry more than one. The flags have to "
+            "partition the file: a record with no flag has no day type, and one with two would "
+            "be counted under both"
+        )
+
+    # Assigned column by column rather than through a single select, because the
+    # check above has already established that exactly one flag is set on every
+    # record: there is no default case left for a select to need, and giving it
+    # one would be writing a fallback for a state that cannot occur.
+    assigned = pd.Series(index=trips.index, dtype="object")
+    for column, day_type in rule.flags.items():
+        assigned[set_flags[column]] = day_type
+
+    # Each day type's subsample expands to a whole day of its own kind, so there
+    # is nothing to convert and every share is one. A year whose factor spreads
+    # the universe across its reference days needs the household weights to say
+    # what fraction each day covers, and a flag on the trip cannot supply them —
+    # so this rule serves that year not at all, and says so rather than inventing
+    # a share of one that would quietly rescale nothing.
+    if survey.weight_expands_to != config.WEIGHT_EXPANDS_TO_DAY_OF_TYPE:
+        raise ValueError(
+            f"{survey.label} takes its day type from a flag on the trip record but declares "
+            f"that its factor expands to {survey.weight_expands_to!r}. Converting to one day "
+            "of that kind needs the share of the universe each day type's households cover, "
+            "and a flag on a trip does not carry it. Either the year expands to one day of the "
+            "record's own kind, or its day type has to come from the households"
+        )
+    day_types = list(dict.fromkeys(rule.flags.values()))
+    shares = pd.Series(1.0, index=pd.Index(day_types, name=config.DAY_TYPE_COL))
+
+    log.info(
+        "%s: day type read from %s; records by day type: %s. Stated by %s",
+        survey.label,
+        ", ".join(rule.flags),
+        ", ".join(
+            f"{day_type} {int((assigned == day_type).sum()):,}" for day_type in day_types
+        ),
+        rule.stated_by or "nothing declared, which is a gap and not a licence",
+    )
+    if not rule.stated_by:
+        log.warn(
+            "%s takes its day type from a flag and names nothing in the delivery that says "
+            "which day the flag means. A column called \"not a working day\" does not say "
+            "whether it is a Saturday or a Sunday, and the two are different denominators",
+            survey.label,
+        )
+    return assigned, shares
+
+
 def _day_type_is_always_one(
     rule: config.DayTypeIsAlwaysOne,
     trips: pd.DataFrame,
@@ -305,6 +398,7 @@ def _day_type_is_always_one(
 _DAY_TYPE_HANDLERS = {
     config.DayTypeFromHouseholdDate: _day_type_from_household_date,
     config.DayTypeIsAlwaysOne: _day_type_is_always_one,
+    config.DayTypeFromRecordFlags: _day_type_from_record_flags,
 }
 
 
@@ -383,12 +477,78 @@ def _duration_from_clock_columns(
     return minutes
 
 
+def _duration_from_text_clock_columns(
+    rule: config.DurationFromTextClockColumns,
+    trips: pd.DataFrame,
+    survey: config.MobilitySurvey,
+    log: RunLog,
+) -> pd.Series:
+    """Minutes between a departure and an arrival written as `HH:MM:SS` text.
+
+    2015's `HORA_INICIO` and `HORA_FIN`. The parsing is done on the three parts
+    rather than through a datetime parser because these are durations of day and
+    not instants: an hour of 24 or more is a legitimate way to write "after
+    midnight" and a parser refuses it, returning nothing where the arithmetic is
+    obvious.
+
+    The wrap is the same as 2019's — 503 of 2015's records arrive at a smaller
+    clock value than they left — and the rounding is not: see the rule for why
+    this year's derivation is exact and rounding it would be the error rather than
+    the repair.
+    """
+    require_columns(trips, (rule.start_column, rule.end_column), f"{survey.label} durations")
+
+    def clock_minutes(column: str) -> pd.Series:
+        parts = trips[column].astype("string").str.strip().str.split(":", expand=True)
+        if parts.shape[1] != 3:
+            raise ValueError(
+                f"{survey.label}: {column} does not hold HH:MM:SS — splitting on the colon "
+                f"gives {parts.shape[1]} part(s) rather than three"
+            )
+        numbers = parts.apply(lambda part: pd.to_numeric(part, errors="coerce"))
+        return numbers[0] * 60 + numbers[1] + numbers[2] / 60
+
+    start, end = clock_minutes(rule.start_column), clock_minutes(rule.end_column)
+    unreadable = int((start.isna() | end.isna()).sum())
+
+    minutes = end - start
+    wrapped = 0
+    if rule.wrap_at_midnight:
+        crossing = minutes < 0
+        wrapped = int(crossing.sum())
+        minutes = minutes.where(~crossing, minutes + rule.minutes_per_day)
+    if rule.round_to_minute:
+        minutes = minutes.round()
+
+    log.info(
+        "%s: duration derived from %s and %s as HH:MM:SS text, %d record(s) crossing midnight, "
+        "%s to the minute; median %.0f min",
+        survey.label,
+        rule.start_column,
+        rule.end_column,
+        wrapped,
+        "rounded" if rule.round_to_minute else "not rounded",
+        float(minutes.median()),
+    )
+    if unreadable:
+        log.warn(
+            "%s: %d record(s) have no readable clock value in %s or %s, so their duration is "
+            "unknown and the pair they name cannot be judged",
+            survey.label,
+            unreadable,
+            rule.start_column,
+            rule.end_column,
+        )
+    return minutes
+
+
 # The same registry pattern as the day type, and for the same reason: three of
 # the four surveys state the duration three different ways, so a year adds a rule
 # beside the others rather than a second way of reading a file.
 _DURATION_HANDLERS = {
     config.DurationFromMinutesColumn: _duration_from_minutes_column,
     config.DurationFromClockColumns: _duration_from_clock_columns,
+    config.DurationFromTextClockColumns: _duration_from_text_clock_columns,
 }
 
 
@@ -822,10 +982,28 @@ def read_zoning(survey: config.MobilitySurvey, log: RunLog) -> gpd.GeoDataFrame:
     zones[ZONE_CODE_COL] = codes.astype("int64").astype("string")
 
     duplicated = int(zones[ZONE_CODE_COL].duplicated().sum())
-    if duplicated:
+    if duplicated and not zoning.zone_delivered_in_parts:
         raise ValueError(
             f"{survey.label}: {duplicated} zone code(s) of {path.name} appear more than once, "
-            "so a trip keyed on one of them would be placed in two zones"
+            "so a trip keyed on one of them would be placed in two zones. If the delivery means "
+            "them as pieces of one zone, say so with zone_delivered_in_parts and write down what "
+            "shows it; two different zones sharing a number is a defect this reader cannot tell "
+            "from that on its own"
+        )
+    if duplicated:
+        # Dissolved rather than kept apart, so that everything downstream can go
+        # on treating a zone code as one geometry: the centroid a desire line is
+        # drawn between, the polygon a unit is overlaid with, and the gap the
+        # plausibility test measures are each defined for a zone and not for a
+        # piece of one. 2015 has three such features across two codes.
+        zones = zones.dissolve(by=ZONE_CODE_COL, as_index=False)
+        log.info(
+            "%s: %d feature(s) of %s carry a code another feature already carries and are "
+            "declared to be pieces of one zone, so they are dissolved into %d zone(s)",
+            survey.label,
+            duplicated,
+            path.name,
+            len(zones),
         )
 
     log.info(
