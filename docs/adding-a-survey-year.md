@@ -3,12 +3,19 @@
 The study's exposure is built from the household mobility survey: the desire
 lines are constructed here rather than received, one per pair of zones, and each
 gives every unit it crosses the share of its trips matching the share of its
-length inside that unit. **2023, 2019 and 2015 are implemented. 2011 is not, and it
-is the one year that will not fit this shape without changing it** — its two day
-types live in two Access databases, which no field of `MobilitySurvey` can express.
-That is reported rather than absorbed, in
-[`implementing-2011.md`](implementing-2011.md), along with what was measured of the
-delivery in advance.
+length inside that unit. **All four years are implemented.**
+
+**2011 was the last and the only one that did not fit.** Its two day types live in
+two Access databases, so which kind of day a record belongs to is a property of the
+file it came out of and no field of `MobilitySurvey` could say that. That was
+reported rather than absorbed, the advisor took the decision, and the change was
+made once: `trips` is now a tuple of `TripSource`, each pairing a table with the day
+type its file carries; `AccessTable` is a third entry in a reader registry; and
+`DayTypeFromSource` reads a tag the reader writes instead of opening a file itself.
+**2015, 2019 and 2023 came out of the run identical over all 720 of their rows and
+every column.** What the year cost, and the two controls nobody expected it to have,
+are in [`implementing-2011.md`](implementing-2011.md), which was the plan and is now
+the record.
 
 **2015 was the third and it held again, at a lower price.** One declaration, two
 registry entries — a `day_type_rule` reading the flag the delivery already wrote on
@@ -424,6 +431,78 @@ rejecting the same 1,096 records either way with **not one record changing side*
 Check against the published figure; round only if that is what makes the two
 agree.
 
+### Spelling one key in two places that happen to agree
+
+Zone codes are text on both sides of every join. The zoning cast its float code to
+an integer and then to text; the trips were cast straight to text. Two pieces of
+code, one convention, and they agreed for three years because those three years
+deliver their zone codes as text that already reads as an integer.
+
+2011 delivers its zone codes out of a database, as a double. `903.0` against the
+zoning's `903` is one zone to a reader and two keys to a join — and a join on a key
+that matches nothing does not fail, it returns nothing, so the year would have come
+out with every trip unplaceable or, worse, with a subset that happened to match.
+
+**Why it survived:** it was never wrong. Nothing in the three implemented years
+could make the two spellings disagree, so the duplication looked like a coincidence
+rather than a defect.
+
+**What caught it:** running the fourth year, which stopped on the check that
+refuses zone codes the zoning does not have. The good failure, and only because
+that check exists.
+
+**What to do:** one function spells the key, and both sides call it —
+`surveys.zone_code_text`. The general form is the one this section keeps
+rediscovering: **a rule implemented twice is a rule that holds until the input that
+distinguishes the two implementations arrives**, and the years are exactly the
+sequence of inputs designed to find those.
+
+### Overloading a column that half the checks filter on
+
+2011's Saturday had to be marked as resting on a sample the survey itself only ever
+claimed at the scale of the city. The obvious place was a third value of
+`VALUE_STATUS`, and that is what was put to the advisor and agreed.
+
+It is the wrong place. `VALUE_STATUS` answers "is there a number here" —
+`MEASURED` against `NOT_MEASURED` — and every derived-column check in the run
+filters on `MEASURED` meaning "rows that have a number in them". A third value
+would have silently removed 120 rows from each of those checks, which is the
+opposite of what marking a row is for.
+
+**Why it nearly happened:** the two facts sound alike in prose. "This row is not
+fully trustworthy" reads as a status, and there was already a status column.
+
+**What caught it:** reading what the existing filters mean before adding the value,
+rather than after. Cheap here and expensive one run later.
+
+**What to do:** a new fact gets a new column unless it answers the *same question*
+the existing one answers. `SAMPLE_SUPPORT` is separate from `VALUE_STATUS` and the
+dictionary says in as many words that they are different questions.
+
+### Taking a delivered artefact for the thing the pipeline rebuilds
+
+2011 ships eight Emme origin-destination matrices, and the plan for that year
+expected them to be the per-mode control that made 2015 the best-verified year.
+They are not a control at all. The year's matrix training deck describes them as
+built from the intercept surveys and the traffic counts, corrected for double
+counting, adjusted by a Pij factor and a select-link assignment — with the
+household survey contributing only the pairs interception missed and even those
+re-expanded with the intercept factor, because *"la expansión de hogares no permite
+utilizar directamente los viajes de esa matriz"*. Bicycle goes from 69,648 to
+15,538 trips in that process.
+
+Checking against them would have compared two artefacts that were never meant to
+agree, and every disagreement would have looked like a defect in the reading.
+
+**What caught it:** reading the deck that explains how they were built, before
+using them. It is thirty-six slides and it is the only document in the delivery
+that says so.
+
+**What to do:** before a delivered table is used as a control, find the document
+that says how it was made. 2015's matrices are a control because they are the
+survey's own expansion of the survey's own records; 2011's are not, and nothing
+about the file names distinguishes the two cases.
+
 ### Assuming a threshold's justification is general
 
 `ZONE_UNIT_MIN_AREA_SHARE` sits at a thousandth because the 2023 overlay has an
@@ -441,6 +520,16 @@ measured indifference. Sweep the threshold across two orders of magnitude and
 report how far the per-unit figures move. For 2019 it was 0.16 %, which is why the
 constant stayed. A year that shows neither needs an argument of its own.
 
+**And 2011 adds the twist that nearly made this mistake a second time.** It borrows
+2015's zoning, so its overlay is the same overlay and its fragment distribution is
+the same distribution, to the last figure. It is tempting to cite the sweep with
+it. That is wrong: the overlay is a property of the zoning and the cartography, and
+how much the threshold *moves a figure* is a property of how the year's travel sits
+on the fragments. 2011's largest per-unit figure moves **0.41 %** where 2015's moves
+0.096 %, four times as much on the identical geometry, because 2011 puts more of its
+travel in the peripheral zones the fragments touch. **Two years sharing a zoning
+share the gap and not the indifference.** Re-run the sweep.
+
 ### Believing a data dictionary
 
 2019's `Anexo B` calls the trip table's `fecha` column "Fecha del viaje". It is
@@ -454,6 +543,18 @@ against 190 matching `fecha` itself.
 
 **What to do:** the delivered dictionary is a claim like any other. The instrument
 outranks it.
+
+**2011's dictionary contradicts itself, which is the sharper version of the same
+thing.** Module A of its database manual calls `DIA` "día de la semana de
+realización de la encuesta" and module D calls it "día de la semana en que se hizo
+el viaje" — the interview day and the trip day, which the questionnaire puts a day
+apart. Taking module A at its word would have filed the whole `DiaSabado` database
+under Friday and a fifth of the weekday one under Sunday. What settled it was not
+another document but the data's own behaviour: across the five values of the weekday
+file the households make 7.02 to 7.43 trips and 10.4 % to 11.6 % of those trips are
+for study, so none of the five is a Sunday; the Saturday file has 2.3 % for study,
+9.8 % shopping and 9.4 % recreation, so the sixth is not a Friday. **When two claims
+in one delivery disagree, measure the thing they are claims about.**
 
 ### Asking before finishing the reading
 

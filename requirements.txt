@@ -8,6 +8,15 @@ pandas==3.0.5
 numpy==2.5.1
 pyarrow==25.0.0
 
+# The 2011 mobility survey is the one delivery that arrives as a database rather
+# than as files of text: two Access .accdb, one per kind of day. pyodbc reaches
+# them through the Microsoft Access ODBC driver, which has to be installed on the
+# machine and has to be the 64-bit build, matched to the 64-bit Python of the
+# environment. Nothing else in the pipeline uses it, and it is imported inside the
+# reader rather than at the top of the module so that the other three years still
+# run where the driver is absent.
+pyodbc==5.3.0
+
 # Geospatial. pyogrio is the I/O engine geopandas uses to read shapefiles,
 # rtree the spatial index backend that makes sjoin viable on crash points.
 geopandas==1.1.4

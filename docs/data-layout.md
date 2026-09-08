@@ -31,10 +31,12 @@ and each has a root declared in `config.py`:
 
 **`SURVEYS_DIR` points inside `data/incoming/` and that is not a contradiction.**
 The rule below is that a delivery leaves `incoming/` once it has been inspected
-and declared, and 2023, 2019 and 2015 now are. They stay where they are because
-2011 is not, and moving three quarters of a four-year delivery out of the folder
-its sibling sits in would file the same source two ways. The four move together,
-once all of them are declared and the shape they finally want is known.
+and declared, and **all four now are**. They stay where they are for a different
+reason than before: the four are one source with four vintages, they are read
+across each other — 2011 declares the zoning that sits in the 2015 folder — and the
+shape they finally want has not been decided. **Moving them is now a decision that
+can be taken rather than one that is blocked**, and it should be taken with the
+folder that will hold them in mind, not one year at a time.
 
 **`PREDICTORS_DIR` and `EXPOSURE_DIR` point at the same folder today, and they are
 still two roots.** The desire lines were delivered inside the bundle of predictor
@@ -186,21 +188,23 @@ carry `zat_origen` and `zat_destin` — so the geometry is built rather than
 declared. That stage now exists: `src/surveys.py` reads a declared survey and
 `src/exposure.py` builds the lines and apportions them. See D38.
 
-**Seven files are read across the four folders and nothing else is.**
+**Nine files are read across the four folders and nothing else is.**
 `config.SURVEY_2023` names the trip module, the household module — which is where
 its day type comes from, and only there — and the ZAT zoning. `config.SURVEY_2019`
 names its trip module and its ZAT zoning, and needs nothing else: its day type is
 the same for every record and its duration is derived from two columns of the trip
 file. `config.SURVEY_2015` needs two as well, its trip file and its ZAT zoning:
 its day type is a flag the delivery already wrote on every trip record and its
-duration is derived from two columns of the same file. Everything else in the three
-publications, and all of 2011, is delivered and not declared.
+duration is derived from two columns of the same file. `config.SURVEY_2011` names
+**three**: two Access databases, one per kind of day, and the 2015 folder's ZAT
+zoning, which is its own. Everything else in the four publications is delivered and
+not declared.
 
 What each year holds for that purpose, out of everything published:
 
 | Year | Household trip records | Zoning |
 |---|---|---|
-| 2011 | `120927_ConsultaEODH2011_DiaTipico (1).accdb` table `Mod_D_VIAJES2_BaseImputacion_Definitiva`, **and** `…_DiaSabado (1).accdb` table `Mod_D_VIAJES2_BaseImputacion_Definitiva_Sabado` | **none delivered**; every code its trips name is in the 2015 `ZATs_2012_MAG` |
+| 2011 | `120927_ConsultaEODH2011_DiaTipico (1).accdb` table `Mod_D_VIAJES2_BaseImputacion_Definitiva`, **and** `…_DiaSabado (1).accdb` table `Mod_D_VIAJES2_BaseImputacion_Definitiva_Sabado` **— both declared** | **none in its own folder**; it declares the 2015 folder's `ZATs_2012_MAG`, which is the 2011 survey's own zoning **— declared** |
 | 2015 | `Base de Datos Completa/VIAJES_ANONIMIZADOS.csv`, 35 MB **— declared** | `ZATs/ZATs_2012_MAG.shp`, 948 features over 945 zones **— declared** |
 | 2019 | `BD EODH2019 FINAL v14022020/Archivos CSV/ViajesEODH2019.csv`, 23 MB **— declared** | `Zonificación (shapefiles)/ZONAS/ZONAS/ZAT.shp` 1,141 **— declared**; `UTAM.shp` 141 |
 | 2023 | `05_Base datos procesada/CSV/d. Modulo viajes.csv`, 59 MB **— declared** | `ZAT2023.shp` 1,215 **— declared**; `UTAM2023.shp` 142 |
@@ -281,21 +285,48 @@ of this was declared, and the session that declares a year starts from it.
 
 Two things about the delivery belong here rather than there:
 
-- **2011 carries no zoning of any kind**, so its trips cannot become geometry from
-  its own folder. **The 2015 zoning serves, and that is now measured rather than
-  assumed**: the trips name 913 distinct codes on the weekday and 607 on the
-  Saturday, and every one of them is in `ZATs_2012_MAG`. Why a 2012 zoning is the
-  right frame for 2011 travel is an argument the implementing session still owes.
+- **2011 carries no zoning in its own folder, and the file it borrows is its own.**
+  Its trips name 913 distinct codes on the weekday and 607 on the Saturday and every
+  one of them is in `ZATs_2012_MAG` — necessary, and not sufficient, because a file
+  named for 2012 framing 2011 travel needed an argument. It has one: **chapter 2 of
+  the 2011 delivery's own Tomo II is the zoning proposal**, built on Catastro
+  Distrital's March 2011 cadastre, and that year's matrix training deck records the
+  result as *"se pasó de tener 863 zonas a 945 zonas"* — the 945 codes the file
+  carries. It is the 2011 survey's zoning, published with the following survey and
+  named for the year it was published. The declaration points at the 2015 folder and
+  says so.
 - **2011 is two Access databases** where the others are one CSV, and the second one
   is not a duplicate: the weekday and the Saturday are separate samples of separate
-  households in separate files, which is the one place the fourth year does not fit
-  the shape. See `docs/implementing-2011.md`.
+  households in separate files. That is the one place the fourth year did not fit
+  the shape, and it is why `MobilitySurvey.trips` is a tuple of sources. See
+  `docs/implementing-2011.md`.
 - **`pyodbc` reads them** through the 64-bit Access ODBC driver installed on this
   machine, with the environment's 64-bit Python; a 32-bit driver would not have
-  worked. Both databases were opened and their tables listed on 2026-09-08, so the
-  route is verified and not assumed. It is installed but **not yet in
-  `requirements.txt`**, because nothing declared reads it yet; the commit that first
-  reads 2011 adds it.
+  worked. **It is now in `requirements.txt`**, added in the commit that first read
+  2011, as this document said it would be. The driver itself is not a Python package
+  and cannot be: a machine without it can run the other three years and will stop
+  with an ODBC error on 2011.
+- **The eight Emme matrices of `Matrices Finales/` are out of scope and are not a
+  control**, which is worth stating because they look like one. The year's matrix
+  training deck describes them as built from the intercept surveys and the traffic
+  counts, corrected for double counting and adjusted in Emme, with the household
+  survey contributing only the origin-destination pairs interception missed — and
+  those re-expanded with the intercept factor, since *"la expansión de hogares no
+  permite utilizar directamente los viajes de esa matriz"*. They are a different
+  artefact from the one the pipeline rebuilds.
+- **Six files of the 2011 delivery were read for verification and are read by
+  nothing.** `120927_InformeFinal_Tomo I.pdf` publishes the two day totals, the two
+  modal splits, the fifteen-minute split and the two household universes;
+  `120927_InformeFinal_TomoII.pdf` carries the zoning chapter and the statement that
+  the Saturday sample covers Bogotá only; `120927_InformeFinal_TomoIII.pdf` carries
+  the imputation and the two expansion procedures; `Manual base de datos Encuesta de
+  Hogares.pdf` is the field dictionary and says which trip module to read;
+  `110719_Formulario_EM_Bogota 26 de julio.pdf` is the questionnaire, which states
+  the reference day and the three-minute floor on walking; and `Ejemplos
+  Capacitación/03_Ejemplo Capacitación Matrices_FE_Hogares.xlsx` is the worked
+  example whose 1,434 private-vehicle peak records the reading reproduces with a
+  bit-identical total. They are named here because figures they establish are quoted
+  in `docs/design-decisions.md` and in section 15 of the verification report.
 
 Each year also publishes its records twice, as CSV and as XLSX, and 2023 publishes
 both a raw and a processed database. The table above names the one file per year

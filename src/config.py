@@ -13,7 +13,7 @@ import datetime as dt
 import math
 import re
 import unicodedata
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 # ---------------------------------------------------------------------------
@@ -1404,6 +1404,23 @@ ZERO_IMPLAUSIBLE_COL = "ZERO_IS_IMPLAUSIBLE"
 MEASURED_STATUS = "MEASURED"
 NOT_MEASURED_STATUS = "NOT_MEASURED"
 
+# Whether the sample behind a row can carry a figure at the scale of one unit.
+# This is a different question from VALUE_STATUS and it needs a column of its own:
+# VALUE_STATUS says whether there is a number, and every check that filters on
+# MEASURED means "rows that have a number in them". A row can have a perfectly
+# well computed number and still rest on a sample the survey itself only ever
+# claimed at the scale of the city.
+#
+# 2011's Saturday is the case, and it is the survey's own statement rather than
+# our judgement: its 4,035 records were expanded and analysed "a nivel de ciudad y
+# estrato socioeconómico" where the weekday was analysed at UPZ. The rows are built
+# and exported like any other, because the measurement is real and the city total
+# is usable; what the column stops is a reader treating one of the thirty numbers
+# as an estimate of the same kind as the rest.
+SAMPLE_SUPPORT_COL = "SAMPLE_SUPPORT"
+SAMPLE_SUPPORTS_UNIT = "SUPPORTS_UNIT"
+SAMPLE_CITY_LEVEL_ONLY = "CITY_LEVEL_ONLY"
+
 
 # -- delivered and not declared ---------------------------------------------
 # Two layers arrived in the predictor bundle and no variable reads either of
@@ -2154,6 +2171,70 @@ class DelimitedTable:
 
 
 @dataclass(frozen=True)
+class AccessTable:
+    """One table inside a delivered Microsoft Access database.
+
+    2011 is the only year that arrives this way, and it arrives this way twice:
+    the weekday and the Saturday are separate databases with the same schema and
+    `_Sabado` suffixes on the table names. Everything the other three years put in
+    a CSV is already typed here, so there is no separator, no encoding and no
+    decimal separator to declare — the driver hands back numbers as numbers, which
+    is why `decimal` is the point and never gets used.
+
+    The database also holds eighty-odd other tables, so which one carries the
+    trips has to be named. The one to read is not the one named for trips:
+    `MOD_D_VIAJES_Tipico` has 100,846 rows, one column per stage and no origin or
+    destination zone, while `Mod_D_VIAJES2_BaseImputacion_Definitiva` has 122,361
+    and carries `ZAT_ORIG`, `ZAT_DEST` and `Modo_Principal`. The second is the
+    imputed base, and the delivery's own manual says it is the one to consult for
+    a total of trips because it is the one that carries an expansion factor for
+    every person who travelled.
+    """
+
+    path: Path
+    table: str
+    # Kept so that a source can be asked for its decimal separator without the
+    # caller having to know which kind of table it is. The driver returns typed
+    # numbers, so nothing is ever parsed with it.
+    decimal: str = "."
+    # The same stripping the delimited reader does, applied to the text columns
+    # the driver returns. Harmless here and kept for one reason: the two readers
+    # must not differ in what they do to a value, or a year would be measured
+    # differently for having been delivered in a different container.
+    strip_whitespace: bool = True
+
+
+@dataclass(frozen=True)
+class TripSource:
+    """One delivered table of trips, and the day type every record in it carries.
+
+    A year is usually one file, and which kind of day a trip was made on is found
+    inside it — an interview date joined from the household table in 2023, one
+    kind of day and no other in 2019, a flag on the record in 2015. Those years
+    declare a single source with `day_type` left at None and the day type is
+    decided by the `day_type_rule`, exactly as before.
+
+    2011 is the year this exists for. Its weekday and its Saturday are different
+    samples of different households in **two separate Access databases**, so which
+    kind of day a record belongs to is a property of the file it came out of and
+    of nothing on the record. That fact has nowhere else to live: a rule reading an
+    already-loaded frame cannot see it, and a rule that went and loaded the second
+    file itself would make a day-type handler into a second reader, which is the
+    one thing this design has refused since 2023.
+
+    So the day type is declared beside the file it is a fact about, the reader tags
+    each row with the source it came from, and `DayTypeFromSource` reads the tag.
+    The flow is unchanged: the reader reads, the rule decides.
+    """
+
+    table: DelimitedTable | AccessTable
+    # The day type every record of this source carries, when that is a property of
+    # the file. None means the file carries more than one kind of day, or one that
+    # is stated some other way, and the year's `day_type_rule` says which.
+    day_type: str | None = None
+
+
+@dataclass(frozen=True)
 class SurveyZoning:
     """The zones a survey's origins and destinations are keyed on.
 
@@ -2303,6 +2384,39 @@ class DayTypeIsAlwaysOne:
     stated_by: str = ""
 
 
+@dataclass(frozen=True)
+class DayTypeFromSource:
+    """The day type is a property of the file the record came out of.
+
+    2011 is the year this was written for and the fourth way the four surveys
+    state one thing. Its `DiaTipico` database holds 122,361 trips over 15,592
+    households and its `DiaSabado` database 4,035 over 565 — different samples of
+    different households, in separate files, with the same schema.
+
+    The rule carries no mapping of its own. Each `TripSource` declares the day type
+    its file holds, next to the path, and this reads the tag the reader put on
+    every row. Keeping the mapping on the source rather than here is what stops the
+    two from drifting apart: a file added to a year would otherwise have to be
+    named in two places and could be named in only one.
+
+    The day the file names was not taken from the file name. Both databases carry a
+    `DIA` column, 1 to 5 in one and 6 in the other, and it equals the weekday of
+    the date beside it on every one of the 16,157 households. The delivery's own
+    dictionary contradicts itself about what that date is — module A calls `DIA`
+    the day of the *interview* and module D calls it the day the trip was made —
+    so it was settled against behaviour instead: on all five values of the weekday
+    file the households make 7.02 to 7.43 trips and 10.4% to 11.6% of those trips
+    are for study, while the Saturday file has 2.3% for study, 9.8% shopping and
+    9.4% recreation. None of the five is a Sunday and the sixth is not a Friday.
+    """
+
+    # What in the year's own documents says which day each file holds, quoted in
+    # the log on every run, for the same reason DayTypeIsAlwaysOne needs it: the
+    # file name is not evidence, and a Saturday that is really a Friday would be
+    # invisible in every figure downstream.
+    stated_by: str = ""
+
+
 # What a year's expansion factor expands one surveyed trip to. This is the field
 # that must never be inherited from another year, and it is declared rather than
 # derived because getting it wrong is invisible: every figure stays plausible and
@@ -2318,8 +2432,12 @@ class DayTypeIsAlwaysOne:
 #
 # DAY_OF_TYPE means the factors already expand to one day of the kind the record
 # belongs to, so no rescaling happens and the universe share of every day type is
-# one. No year is declared this way yet; the constant exists so that the year
-# which is finds a place to say so instead of being forced through 2023's answer.
+# one. Three of the four years are this: 2019, whose household factors sum to its
+# published universe at a ratio of 1.000000 over a single kind of day; 2015, whose
+# two day types each reproduce the universe separately; and 2011, whose weekday
+# reproduces 2,444,256 households and whose Saturday reproduces Bogotá's 2,148,884
+# on its own. 2023 is the only AVERAGE_DAY year, and had the others inherited its
+# answer every figure of theirs would have been plausible and wrong.
 WEIGHT_EXPANDS_TO_AVERAGE_DAY = "average day of the collection period"
 WEIGHT_EXPANDS_TO_DAY_OF_TYPE = "one day of the record's own day type"
 WEIGHT_EXPANSIONS: tuple[str, ...] = (
@@ -2504,7 +2622,12 @@ class MobilitySurvey:
     year: int
     label: str  # short form in English, for the code and the logs
     label_es: str  # short form in Spanish, for the figures and the documents
-    trips: DelimitedTable
+    # Where the trips are, as one source or several. A tuple rather than a single
+    # table because 2011 splits its two day types across two Access databases and
+    # no rule reading an already-loaded frame can see which file a row came from.
+    # The three years delivered as one file declare a one-entry tuple and nothing
+    # about them changes; see `TripSource`.
+    trips: tuple[TripSource, ...]
     zoning: SurveyZoning
     weight_column: str  # trips per day the record stands for
     origin_zone_column: str
@@ -2532,7 +2655,9 @@ class MobilitySurvey:
     # survey counts the passengers of a system, and those are not the same
     # denominator.
     modes_not_measured: tuple[str, ...]
-    day_type_rule: DayTypeFromHouseholdDate | DayTypeIsAlwaysOne | DayTypeFromRecordFlags
+    day_type_rule: (
+        DayTypeFromHouseholdDate | DayTypeIsAlwaysOne | DayTypeFromRecordFlags | DayTypeFromSource
+    )
     measures: str  # one line: what the variable is, for the log and the dictionary
     # Zone codes that name no place, whether because the delivery uses them as a
     # sentinel for a missing answer or because they are a capture error. Records
@@ -2556,11 +2681,48 @@ class MobilitySurvey:
     # than passing a check it did not make.
     published_total: float | None = None
     published_total_source: str = ""
+    # Day types this year measured but whose sample cannot carry a figure at the
+    # scale of a unit, keyed to what in the delivery says so. The rows are built
+    # and exported like any other — the measurement is real and the city total is
+    # usable — and they are marked in the table so that nothing reads them as an
+    # estimate of the same kind as the rest.
+    #
+    # 2011's Saturday is why this exists. It is 4,035 records over 565 households
+    # expanding to 14,022,328 trips, so one record stands for about 3,475 of them
+    # and a cell holds roughly 34 records over thirty units and four modes. The
+    # decision to mark rather than drop is the advisor's; what makes it a marking
+    # and not a judgement of ours is that the consultant said the same thing.
+    day_types_below_unit_resolution: dict[str, str] = field(default_factory=dict)
 
     @property
     def modes_declared(self) -> tuple[str, ...]:
         """Every label the declaration accounts for, mapped or deliberately not."""
         return tuple(self.mode_map) + self.modes_not_measured
+
+    @property
+    def trips_decimal(self) -> str:
+        """The decimal separator every source of this year's trips is written with.
+
+        One value rather than one per source, because it is used after the sources
+        have been read and concatenated, where a row no longer says which file it
+        came from. Two sources disagreeing about it is a case that does not exist
+        and would be silently wrong if it did, so it stops the run instead of
+        picking one.
+        """
+        separators = {source.table.decimal for source in self.trips}
+        if len(separators) > 1:
+            raise ValueError(
+                f"{self.label} declares {len(self.trips)} trip sources that do not agree on "
+                f"the decimal separator ({', '.join(sorted(separators))}). The columns are "
+                "converted after the sources are concatenated, so one of the two would be "
+                "parsed with the other's separator and would come out wrong without failing"
+            )
+        return separators.pop()
+
+    @property
+    def trips_label(self) -> str:
+        """What the sources are called, for the log and the dictionary."""
+        return ", ".join(source.table.path.name for source in self.trips)
 
     @property
     def actor_types(self) -> tuple[str, ...]:
@@ -2578,9 +2740,14 @@ SURVEY_2023 = MobilitySurvey(
     year=2023,
     label="Mobility survey 2023",
     label_es="Encuesta de movilidad 2023",
-    trips=DelimitedTable(
-        path=_EODH_2023 / "05_Base datos procesada" / "CSV" / "d. Modulo viajes.csv",
-        encoding="cp1252",
+    # One source, and the day type is inside it — the household's interview date.
+    trips=(
+        TripSource(
+            table=DelimitedTable(
+                path=_EODH_2023 / "05_Base datos procesada" / "CSV" / "d. Modulo viajes.csv",
+                encoding="cp1252",
+            ),
+        ),
     ),
     zoning=SurveyZoning(
         shapefile=_EODH_2023 / "03_Zonificacion" / "b. Shapefile ZAT" / "ZAT2023" / "ZAT2023.shp",
@@ -2645,14 +2812,21 @@ SURVEY_2019 = MobilitySurvey(
     year=2019,
     label="Mobility survey 2019",
     label_es="Encuesta de movilidad 2019",
-    trips=DelimitedTable(
-        path=_EODH_2019 / "BD EODH2019 FINAL v14022020" / "Archivos CSV" / "ViajesEODH2019.csv",
-        # utf-8 where 2023 is cp1252, and the decimal separator is the point where
-        # 2023's is the comma. Neither is visible from the column names and both
-        # were checked: the file decodes as utf-8 and fails as cp1252 on byte 0x8d,
-        # and f_exp arrives as 54.2865603523867.
-        encoding="utf-8",
-        decimal=".",
+    # One source, and it holds one kind of day: 2019 surveyed a typical working
+    # day and nothing else, which is what `day_type_rule` says below.
+    trips=(
+        TripSource(
+            table=DelimitedTable(
+                path=_EODH_2019 / "BD EODH2019 FINAL v14022020" / "Archivos CSV"
+                / "ViajesEODH2019.csv",
+                # utf-8 where 2023 is cp1252, and the decimal separator is the point where
+                # 2023's is the comma. Neither is visible from the column names and both
+                # were checked: the file decodes as utf-8 and fails as cp1252 on byte 0x8d,
+                # and f_exp arrives as 54.2865603523867.
+                encoding="utf-8",
+                decimal=".",
+            ),
+        ),
     ),
     zoning=SurveyZoning(
         shapefile=_EODH_2019 / "Zonificación (shapefiles)" / "ZONAS" / "ZONAS" / "ZAT.shp",
@@ -2757,16 +2931,21 @@ SURVEY_2015 = MobilitySurvey(
     year=2015,
     label="Mobility survey 2015",
     label_es="Encuesta de movilidad 2015",
-    trips=DelimitedTable(
-        path=_EODH_2015 / "Base de Datos Completa" / "VIAJES_ANONIMIZADOS.csv",
-        # The file is pure ASCII, so both utf-8 and cp1252 decode it and neither
-        # can be wrong. utf-8 is declared because that is what the rest of the
-        # delivery is, and because a sibling file in the same folder — ETAPAS.xls,
-        # which nothing here reads — is neither: it fails as utf-8 on byte 0xc2
-        # and as cp1252 on byte 0x81. The encoding is a property of a file and not
-        # of a delivery, which is why it is declared per table.
-        encoding="utf-8",
-        decimal=".",
+    # One source carrying both day types, and a flag on the record says which.
+    trips=(
+        TripSource(
+            table=DelimitedTable(
+                path=_EODH_2015 / "Base de Datos Completa" / "VIAJES_ANONIMIZADOS.csv",
+                # The file is pure ASCII, so both utf-8 and cp1252 decode it and neither
+                # can be wrong. utf-8 is declared because that is what the rest of the
+                # delivery is, and because a sibling file in the same folder — ETAPAS.xls,
+                # which nothing here reads — is neither: it fails as utf-8 on byte 0xc2
+                # and as cp1252 on byte 0x81. The encoding is a property of a file and not
+                # of a delivery, which is why it is declared per table.
+                encoding="utf-8",
+                decimal=".",
+            ),
+        ),
     ),
     zoning=SurveyZoning(
         shapefile=_EODH_2015 / "ZATs" / "ZATs_2012_MAG.shp",
@@ -2892,8 +3071,181 @@ SURVEY_2015 = MobilitySurvey(
 )
 
 
+# The 2011 delivery. 357 files, of which 323 are an Emme model that is out of
+# scope. The survey itself is two Access databases, a questionnaire, three volumes
+# of the final report, two database manuals and two training decks.
+_EODH_2011 = SURVEYS_DIR / "2011" / "Encuesta de Movilidad 2011"
+_EODH_2011_DB = _EODH_2011 / "120927_Base de Datos EODH 2011"
+
+SURVEY_2011 = MobilitySurvey(
+    year=2011,
+    label="Mobility survey 2011",
+    label_es="Encuesta de movilidad 2011",
+    # The only year delivered in two files, and the reason `trips` is a tuple. The
+    # weekday and the Saturday are separate samples of separate households, so
+    # which kind of day a record belongs to is a property of the database it came
+    # out of and of nothing on the record.
+    trips=(
+        TripSource(
+            table=AccessTable(
+                path=_EODH_2011_DB / "120927_ConsultaEODH2011_DiaTipico (1).accdb",
+                # Not MOD_D_VIAJES_Tipico, which is named for trips and is not the
+                # one to read: 100,846 rows, one column per stage, one ZAT for the
+                # household and no origin or destination zone at all.
+                table="Mod_D_VIAJES2_BaseImputacion_Definitiva",
+            ),
+            day_type=WEEKDAY_TYPE,
+        ),
+        TripSource(
+            table=AccessTable(
+                path=_EODH_2011_DB / "120927_ConsultaEODH2011_DiaSabado (1).accdb",
+                table="Mod_D_VIAJES2_BaseImputacion_Definitiva_Sabado",
+            ),
+            day_type=SATURDAY_TYPE,
+        ),
+    ),
+    # 2011 ships no zoning of any kind, so it borrows the one delivered with 2015 —
+    # and the borrowing is not an approximation. `ZATs_2012_MAG` **is** the 2011
+    # survey's own zoning: chapter 2 of this year's Tomo II is the zoning proposal,
+    # built on Catastro's March 2011 cadastre, and the year's matrix training deck
+    # records the result as "se pasó de tener 863 zonas a 945 zonas" — the 945
+    # codes the file carries. The trips name 913 distinct codes on the weekday and
+    # 607 on the Saturday and every one of them is in it. The file reached this
+    # study inside the following delivery and is named for the year it was
+    # published rather than the year it was drawn.
+    zoning=SurveyZoning(
+        shapefile=_EODH_2015 / "ZATs" / "ZATs_2012_MAG.shp",
+        code_column="Zona_Num_N",
+        zone_delivered_in_parts=True,
+    ),
+    weight_column="F_EXP",
+    origin_zone_column="ZAT_ORIG",
+    destination_zone_column="ZAT_DEST",
+    # Holds `Aux_Modos.Modo_Agregado`, the label, and not that table's `Codigo`.
+    # The main mode is the one highest in the survey's own hierarchy, which Tomo I
+    # states as "masivo, público, intermunicipal, taxi, privado, informal y otras
+    # modalidades" — so a trip made by bus and taxi is a public-transport trip.
+    mode_column="Modo_Principal",
+    # Min_Inicio and Min_Fin are whole minutes from midnight, verified against a
+    # second pair of columns rather than read off the names: Min_Inicio equals
+    # HR_INI x 60 + MIN_INI and Min_Fin equals P18HF_D x 60 + P18MF_D on all
+    # 122,361 weekday records and all 4,035 Saturday ones.
+    duration_rule=DurationFromClockColumns(
+        start_column="Min_Inicio",
+        end_column="Min_Fin",
+        minutes_per_unit=1.0,
+        # Off, and this is a claim about the data rather than a default. The
+        # columns run 240 to 1,680, which is 04:00 to 04:00 the next day — the
+        # reference window this year's questionnaire states, "desde las 4 a.m. de
+        # ayer a las 4 a.m. de hoy" — so a trip arriving after midnight is encoded
+        # as 1,500 and not as 60, and nothing wraps. Left on it would do nothing at
+        # all, because no difference is ever negative, and the declaration would
+        # carry a statement about the file that is not true.
+        wrap_at_midnight=False,
+        # Irrelevant rather than false: the columns are already whole minutes, so
+        # either value gives the same answer on every record. Declared off because
+        # the honest reading is that nothing needs rounding, not that a choice was
+        # made. What the derivation is checked against is the year's own published
+        # figure: excluding walks under fifteen minutes, Tomo I's Figura 19 puts
+        # walking at 28% of what is left, cycling at 5%, private vehicle at 14%,
+        # TPC at 27% and TransMilenio at 12%; this rule gives 28.3, 4.6, 13.8, 27.2
+        # and 11.3.
+        round_to_minute=False,
+    ),
+    mode_map={
+        # A pie. The instrument counts every walking trip to work or study whatever
+        # its length, and walking trips for other purposes over three minutes; it
+        # also tells the interviewer not to ask about stages for a trip made wholly
+        # on foot. 0.43% of this year's walking lasts under three minutes.
+        "Pie": PEDESTRIAN,
+        # Bicicleta aggregates codes 18 and 19 of Aux_Modos, the bicycle and the
+        # motorised bicycle, and 2011 cannot separate them — which is one of the
+        # two reasons D38 keeps the motorised bicycle inside BICYCLE for the years
+        # that can.
+        "Bicicleta": BICYCLE,
+        # Moto aggregates codes 20 and 21, driver and passenger.
+        "Moto": MOTORCYCLE,
+        # Privado aggregates codes 22 and 23, driver and passenger.
+        "Privado": CAR,
+    },
+    modes_not_measured=(
+        # Public transport, split four ways by this survey. Not a fifth mode, for
+        # the reason in D38.
+        "TPC",
+        "TM",
+        "Alimentador",
+        "Intermunicipal",
+        "Taxi",
+        "Escolar",
+        # Informal, and it costs this year what ILEGAL costs 2015: the bicitaxi and
+        # the mototaxi are inside it, so a mode D38 puts in BICYCLE is not
+        # separable at the trip level. Reading the stage columns says the bicitaxi
+        # is 86 records and 11,354 trips a day, 1.9% of what this year measures as
+        # cycling, against 3.0% in 2015 and 2.4% in 2019; the mototaxi is 8 records
+        # and 1,032 trips, 0.25% of its motorcycle travel. 2011 is now the second
+        # year with this limitation rather than the exception.
+        "Informal",
+        # Camión, bus privado, tracción animal, tren and the unclassifiable.
+        "Otro",
+    ),
+    day_type_rule=DayTypeFromSource(
+        stated_by=(
+            "EODH 2011: the trip module is addressed \"para las personas del hogar con 5 años "
+            "o más que viajaron el día anterior\" and reads \"las actividades que realizó el "
+            "día de ayer... desde las 4 a.m. de ayer a las 4 a.m. de hoy\"; Tomo III states "
+            "that the survey ran \"encuestas de día típico (entre semana)\" and \"encuestas de "
+            "día atípico (sábado)\" and expanded the two separately; and Tomo I reports the "
+            "Saturday on its own, \"en un sábado se hacen 14.022.327 viajes\". The DIA column "
+            "of each database agrees: 1 to 5 in DiaTipico and 6 in DiaSabado, on every record"
+        ),
+    ),
+    measures="trips per day apportioned to the unit by the share of the desire line's length "
+             "inside it, with the intra-zonal trips apportioned by area share",
+    # None, and that is measured rather than assumed: no record of either database
+    # carries a 0 or a 1000 or any other code outside the zoning's range. The
+    # records that cannot be placed carry no zone at all, at both ends together,
+    # and they are exactly the imputed ones — see below.
+    zone_codes_meaning_no_zone=(),
+    # Established from the file against this year's own published universes, and it
+    # is 2019's and 2015's answer rather than 2023's. Each day type's subsample
+    # expands to its whole universe on its own: the weekday households' F_EXP sums
+    # to 2,444,260 against the 2,444,256 households Tomo I declares for the study
+    # area (2,148,884 in Bogotá plus 295,372 in the seventeen municipal cabeceras),
+    # and the Saturday's to 2,149,087 against Bogotá's 2,148,884 alone. The two
+    # universes are different territories on purpose: Tomo II says "la muestra para
+    # el día sábado se diseñó solo para Bogotá". F_EXP is the same number on the
+    # trip, the person and the household, on all 122,361 records.
+    weight_expands_to=WEIGHT_EXPANDS_TO_DAY_OF_TYPE,
+    # The sum of the two day types the survey publishes separately, because the two
+    # databases hold both and neither alone is its total.
+    published_total=31_633_388.0,
+    published_total_source=(
+        "EODH 2011, Tomo I: 17,611,061 trips on a working day (indicator 18, \"en la zona de "
+        "estudio en un día hábil se realizan 17.611.061 viajes\") and 14,022,327 on a Saturday "
+        "in Bogotá (indicator 27); the modal split of both is reproduced mode by mode, and the "
+        "weekday total is quoted again by the 2015 delivery's Tomo I"
+    ),
+    day_types_below_unit_resolution={
+        SATURDAY_TYPE: (
+            "EODH 2011, Tomo III: the Saturday was expanded and its results analysed \"a nivel "
+            "de ciudad y estrato socioeconómico\" where the weekday was analysed \"a nivel de "
+            "UPZ\", and its non-response imputation used the code TL, every locality together, "
+            "because there was no sample by locality; Tomo I adds that \"el nivel de error de "
+            "esta estimación es mayor que para el día hábil\". 4,035 records over 565 "
+            "households expand to 14,022,328 trips, so one record stands for about 3,475 of "
+            "them and a cell holds roughly 34 records over thirty units and four modes"
+        ),
+    },
+)
+
+
 # Every survey the pipeline measures. A year is added here and nowhere else.
-MOBILITY_SURVEYS: tuple[MobilitySurvey, ...] = (SURVEY_2015, SURVEY_2019, SURVEY_2023)
+MOBILITY_SURVEYS: tuple[MobilitySurvey, ...] = (
+    SURVEY_2011,
+    SURVEY_2015,
+    SURVEY_2019,
+    SURVEY_2023,
+)
 
 # -- how a zone reaches a unit ----------------------------------------------
 # The survey's zoning and the study's cartography are different files drawing the
@@ -3070,6 +3422,10 @@ def survey_exposure_columns() -> tuple[str, ...]:
         POPULATION_COL,
         *(quantity.name for quantity in SURVEY_EXPOSURE_QUANTITIES),
         PREDICTOR_STATUS_COL,
+        # Last, beside the status it is deliberately not part of. See
+        # SAMPLE_SUPPORT_COL for why it is a second column and not a third value
+        # of the first.
+        SAMPLE_SUPPORT_COL,
     )
 
 

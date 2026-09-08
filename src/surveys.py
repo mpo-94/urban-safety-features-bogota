@@ -9,10 +9,20 @@ The split is deliberate. Four surveys have to pass through here and they agree o
 almost nothing: 2023 is cp1252 where 2015 and 2019 are utf-8, its numbers are
 text with a comma decimal separator and a trailing space, three of its column
 names are wrapped in spaces, its modes are labels where 2015's are numeric codes,
-and each year says which kind of day a trip was made on in a different way. All
-of that is declared in `config.MobilitySurvey` and resolved here, once. Nothing
-downstream of this module can tell which year it is looking at, which is the
-property that makes the next three years a declaration each.
+2011 arrives as two Access databases rather than as a file of text, and each year
+says which kind of day a trip was made on in a different way. All of that is
+declared in `config.MobilitySurvey` and resolved here, once. Nothing downstream of
+this module can tell which year it is looking at, which is the property that makes
+three of the four years a declaration each.
+
+**Three registries and no second reader.** How a table is opened, how a year says
+which kind of day a trip was made on, and how it states a duration are each a
+declared rule dispatched through a registry here. That is what kept the fourth year
+from bending the shape: 2011 needed a container nobody had seen and a day type that
+is a property of the file rather than of the record, and both went in as an entry
+beside the others. The one thing that is not allowed is a second way of reading a
+file — a day-type rule that opened the Saturday database itself would have been the
+smallest diff and the worst shape.
 
 **What the expansion factor expands, and why two numbers come out of one.** A
 household is surveyed once, on one date, and its weight says how many households
@@ -53,6 +63,11 @@ ZONE_ORIGIN_COL = "_ZONE_ORIGIN"
 ZONE_DESTINATION_COL = "_ZONE_DESTINATION"
 TRIPS_COL = "_TRIPS_PER_AVERAGE_DAY"
 ZONE_CODE_COL = "_ZONE"
+# Which declared source a row was read out of. Written by the reader because the
+# reader is the only thing that knows it: once the sources are concatenated, a row
+# no longer says which file it came from, and for 2011 that is the only thing that
+# says which kind of day it is.
+SOURCE_COL = "_SOURCE"
 
 
 @dataclass(frozen=True)
@@ -101,7 +116,7 @@ class SurveyTrips:
 # ---------------------------------------------------------------------------
 
 
-def read_table(table: config.DelimitedTable, log: RunLog) -> pd.DataFrame:
+def _read_delimited_table(table: config.DelimitedTable, log: RunLog) -> pd.DataFrame:
     """Read one delivered text table as declared, as text, and stripped.
 
     Everything is read as text and converted afterwards. Letting pandas infer the
@@ -123,6 +138,80 @@ def read_table(table: config.DelimitedTable, log: RunLog) -> pd.DataFrame:
 
     log.info("read %d row(s) and %d column(s) from %s", len(frame), len(frame.columns), path.name)
     return frame
+
+
+def _read_access_table(table: config.AccessTable, log: RunLog) -> pd.DataFrame:
+    """Read one table out of a delivered Access database, through the ODBC driver.
+
+    2011 is the only year delivered this way. The connection needs the 64-bit
+    Access driver matched to a 64-bit Python; a 32-bit driver cannot open these
+    files from this environment at all, and `pyodbc` is imported here rather than
+    at the top of the module so that the three years delivered as CSV do not
+    require it to be installed.
+
+    The rows are fetched through the cursor and assembled here rather than handed
+    to `pandas.read_sql`, which warns on a raw `pyodbc` connection because it is
+    not a SQLAlchemy connectable. The warning is noise, and a pipeline that prints
+    warnings nobody reads is how a real one gets missed.
+
+    Unlike the text reader this does not force everything to text: the driver
+    returns numbers as numbers, and rewriting them as strings only to parse them
+    back would be a round trip with nothing to gain and a decimal separator to get
+    wrong. The text columns get the same stripping the other reader applies, so
+    that a year is not measured differently for having been delivered in a
+    different container.
+    """
+    import pyodbc  # noqa: PLC0415 — only 2011 needs it; see the docstring
+
+    path = config.resolve_source_path(table.path)
+    connection = pyodbc.connect(
+        r"DRIVER={Microsoft Access Driver (*.mdb, *.accdb)};DBQ=" + str(path.resolve())
+    )
+    try:
+        cursor = connection.cursor()
+        cursor.execute(f"SELECT * FROM [{table.table}]")
+        columns = [description[0] for description in cursor.description]
+        rows = [tuple(row) for row in cursor.fetchall()]
+    finally:
+        connection.close()
+
+    frame = pd.DataFrame.from_records(rows, columns=columns)
+    if table.strip_whitespace:
+        frame.columns = [str(name).strip() for name in frame.columns]
+        for column in frame.columns:
+            if frame[column].dtype == object:
+                frame[column] = frame[column].str.strip()
+
+    log.info(
+        "read %d row(s) and %d column(s) from %s of %s",
+        len(frame),
+        len(frame.columns),
+        table.table,
+        path.name,
+    )
+    return frame
+
+
+# Which reader opens which declared kind of table. A registry rather than a branch
+# on the type, for the same reason the day type and the duration have one: a
+# delivery arriving in a container nobody has seen yet adds a reader beside these
+# two, and a declared table with no reader fails with a message naming itself.
+_TABLE_READERS = {
+    config.DelimitedTable: _read_delimited_table,
+    config.AccessTable: _read_access_table,
+}
+
+
+def read_table(table: config.DelimitedTable | config.AccessTable, log: RunLog) -> pd.DataFrame:
+    """One declared table, read by whichever reader its kind names."""
+    reader = _TABLE_READERS.get(type(table))
+    if reader is None:
+        raise NotImplementedError(
+            f"{type(table).__name__} is declared as a source of data but no reader in "
+            f"surveys._TABLE_READERS opens it. Add one beside the others rather than reading "
+            "the file a second way somewhere else"
+        )
+    return reader(table, log)
 
 
 def require_columns(frame: pd.DataFrame, columns: tuple[str, ...], where: str) -> None:
@@ -147,11 +236,46 @@ def to_number(values: pd.Series, decimal: str) -> pd.Series:
     Nulls are preserved rather than filled. A record with no expansion factor is
     a record the survey could not weight, and turning that into a zero would
     silently move it out of the totals the run is checked against.
+
+    A column that is already numeric is returned as it is. 2011 arrives out of a
+    database rather than out of a text file, so its factor is a double before this
+    sees it, and writing it out as text only to parse it back would be a round trip
+    that can only lose.
     """
+    if pd.api.types.is_numeric_dtype(values):
+        return values.astype("float64")
     text = values.astype("string")
     if decimal != ".":
         text = text.str.replace(decimal, ".", regex=False)
     return pd.to_numeric(text, errors="coerce")
+
+
+def zone_code_text(values: pd.Series, where: str) -> pd.Series:
+    """Zone codes as text, spelled the same way on both sides of every join.
+
+    The zoning stores its code as a float and the trips store theirs as whatever
+    their delivery used — text in the three CSV years, a double in 2011's database.
+    "810", "810.0" and 810.0 are one zone to a reader and three different keys to a
+    join, which would then match nothing at all and take the trips with it.
+
+    So both sides go through here: a code that reads as a whole number comes out as
+    that number's digits, and a code that reads as no number at all keeps its text,
+    so that it still reaches the check that refuses codes the zoning does not have.
+    A code with a fraction in it is neither, and stops the run: a zone numbered
+    810.5 is not a rounding of anything.
+    """
+    numbers = pd.to_numeric(values, errors="coerce")
+    fractional = numbers.notna() & (numbers != numbers.round())
+    if fractional.any():
+        raise ValueError(
+            f"{where}: {int(fractional.sum())} zone code(s) are numbers with a fraction, such "
+            f"as {numbers[fractional].iloc[0]}. A zone is identified by a whole number and "
+            "rounding one to reach a polygon would put trips in a zone nobody named"
+        )
+    text = values.astype("string")
+    whole = numbers.notna()
+    text[whole] = numbers[whole].astype("int64").astype("string")
+    return text
 
 
 # ---------------------------------------------------------------------------
@@ -391,6 +515,90 @@ def _day_type_is_always_one(
     return assigned, shares
 
 
+def _day_type_from_source(
+    rule: config.DayTypeFromSource,
+    trips: pd.DataFrame,
+    survey: config.MobilitySurvey,
+    log: RunLog,
+) -> tuple[pd.Series, pd.Series]:
+    """The day type is the one the record's own source declared.
+
+    2011 is the year this was written for, and it is the fourth way the four
+    surveys state one thing. Its weekday and its Saturday are separate samples of
+    separate households in separate Access databases, so the day type is a property
+    of the file and of nothing on the record.
+
+    This reads the tag the reader wrote on every row, and nothing else. It opens no
+    file: the alternative shape — a day-type rule that goes and loads the second
+    database itself — would make this the second reader in a design that has had
+    exactly one since 2023, and the ragged fact would sit inside a handler instead
+    of in the declaration where it can be seen.
+    """
+    declared = {
+        source.table.path.name: source.day_type
+        for source in survey.trips
+        if source.day_type is not None
+    }
+    if len(declared) != len(survey.trips):
+        unnamed = [
+            source.table.path.name for source in survey.trips if source.day_type is None
+        ]
+        raise ValueError(
+            f"{survey.label} takes its day type from the source a record came out of, but "
+            f"{len(unnamed)} of its {len(survey.trips)} source(s) declare none: "
+            f"{', '.join(unnamed)}. A source with no day type under this rule has no day type "
+            "at all, and an unknown day type is not a day type"
+        )
+    for day_type in declared.values():
+        if day_type not in config.DAY_TYPES:
+            raise ValueError(
+                f"{survey.label} declares one of its sources as {day_type!r}, which is not one "
+                f"of {', '.join(config.DAY_TYPES)}. The exposure table joins on this value and "
+                "the casualty side has to be able to name the same one"
+            )
+
+    assigned = trips[SOURCE_COL].map(declared)
+    unresolved = int(assigned.isna().sum())
+    if unresolved:
+        raise ValueError(
+            f"{survey.label}: {unresolved} record(s) carry a source this rule does not know. "
+            "The reader and the declaration have gone out of step, which cannot happen by "
+            "reading a file and can happen by editing one of the two"
+        )
+
+    # Each source is its own sample expanding to its own universe once, so there is
+    # nothing to convert and every share is one. A year whose factor spread the
+    # universe across its reference days would need the household weights to say
+    # what fraction each day covers, and the name of a file cannot supply them.
+    if survey.weight_expands_to != config.WEIGHT_EXPANDS_TO_DAY_OF_TYPE:
+        raise ValueError(
+            f"{survey.label} takes its day type from the file a record came out of but declares "
+            f"that its factor expands to {survey.weight_expands_to!r}. Converting to one day of "
+            "that kind needs the share of the universe each day type's households cover, and "
+            "which file a record came out of does not carry it"
+        )
+    day_types = list(dict.fromkeys(declared.values()))
+    shares = pd.Series(1.0, index=pd.Index(day_types, name=config.DAY_TYPE_COL))
+
+    log.info(
+        "%s: day type read from the source each record came out of; %s. Stated by %s",
+        survey.label,
+        ", ".join(
+            f"{day_type} {int((assigned == day_type).sum()):,} record(s) from {name}"
+            for name, day_type in declared.items()
+        ),
+        rule.stated_by or "nothing declared, which is a gap and not a licence",
+    )
+    if not rule.stated_by:
+        log.warn(
+            "%s takes its day type from which file a record came out of and names nothing in "
+            "the delivery that says which day each file holds. A file name is not evidence, "
+            "and a Saturday that is really a Friday is invisible in every figure downstream",
+            survey.label,
+        )
+    return assigned, shares
+
+
 # Which handler resolves which declared rule. A registry rather than a chain of
 # isinstance checks, so that the year whose day type arrives as a flag on the
 # record or as a separate database adds an entry here and a declaration in the
@@ -399,6 +607,7 @@ _DAY_TYPE_HANDLERS = {
     config.DayTypeFromHouseholdDate: _day_type_from_household_date,
     config.DayTypeIsAlwaysOne: _day_type_is_always_one,
     config.DayTypeFromRecordFlags: _day_type_from_record_flags,
+    config.DayTypeFromSource: _day_type_from_source,
 }
 
 
@@ -433,7 +642,7 @@ def _duration_from_minutes_column(
 ) -> pd.Series:
     """The column, as declared, in the delivery's own decimal notation."""
     require_columns(trips, (rule.column,), f"{survey.label} durations")
-    return to_number(trips[rule.column], survey.trips.decimal)
+    return to_number(trips[rule.column], survey.trips_decimal)
 
 
 def _duration_from_clock_columns(
@@ -453,8 +662,8 @@ def _duration_from_clock_columns(
     shorter one than the survey does.
     """
     require_columns(trips, (rule.start_column, rule.end_column), f"{survey.label} durations")
-    start = to_number(trips[rule.start_column], survey.trips.decimal)
-    end = to_number(trips[rule.end_column], survey.trips.decimal)
+    start = to_number(trips[rule.start_column], survey.trips_decimal)
+    end = to_number(trips[rule.end_column], survey.trips_decimal)
 
     minutes = (end - start) * rule.minutes_per_unit
     wrapped = 0
@@ -712,6 +921,62 @@ def implausible_records(
 # ---------------------------------------------------------------------------
 
 
+def read_sources(survey: config.MobilitySurvey, log: RunLog) -> pd.DataFrame:
+    """Every declared source of one year's trips, read and stacked into one frame.
+
+    Three of the four years declare a single source and come out of here exactly as
+    they went in, with one extra column nothing outside this module reads. 2011
+    declares two, because its weekday and its Saturday are separate samples of
+    separate households in separate databases.
+
+    Each row is tagged with the file it came out of. That is the one fact the
+    concatenation would otherwise destroy, and for 2011 it is the only thing that
+    says which kind of day the row is — so it is written here, by the only step
+    that knows it, rather than reconstructed later from something that correlates
+    with it.
+
+    The sources have to agree on their columns. Two files with different column
+    sets stacked together give a frame full of holes wherever one of them was
+    silent, and a hole in a zone column is indistinguishable from a record whose
+    zone was never coded.
+    """
+    frames = []
+    for source in survey.trips:
+        frame = read_table(source.table, log)
+        frame[SOURCE_COL] = source.table.path.name
+        frames.append(frame)
+
+    if len(frames) == 1:
+        return frames[0]
+
+    first, *rest = frames
+    expected = list(first.columns)
+    for source, frame in zip(survey.trips[1:], rest):
+        if list(frame.columns) != expected:
+            absent = [name for name in expected if name not in frame.columns]
+            extra = [name for name in frame.columns if name not in expected]
+            raise ValueError(
+                f"{survey.label}: {source.table.path.name} does not carry the same columns as "
+                f"{survey.trips[0].table.path.name}. Absent: {', '.join(absent) or 'none'}; "
+                f"extra: {', '.join(extra) or 'none'}. Stacking them would leave a hole "
+                "wherever one file is silent, and a hole in a zone column reads as a record "
+                "whose zone was never coded"
+            )
+
+    stacked = pd.concat(frames, ignore_index=True)
+    log.info(
+        "%s: %d source(s) stacked into %d record(s) — %s",
+        survey.label,
+        len(frames),
+        len(stacked),
+        ", ".join(
+            f"{len(frame):,} from {source.table.path.name}"
+            for source, frame in zip(survey.trips, frames)
+        ),
+    )
+    return stacked
+
+
 def read(survey: config.MobilitySurvey, log: RunLog) -> SurveyTrips:
     """One declared survey, as trips per day between pairs of zones.
 
@@ -723,7 +988,7 @@ def read(survey: config.MobilitySurvey, log: RunLog) -> SurveyTrips:
     record instead would draw the same line dozens of times and split it dozens
     of times, for the same answer.
     """
-    frame = read_table(survey.trips, log)
+    frame = read_sources(survey, log)
     require_columns(
         frame,
         (
@@ -736,7 +1001,7 @@ def read(survey: config.MobilitySurvey, log: RunLog) -> SurveyTrips:
     )
     records_read = len(frame)
 
-    weights = to_number(frame[survey.weight_column], survey.trips.decimal)
+    weights = to_number(frame[survey.weight_column], survey.trips_decimal)
     without_weight = int(weights.isna().sum())
     negative = int((weights < 0).sum())
     if negative:
@@ -815,10 +1080,14 @@ def read(survey: config.MobilitySurvey, log: RunLog) -> SurveyTrips:
         (survey.destination_zone_column, ZONE_DESTINATION_COL),
     ):
         # Zone codes are compared as text on both sides of every join in this
-        # module. The zoning stores them as a number and the trips as text, and
-        # "810" and "810.0" are the same zone to a reader and two zones to a join
-        # that would then match nothing at all.
-        measured[target] = measured[source_column].astype("string")
+        # module, and both sides are spelled by the same function. The zoning
+        # stores its code as a float and the trips store theirs as text in the
+        # three CSV years and as a double in 2011, and "810", "810.0" and 810.0
+        # are one zone to a reader and three keys to a join that would then match
+        # nothing at all.
+        measured[target] = zone_code_text(
+            measured[source_column], f"{survey.label} {source_column}"
+        )
 
     # A zone is missing in two ways and both end the same place. It can be absent,
     # and it can be a code the delivery uses for "no answer" or wrote in error —
@@ -907,7 +1176,7 @@ def read(survey: config.MobilitySurvey, log: RunLog) -> SurveyTrips:
             ),
         ],
         notes=[
-            f"source={survey.trips.path.name}, {survey.measures}",
+            f"source={survey.trips_label}, {survey.measures}",
             f"{file_total:,.1f} trips per day in the file; "
             f"{float(totals.sum()):,.1f} of them in the four measured modes",
             "modes: " + ", ".join(
@@ -971,15 +1240,20 @@ def read_zoning(survey: config.MobilitySurvey, log: RunLog) -> gpd.GeoDataFrame:
         zones = zones.set_crs(epsg=zoning.crs_if_undeclared)
 
     zones = zones.to_crs(epsg=config.PROJECTED_CRS)
-    # Matching the trips' text codes. The shapefile stores the code as a float,
-    # so a straight cast would give "810.0" against the trips' "810".
+    # Spelled by the same function that spells the trips' codes, so the two sides
+    # of the join cannot disagree about what "810" is. The shapefile stores the
+    # code as a float, so a straight cast would give "810.0" against the trips'
+    # "810" — but a zoning code that is not a number at all is a defect in the
+    # zoning rather than a code to carry forward, so it stops the run here.
     codes = pd.to_numeric(zones[zoning.code_column], errors="coerce")
     if codes.isna().any():
         raise ValueError(
             f"{survey.label}: {int(codes.isna().sum())} zone(s) of {path.name} have no "
             f"readable code in {zoning.code_column}"
         )
-    zones[ZONE_CODE_COL] = codes.astype("int64").astype("string")
+    zones[ZONE_CODE_COL] = zone_code_text(
+        zones[zoning.code_column], f"{survey.label} zoning {zoning.code_column}"
+    )
 
     duplicated = int(zones[ZONE_CODE_COL].duplicated().sum())
     if duplicated and not zoning.zone_delivered_in_parts:

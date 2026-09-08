@@ -11,14 +11,24 @@ which days each survey covers. No geometry was built, nothing was declared in
 `config.py`, and no result here has been through a pipeline check. Every figure
 was computed from the delivered file in the session of 2026-09-05.
 
-**2023, 2019 and 2015 have since been built and are no longer structural notes.**
-They are declared in `config.SURVEY_2023`, `config.SURVEY_2019` and
-`config.SURVEY_2015`, read by `src/surveys.py`, measured by `src/exposure.py` and
-checked on run `run_20260908_044524`; the decisions are D38. What those passes
-resolved is marked below where it lands, and the entry for 2011 is unchanged and
-still unverified. Several things this document listed as unresolved have been
-answered and three of its statements turned out to be wrong, which is said in full
-in section 5.
+**All four years have since been built and none of this is a structural note any
+more.** They are declared in `config.SURVEY_2011`, `SURVEY_2015`, `SURVEY_2019` and
+`SURVEY_2023`, read by `src/surveys.py`, measured by `src/exposure.py` and checked
+on run `run_20260908_101110`; the decisions are D38. What each pass resolved is
+marked below where it lands. Several things this document listed as unresolved have
+been answered and four of its statements turned out to be wrong, which is said in
+full in section 5.
+
+**2011 was the last and the only one that asked for a change to the machinery.**
+Its two day types live in two Access databases, so which kind of day a record
+belongs to is a property of the file it came out of and no field of
+`MobilitySurvey` could say that. `trips` became a tuple of sources, each carrying
+the day type its file holds, and 2015, 2019 and 2023 came out of the run identical
+over all 720 of their rows. What 2011 cost in reading is written up on its own in
+[`implementing-2011.md`](implementing-2011.md), including the two controls this
+document did not know it had — the delivery's own worked example of the
+private-vehicle peak, reproduced record for record, and the 2015 delivery's
+recount of the 2011 file, which agrees to the trip.
 
 **2015 is the year that gave the series its Saturday, and the year with the best
 external control any of them has had.** Its own published origin-destination
@@ -37,11 +47,11 @@ support is a property of 2023 and not of the series. Both are in section 5.
 
 **What the study needs from them.** Four modes — on foot, bicycle, motorcycle and
 car — as **trips per day apportioned to each UPL**, for 2011, 2015, 2019 and 2023.
-That is sixteen combinations. **Eight of them are measured**, the four modes of
-2023 and the four of 2019. The delivered desire-lines layer that used to stand in
-for all of this turned out to be an incomplete 2019, bicycle only, and the 2019
-session **retired it** — after checking that all 160 of its origin-destination
-pairs appear among the pairs the pipeline builds from that survey, which they do.
+That is sixteen combinations and **all sixteen are measured**. The delivered
+desire-lines layer that used to stand in for all of this turned out to be an
+incomplete 2019, bicycle only, and the 2019 session **retired it** — after checking
+that all 160 of its origin-destination pairs appear among the pairs the pipeline
+builds from that survey, which they do.
 
 ---
 
@@ -49,22 +59,22 @@ pairs appear among the pairs the pipeline builds from that survey, which they do
 
 | | 2011 | 2015 | 2019 | 2023 |
 |---|---|---|---|---|
-| Trip file | `Mod_D_VIAJES2_BaseImputacion_Definitiva` | `VIAJES_ANONIMIZADOS.csv` | `ViajesEODH2019.csv` | `d. Modulo viajes.csv` |
-| Format | Access `.accdb` | CSV `;` utf-8 | CSV `;` utf-8, decimal point | CSV `;` cp1252, decimal comma |
-| Records | 122,361 | 147,251 | 134,497 | 100,174 |
+| Trip file | `Mod_D_VIAJES2_BaseImputacion_Definitiva`, **and its `_Sabado` twin in a second database** | `VIAJES_ANONIMIZADOS.csv` | `ViajesEODH2019.csv` | `d. Modulo viajes.csv` |
+| Format | Access `.accdb`, two of them | CSV `;` utf-8 | CSV `;` utf-8, decimal point | CSV `;` cp1252, decimal comma |
+| Records | 122,361 weekday + 4,035 Saturday | 147,251 | 134,497 | 100,174 |
 | Columns | 34 | 33 | 36 | 47 |
 | Mode column | `Modo_Principal` | `ID_MEDIO_PREDOMINANTE` | `modo_principal` | `modo_principal_agrupado` |
 | Mode as | label | numeric code | label | label |
 | Weight | `F_EXP`, and it is the same number on the trip, the person and the household | `PONDERADOR_CALIBRADO_VIAJES` **— declared**, confirmed against the published matrices | `f_exp` | `fexp_vj` |
-| Expanded trips/day | 17,611,061 | 17,251,733 weekday + 15,730,551 Saturday | 18,996,286 | 16,390,908 |
-| Origin/destination zone | `ZAT_ORIG` / `ZAT_DEST` | `ZAT_ORIGEN` / `ZAT_DESTINO` | `zat_origen` / `zat_destino` | `zat_ori` / `zat_des` |
-| Zone nulls (origin) | 21,515 (17.6 %) | 43 (0.03 %) | 7,134 (5.3 %) | 0 |
+| Expanded trips/day | 17,611,061 weekday + 14,022,328 Saturday | 17,251,733 weekday + 15,730,551 Saturday | 18,996,286 | 16,390,908 |
+| Origin/destination zone | `ZAT_ORIG` / `ZAT_DEST`, as a double | `ZAT_ORIGEN` / `ZAT_DESTINO` | `zat_origen` / `zat_destino` | `zat_ori` / `zat_des` |
+| Zone nulls (origin) | 21,515 (17.6 %), **and they are exactly the imputed records** | 43 (0.03 %) | 7,134 (5.3 %) | 0 |
 | UPL in the trip record | no | no | no | **yes**, `upl_ori` / `upl_des` |
 | Endpoint coordinates | no | **yes**, lat/lon | no | no |
-| Zoning shapefile | **none delivered**; every code it names is in the 2015 zoning | `ZATs_2012_MAG`, 948 zones | `ZAT` 1,141 + `UTAM` 141 | `ZAT2023` 1,215 + `UTAM2023` 142 |
-| Saturday | separate database, 4,035 records | `DIA_NOHABIL`, 17,730 records — **it is a Saturday, and there is no Sunday** | **none observed**; `p32_sabado` is declared recurrence, 13,436 records | surveyed, 2,876 households |
-| Reference day | day before the interview | flag on the record, and the flag *is* the day before the interview | day before the interview, one typical day only | day before the interview |
-| Trip duration | `Min_Inicio`/`Min_Fin`, whole minutes from midnight | `HORA_INICIO`/`HORA_FIN` as `HH:MM:SS`, derived and **not** rounded | derived from two clock columns held as fractions of a day | `duracion_min`, in minutes |
+| Zoning shapefile | **none delivered**; it borrows `ZATs_2012_MAG`, which is its own zoning published with the next survey | `ZATs_2012_MAG`, 948 features over 945 zones | `ZAT` 1,141 + `UTAM` 141 | `ZAT2023` 1,215 + `UTAM2023` 142 |
+| Saturday | separate database, 4,035 records over 565 households, **Bogotá only** | `DIA_NOHABIL`, 17,730 records — **it is a Saturday, and there is no Sunday** | **none observed**; `p32_sabado` is declared recurrence, 13,436 records | surveyed, 2,876 households |
+| Reference day | day before the interview, 4 a.m. to 4 a.m.; the day type is which database the record is in | flag on the record, and the flag *is* the day before the interview | day before the interview, one typical day only | day before the interview |
+| Trip duration | `Min_Inicio`/`Min_Fin`, whole minutes from midnight, derived and **not** rounded | `HORA_INICIO`/`HORA_FIN` as `HH:MM:SS`, derived and **not** rounded | derived from two clock columns held as fractions of a day | `duracion_min`, in minutes |
 
 The exact paths are in `docs/data-layout.md`. Everything else published alongside
 — the EMME model of 2011, the intercept surveys, the reports, the forms — is out
@@ -145,6 +155,29 @@ now taken, and D38 carries the reasoning:
   imposing a floor on 2019 that its own publication does not use, which would
   make the study's walking disagree with the survey's.
 
+- **2011's walking is the largest figure in the table and the gap against 2015 is
+  entirely below fifteen minutes.** 8,136,778 against 5,576,942 is 46 %, and it is
+  not a reading: Tabla 43 of the 2015 delivery's Tomo IV reads the 2011 database
+  itself and publishes 8,136,778, to the trip. Split at fifteen minutes the two
+  years nearly meet — 3,733,664 against 3,600,521 above it, a 4 % difference — and
+  separate by a factor of 2.2 below it, 4,403,115 against 1,976,421. 2011's
+  questionnaire asks for a short walk outright, *"para viajes realizados
+  completamente a pie incluya siempre los viajes al trabajo y estudio; para otros
+  propósitos solo aquellos cuya duración sea mayor a 3 minutos"*, and tells the
+  interviewer not to ask about stages for one; 2015's states no floor and records
+  walking as a stage with its own minute counter. The 2015 delivery's own
+  arithmetic agrees: pedestrian **stages** fall 17 % where pedestrian **trips**
+  fall 31 %. See [`implementing-2011.md`](implementing-2011.md) §4.
+
+- **2011 folds the bicitaxi into `Informal` exactly as 2015 folds it into
+  `ILEGAL`**, so it is the second year with that limitation and not an exception.
+  Reading its stage columns says the bicitaxi is **86 records and 11,354 trips a
+  day, 1.9 % of what 2011 measures as cycling**, against 3.0 % in 2015 and 2.4 % in
+  2019; the mototaxi, also inside `Informal`, is 8 records and 1,032 trips, 0.25 %
+  of its motorcycle travel. The category is therefore not identical across the four
+  years and the size of the difference is between a fiftieth and a thirtieth of one
+  mode.
+
 - **2015 cannot put the bicitaxi anywhere, and that is a limitation rather than
   a decision.** Its predominant-mode vocabulary folds the bicitaxi into `ILEGAL`
   together with the mototaxi, the informal car, the collective taxi and the
@@ -211,6 +244,19 @@ ones.
 The same argument holds with less force for bicycles, and is nearly irrelevant
 for cars and motorcycles.
 
+**2011 is the one year that departs, and it departs in every mode.** On the same
+zoning 2015 uses, its raw intra-zonal shares are 38.0 % of walking against 28.4 %,
+23.5 % of cycling against 21.9 %, 12.2 % of motorcycle travel against 5.8 % and
+11.9 % of car travel against 5.3 %. The reason is one fact that runs through the
+whole year: **2011 reports shorter trips than 2015 in every mode** — a median of 10
+minutes against 17 on foot, 15 against 25 by bicycle, 30 against 40 by motorcycle
+and 30 against 45 by car. Split at fifteen minutes the walking figures nearly meet,
+49.1 % against 45.4 % below and 25.1 % against 19.0 % above, so most of the
+aggregate difference is the mix of short and long trips and not a difference in how
+a trip was coded. The same fact costs 2011 more to the plausibility test, which
+asks whether two zones are further apart than the mode could cover in the duration
+reported. See [`implementing-2011.md`](implementing-2011.md) §4.
+
 *Built for 2023, 2019 and 2015, and the measured cost of the decision is larger
 than the table above suggests.* **2015 lands in the same place as the other two:
 3,356,494 trips a day intra-zonal, 20.1 % of what it measures in the four modes,
@@ -244,8 +290,28 @@ the same way:
   inferred: both the household and the trip carry a `DIA` column, which runs 1–5 in
   the weekday database and is 6 in every row of the Saturday one. The two agree on
   every record. So the day type is read rather than derived, as in 2015 — but from
-  which file the record came out of, which is a shape no field of `MobilitySurvey`
-  can express today. See [`implementing-2011.md`](implementing-2011.md).
+  which file the record came out of, which is why `MobilitySurvey.trips` is a tuple
+  of sources and `DayTypeFromSource` exists. See
+  [`implementing-2011.md`](implementing-2011.md).
+
+  **Resolved, and the delivery's own dictionary contradicts itself about `DIA`.**
+  Module A of the database manual calls it "día de la semana de realización de la
+  encuesta" and module D calls it "día de la semana en que se hizo el viaje", and
+  the two cannot both be true, because the questionnaire asks about *"el día de
+  ayer, desde las 4 a.m. de ayer a las 4 a.m. de hoy"*. `DIA` equals the weekday of
+  the `DIA_MES`/`MES` date beside it on all 16,157 households, which settles nothing
+  by itself. What settles it is behaviour: across the five values of the weekday
+  file the households make 7.02 to 7.43 trips and 10.4 % to 11.6 % of those trips
+  are for study, so none of the five is a Sunday; the Saturday file has 2.3 % for
+  study, 9.8 % shopping and 9.4 % recreation, so the sixth is not a Friday. The day
+  type is the file, and the dictionary is a claim like any other.
+
+  **And the two day types cover different territories, which no other year does.**
+  The weekday sample covers Bogotá and the seventeen municipal cabeceras, and its
+  household weights sum to 2,444,260 against the 2,444,256 households Tomo I
+  declares for that region. The Saturday sample covers **Bogotá alone** — Tomo II
+  says *"la muestra para el día sábado se diseñó solo para Bogotá"* — and its
+  weights sum to 2,149,087 against Bogotá's published 2,148,884.
 - **2015 — a flag on the record.** `DIA_HABIL` on 129,521 records and
   `DIA_NOHABIL` on 17,730. There is also a peak/off-peak split for each.
 - ~~**2019 — day-of-week flags on the trip.**~~ **Resolved, and the decision it
@@ -286,12 +352,27 @@ the same way:
   exported. See D38 for what the rescaled figures then say, which is not
   credible and is a property of the survey.
 
-**2011's Saturday is too thin to carry a UPL-level estimate and should be
-expected to fail.** Its 4,035 records expand to 14,022,328 trips, so one record
-stands for roughly 3,500 trips; the 72 bicycle records expand to 310,079. Spread
-over 30 units and four modes that is about 34 records per cell before any zone
-apportionment. The number will exist and it will not mean anything, and the run
-should say so rather than publishing it quietly.
+**2011's Saturday is too thin to carry a UPL-level estimate, and the survey says so
+itself.** Its 4,035 records expand to 14,022,328 trips, so one record stands for
+roughly 3,500 trips; the 72 bicycle records expand to 310,079. Spread over 30 units
+and four modes that is about 34 records per cell before any zone apportionment.
+
+*Resolved: it is measured, exported and marked.* Tomo III expanded and analysed the
+Saturday *"a nivel de ciudad y estrato socioeconómico"* where the weekday was
+analysed *"a nivel de UPZ"*; its non-response imputation used the code `TL`, every
+locality together, because there was no sample by locality; and Tomo I adds that
+*"el nivel de error de esta estimación es mayor que para el día hábil"*. So the
+marking is the consultant's statement and not our judgement. The 240 rows carry
+`SAMPLE_SUPPORT = CITY_LEVEL_ONLY` on the 120 Saturday ones, seven of which come out
+at zero including three units with no cycling at all. The column is separate from
+`VALUE_STATUS` on purpose: that one says whether there is a number, and every check
+in the run filters on it.
+
+**And the Saturday behaves like a Saturday**, which is the one thing that would have
+said the file was misread. Inside the thirty units and against its own weekday,
+walking falls 29 % and cycling 18 % while car travel rises 89 %; 2015's Saturday
+falls 32 % and 17 % and rises 50 %. Motorcycle is the exception, rising 43 % where
+2015's falls 23 %, and it rests on 135 records.
 
 ---
 
@@ -478,28 +559,26 @@ like `3 4 5 6`. Tomo VII's own foreign key says as much: *fk_id_predominancia
 (id_modo_predominante) ref medio_predominante (predominancia)*. All twelve codes
 occur in the file and each one is either mapped or declared out.
 
-### 2011 — measured in advance, and the blocking question is answered
+### ~~2011~~ Resolved, and it is the year that changed the machinery
 
-*This is not the implementation pass. It is what the session of 2026-09-08
-measured after 2015 landed, so that the session which implements 2011 starts from
-facts instead of from the folder. Nothing here is declared in `config.py`, and the
-six things §6b requires still have to be established by that session against the
-year's own documents — what follows narrows them, it does not settle them.*
+*The measurements below were taken on 2026-09-08, before 2011 was implemented, so
+that the implementing session would start from facts instead of from the folder.
+The year was implemented the same day on run `run_20260908_101110`. What that pass
+found is marked here; the full account is in
+[`implementing-2011.md`](implementing-2011.md), which was the plan and is now the
+record.*
 
 **The delivery is 357 files, of which 323 are the Emme model and 34 are the
-survey.** The model is out of scope. What is in scope: two Access databases, the
-questionnaire (`110719_Formulario_EM_Bogota 26 de julio.pdf`), three volumes of the
-final report, two database manuals — `Manual base de datos Encuesta de Hogares.pdf`
-and `120927_InformeFinal_ManualEncuestasDomiciliarias.pdf` — a training deck on the
-databases and another on the matrices, and **published matrices**:
-`Matrices Finales/` holds eight Emme text matrices split peak/off-peak for
-`Bicicleta`, `Moto`, `TP` and `VP`, and `120927_Matrices_Proposito.xlsx` holds them
-by purpose. **There is no pedestrian matrix**, so 2011's strongest external control
-covers three of the four modes and not the one the study cares most about.
+survey.** In scope: two Access databases, the questionnaire
+(`110719_Formulario_EM_Bogota 26 de julio.pdf`), three volumes of the final report,
+two database manuals — `Manual base de datos Encuesta de Hogares.pdf`, which is
+Tomo III chapter 4, and `120927_InformeFinal_ManualEncuestasDomiciliarias.pdf` — a
+training deck on the databases and another on the matrices, and the eight Emme
+matrices of `Matrices Finales/`.
 
-**The two Access databases read through the installed 64-bit driver**, and this was
-verified rather than assumed. The weekday database is 128 MB with 83 tables and the
-Saturday one 11.5 MB. The tables that matter:
+**The two Access databases read through the installed 64-bit driver.** The weekday
+database is 128 MB with 83 tables and the Saturday one 11.5 MB. The tables that
+matter:
 
 | Table | Rows | What it is |
 |---|---:|---|
@@ -512,71 +591,91 @@ Saturday one 11.5 MB. The tables that matter:
 The Saturday database repeats the shape with `_Sabado` suffixes:
 `Mod_D_VIAJES2_BaseImputacion_Definitiva_Sabado` has 4,035 rows over 565 households.
 
-**The blocking question is answered: the 2015 zoning serves.** 2011 ships no
-zoning of any kind, and this document said whether its codes fall inside the 2015
-one had to be shown and not assumed. Shown: the trips name **913 distinct codes on
-the weekday and 607 on the Saturday, and every single one of them is in
-`ZATs_2012_MAG`** — zero absent, in either database, carrying zero trips. So 2011
-can be built, on a zoning borrowed from a neighbouring year with a written reason,
-and `SurveyZoning` already expresses that because it is declared beside the trips
-rather than found next to them.
+**The imputed base is the one to read and the delivery says so.** Its manual, §1.10,
+states that *"el módulo para consulta de total de viajes es el modulo D con
+imputación ya que contiene factores de expansión de todos las personas que si
+viajaron"*. The unimputed module has no origin or destination zone at all, so there
+was never a choice.
 
-**The duration is resolved and it needs no new rule.** This document recorded it as
-unresolved. `Min_Inicio` and `Min_Fin` are whole minutes from midnight — verified,
-because `Min_Inicio` equals `HR_INI × 60 + MIN_INI` on all 122,361 records — so
-`DurationFromClockColumns` reads them with `minutes_per_unit=1.0` and nothing new is
-written. The median trip is 26 minutes. Nothing wraps: the columns run 240 to 1,680,
-which is 04:00 to 04:00 the next day, the same reference window the other three
-surveys state in their questionnaires, so a trip after midnight is 1,500 rather than
-60 and `wrap_at_midnight` must be **off** or it will do nothing and hide that.
+**The zoning question is answered twice over.** 2011 ships no zoning, and the trips
+name 913 distinct codes on the weekday and 607 on the Saturday, every one of them in
+`ZATs_2012_MAG`. That was necessary and not sufficient — a 2012 file framing 2011
+travel needed an argument. It has one, and it is that the file is not a 2012 zoning
+at all: **chapter 2 of this year's own Tomo II is the zoning proposal**, built on
+Catastro Distrital's March 2011 cadastre, and the year's matrix training deck
+records the result as *"se pasó de tener 863 zonas a 945 zonas"* — the 945 codes the
+file carries. It is the 2011 survey's own zoning, delivered with the following
+survey and named for the year it was published.
 
-**The weight is one number at all three levels.** `F_EXP` on a trip equals its
-person's and its household's on all 122,361 records, which is simpler than 2015 and
-means the household check for `weight_expands_to` needs no join. Its shape already
-points the same way the other two years do: the weekday households' `F_EXP` sums to
-**2,444,260** over 15,592 and the Saturday's to **2,149,087** over 565, so each
-subsample expands to something near a whole universe on its own rather than to a
-share of one. **That is not yet a demonstration** — it needs the published household
-count, which is what `Anexo`-equivalent reading is for — but a year read as 2023's
-would be wrong by a factor of eight and this says so in advance.
+**The duration needed no new rule and it is verified against a published figure.**
+`Min_Inicio` and `Min_Fin` are whole minutes from midnight — `Min_Inicio` equals
+`HR_INI × 60 + MIN_INI` and `Min_Fin` equals `P18HF_D × 60 + P18MF_D` on every
+record of both databases — so `DurationFromClockColumns` reads them with
+`minutes_per_unit=1.0`. The columns run 240 to 1,680, which is 04:00 to 04:00 the
+next day, the window the questionnaire states, so nothing wraps and
+`wrap_at_midnight` is off; rounding is irrelevant rather than false, because the
+columns are already whole minutes. Tomo I publishes a modal split with the walking
+trips of under fifteen minutes removed, and the rule reproduces the whole figure:
+walking 28.3 % against a published 28 %, TPC 27.2 % against 27, car 13.8 % against
+14, TransMilenio 11.3 % against 12, bicycle 4.6 % against 5, taxi 4.7 % against 5,
+motorcycle 3.1 % against 3.
 
-**`F_EXP` over the weekday trips sums to 17,611,061.3**, and 17,611,061 is the
-figure Tomo I of the *2015* delivery quotes for 2011 — *"la proyección de viajes
-para un día hábil fue de 17'611.061 viajes"*. So a control total exists before the
-2011 documents are opened, from a neighbouring survey.
+**The weight is one number at all three levels**, and what it expands to is
+demonstrated. `F_EXP` on a trip equals its person's and its household's on all
+122,361 records. The weekday households' `F_EXP` sums to **2,444,260** against the
+2,444,256 households Tomo I declares for the study region — 2,148,884 in Bogotá plus
+295,372 in the seventeen cabeceras — and the Saturday's to **2,149,087** against
+Bogotá's 2,148,884 alone, because *"la muestra para el día sábado se diseñó solo
+para Bogotá"*. Each day type expands to its own universe once, so
+`weight_expands_to` is `DAY_OF_TYPE`, as 2019's and 2015's are and 2023's is not.
+
+**Two published totals, not one.** `F_EXP` sums to 17,611,061.27 on the weekday
+against Tomo I's 17,611,061, and to 14,022,327.55 on the Saturday against its
+14,022,327. The weekday figure is quoted again by the *2015* delivery's Tomo I. Both
+of Tomo I's published modal splits are reproduced mode by mode.
 
 **Everything joins on `ORDEN`.** Trip to household is `ORDEN`; trip to person is
 `(ORDEN, ID_PERSO)`. All 122,361 trips find both. 15,080 of the 15,592 households
-have at least one trip, so 512 made none. The household `ZAT` has no nulls at all,
-which makes a per-zone control possible in the way 2019's per-UTAM check was.
+have at least one trip, so 512 made none. The household `ZAT` has no nulls at all.
 
 **`Modo_Principal` holds `Aux_Modos.Modo_Agregado`, not its code**, and twelve
 labels occur in both databases: `Pie`, `Bicicleta`, `Moto`, `Privado`, `TPC`, `TM`,
 `Taxi`, `Alimentador`, `Intermunicipal`, `Escolar`, `Informal`, `Otro`. Four map to
 the study's actor types and eight do not. **The bicitaxi and the mototaxi are inside
-`Informal`**, exactly as they are inside 2015's `ILEGAL`, so 2011 has the same
-limitation and it is now the second year to have it rather than an exception.
+`Informal`**, exactly as they are inside 2015's `ILEGAL`; §2 has what that costs.
 
-**What is still genuinely open for 2011**, and none of it is a lookup:
+**What was open, and how each closed:**
 
-- **Its two day types live in two files, and no field of `MobilitySurvey` can say
-  so.** This is the one place where the fourth year does not fit the shape the first
-  three did, and it is written up on its own in
-  [`implementing-2011.md`](implementing-2011.md).
-- **`ZAT_ORIG` or `ZAT_DEST` is missing on 21,515 weekday records, 16.1 % of the
-  expanded trips** — by far the worst zone coverage of the four years, against 6.1 %
-  in 2019 and none in 2023. It is not a code that names no place; the field is
-  simply empty. Whether that is acceptable, or whether it biases the result by
-  place, is a question for the advisor and not a default to pick.
-- **The Saturday is too thin and should be expected to fail.** 4,035 records
-  expanding to 14,022,328 trips means one record stands for about 3,475 of them;
-  over 30 units and four modes that is roughly 34 records a cell before any zone
-  apportionment. The number will exist and it will not mean anything, and D38
-  already says a combination like that should be marked rather than published
-  quietly.
-- **The published matrices cover three modes, not four.** No pedestrian matrix
-  exists, so the check that made 2015 the best-verified year cannot be repeated in
-  full for 2011 — and pedestrian is the mode the study is most concerned with.
+- **The two day types in two files.** Closed by a change to the machinery, taken by
+  the advisor rather than absorbed: `MobilitySurvey.trips` is a tuple of
+  `TripSource`, each pairing a table with the day type that file carries, and
+  `DayTypeFromSource` reads the tag the reader writes. 2015, 2019 and 2023 come out
+  of the run identical over all 720 of their rows.
+- **`ZAT_ORIG` or `ZAT_DEST` missing on 21,515 weekday records, 16.1 % of the
+  expanded trips.** Closed, and this document's framing of it was wrong. They are
+  **exactly the imputed records**: `DONANTE` is set on 21,515 weekday records and 440
+  Saturday ones and on no others, and those are exactly the records with no zone, at
+  both ends together. Tomo III explains it — 8,218 people travelled and did not
+  answer the trip module, and the consultant imputed their trips from a donor of
+  similar occupation, stratum, locality and day, without imputing a geography. There
+  is nothing to decide and nothing to recover; they are counted in the balance
+  beside every other trip that cannot be placed, 12,733 records of the four measured
+  modes carrying 2,452,373 trips a day.
+- **The thin Saturday.** Closed by the advisor: measured, exported and marked
+  `CITY_LEVEL_ONLY`. §4 has the evidence and the behaviour check.
+- **The published matrices cover three modes, not four.** Closed, and it turned out
+  not to matter, because they cover **none**. The Emme matrices of `Matrices
+  Finales/` are not the household survey's: the matrix training deck describes them
+  as built from the intercept surveys and the counts, corrected for double counting
+  and adjusted in Emme, with the household survey contributing only the pairs
+  interception missed and even those re-expanded with the intercept factor, since
+  *"la expansión de hogares no permite utilizar directamente los viajes de esa
+  matriz"*. Bicycle goes from 69,648 to 15,538 trips in that process. The controls
+  2011 does have are Tomo I's two totals, its two modal splits, its fifteen-minute
+  split, the delivery's own worked example of the private-vehicle peak — 1,434
+  records whose weights sum to 176,849.2748766211 against the workbook's
+  176,849.2748766211, a difference of exactly zero — and the 2015 delivery's recount
+  of the 2011 file, which gives 8,136,778 walking trips to the trip.
 
 ### ~~2023 — the delivered desire lines carry a tenth of the trips~~ Resolved, and against the wrong year
 
@@ -744,9 +843,11 @@ because they are the reason this pass exists.
 
 ---
 
-## 6b. The contract for the sessions that implement 2019, 2015 and 2011
+## 6b. The contract the four years were implemented under
 
-**Three of the four are done. Only 2011 is left.**
+**All four are done.** The contract stays as written, because it is what a fifth
+survey would be held to and because it is the record of what each year had to
+establish for itself.
 
 **Read this before opening a survey folder**, and
 [`adding-a-survey-year.md`](adding-a-survey-year.md) for the order to work in.
@@ -797,14 +898,14 @@ inherited from another year. Every one of them can be wrong in a way that still
 produces entirely plausible numbers, which is why they are declared rather than
 inferred and why the cross-year comparison below exists.
 
-| What | Field | Where 2023 got it | Where 2019 got it | Where 2015 got it |
-|---|---|---|---|---|
-| Which file holds the trips, and how it is encoded | `trips` | cp1252, `;`, comma decimals, spaces inside three column names | utf-8, `;`, **decimal point** | pure ASCII, `;`, decimal point — while a sibling file in the same folder decodes as neither utf-8 nor cp1252 |
-| Which column is the expansion factor | `weight_column` | `fexp_vj`, confirmed against the published total | `f_exp`, confirmed the same way | **`PONDERADOR_CALIBRADO_VIAJES`** of four candidates, confirmed against twenty-four published mode totals and two published matrices |
-| What one unit of it expands to | `weight_expands_to` | an average day of the collection period, from the household factors summing to the universe once over all seven reference days | **one typical day**, from the household factors summing to the published household universe at a ratio of 1.000000 | **one day of the record's own kind**, from each day type's household factors summing to the universe separately: 2,967,290 over 24,622 households and 3,045,530 over 3,591 |
-| A published total to check the reconstruction against | `published_total` | 16,390,908, reproduced exactly | 18,996,285.55 from `Anexo D` IND_102, reproduced to the decimal on all sixteen modes | 32,982,284 = 17,251,733 weekday (Tomo IV Tabla 59) + 15,730,551 Saturday (Tabla 119), and the two published matrices reproduced **to the last decimal** |
-| How the year says which kind of day a trip was made on | `day_type_rule` | the household's interview date, shifted back one day | it does not: **one kind of day, and no other** | a flag the delivery wrote on the record, `DIA_HABIL`/`DIA_NOHABIL`, which the interview date proves is a **Saturday** and agrees with on all 147,251 records |
-| How the year states the trip duration | `duration_rule` | `duracion_min`, in minutes, verified against the fifteen-minute walking split before it was trusted | derived from two clock columns held as fractions of a day, verified against the delivered `Aux_Duración` file and against IND_104 | derived from two `HH:MM:SS` columns, reproducing the delivered `DIFERENCIA_HORAS` on every record and both published fifteen-minute splits — and **not rounded**, because its clock is exact |
+| What | Field | Where 2023 got it | Where 2019 got it | Where 2015 got it | Where 2011 got it |
+|---|---|---|---|---|---|
+| Which file holds the trips, and how it is encoded | `trips` | cp1252, `;`, comma decimals, spaces inside three column names | utf-8, `;`, **decimal point** | pure ASCII, `;`, decimal point — while a sibling file in the same folder decodes as neither utf-8 nor cp1252 | **two Access databases**, one per kind of day, read through the 64-bit ODBC driver — which is why `trips` is a tuple of sources |
+| Which column is the expansion factor | `weight_column` | `fexp_vj`, confirmed against the published total | `f_exp`, confirmed the same way | **`PONDERADOR_CALIBRADO_VIAJES`** of four candidates, confirmed against twenty-four published mode totals and two published matrices | `F_EXP`, the same number on the trip, the person and the household; confirmed against both published totals and against the delivery's own worked example of the private-vehicle peak |
+| What one unit of it expands to | `weight_expands_to` | an average day of the collection period, from the household factors summing to the universe once over all seven reference days | **one typical day**, from the household factors summing to the published household universe at a ratio of 1.000000 | **one day of the record's own kind**, from each day type's household factors summing to the universe separately: 2,967,290 over 24,622 households and 3,045,530 over 3,591 | **one day of the record's own kind**, from each sample reproducing its own published universe: 2,444,260 against 2,444,256 for Bogotá plus seventeen cabeceras, and 2,149,087 against Bogotá's 2,148,884 alone |
+| A published total to check the reconstruction against | `published_total` | 16,390,908, reproduced exactly | 18,996,285.55 from `Anexo D` IND_102, reproduced to the decimal on all sixteen modes | 32,982,284 = 17,251,733 weekday (Tomo IV Tabla 59) + 15,730,551 Saturday (Tabla 119), and the two published matrices reproduced **to the last decimal** | 31,633,388 = 17,611,061 weekday (Tomo I, indicator 18) + 14,022,327 Saturday (indicator 27), with both published modal splits reproduced mode by mode |
+| How the year says which kind of day a trip was made on | `day_type_rule` | the household's interview date, shifted back one day | it does not: **one kind of day, and no other** | a flag the delivery wrote on the record, `DIA_HABIL`/`DIA_NOHABIL`, which the interview date proves is a **Saturday** and agrees with on all 147,251 records | **the database the record came out of**, because the two samples are different households in different files; its dictionary contradicts itself about `DIA` and travel behaviour settles it |
+| How the year states the trip duration | `duration_rule` | `duracion_min`, in minutes, verified against the fifteen-minute walking split before it was trusted | derived from two clock columns held as fractions of a day, verified against the delivered `Aux_Duración` file and against IND_104 | derived from two `HH:MM:SS` columns, reproducing the delivered `DIFERENCIA_HORAS` on every record and both published fifteen-minute splits — and **not rounded**, because its clock is exact | `Min_Inicio` and `Min_Fin` as whole minutes from midnight, verified against `HR_INI`/`MIN_INI` and `P18HF_D`/`P18MF_D` on every record and against Tomo I's published fifteen-minute modal split |
 
 Plus the mode map and the modes deliberately not measured, which between them
 must account for **every** label the file carries: one in neither stops the run.
@@ -844,21 +945,38 @@ long before it is a finding about the city. All three warn and none fails: a rea
 change of that size is possible and the run cannot tell the two apart, so it
 refuses to let one pass unremarked instead of pretending to judge it.
 
-The baseline, **one typical weekday**, inside the thirty units. This is what 2011
-will be read against, and it is what 2019 and 2015 were read against. The Spearman
-column compares each year with the one before it in the table:
+The baseline, **one typical weekday**, inside the thirty units, over all four
+years, from run `run_20260908_101110`. The Spearman column compares each year with
+the one before it in the table:
 
-| Actor type | 2015 trips/day | Share | Per inhab. | 2019 trips/day | Share | Per inhab. | Spearman 15→19 | 2023 trips/day | Share | Per inhab. | Spearman 19→23 |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| `PEDESTRIAN` | 4,459,658 | 59.9 % | 0.615 | 4,160,690 | 55.8 % | 0.554 | **0.554** | 4,274,636 | 57.2 % | 0.544 | **0.662** |
-| `CAR` | 1,631,914 | 21.9 % | 0.225 | 1,827,723 | 24.5 % | 0.243 | 0.975 | 1,611,352 | 21.5 % | 0.205 | 0.947 |
-| `BICYCLE` | 633,406 | 8.5 % | 0.087 | 787,563 | 10.6 % | 0.105 | 0.726 | 773,132 | 10.3 % | 0.098 | 0.886 |
-| `MOTORCYCLE` | 714,894 | 9.6 % | 0.099 | 680,233 | 9.1 % | 0.091 | 0.902 | 818,851 | 11.0 % | 0.104 | 0.893 |
+| Actor type | 2011 trips/day | Share | Per inhab. | 2015 trips/day | Share | Per inhab. | Spearman 11→15 | 2019 trips/day | Share | Per inhab. | Spearman 15→19 | 2023 trips/day | Share | Per inhab. | Spearman 19→23 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| `PEDESTRIAN` | 5,477,038 | 73.6 % | 0.768 | 4,459,658 | 59.9 % | 0.615 | 0.782 | 4,160,690 | 55.8 % | 0.554 | **0.554** | 4,274,636 | 57.2 % | 0.544 | **0.662** |
+| `CAR` | 1,371,125 | 18.4 % | 0.192 | 1,631,914 | 21.9 % | 0.225 | 0.972 | 1,827,723 | 24.5 % | 0.243 | 0.975 | 1,611,352 | 21.5 % | 0.205 | 0.947 |
+| `BICYCLE` | 324,701 | 4.4 % | 0.046 | 633,406 | 8.5 % | 0.087 | **0.474** | 787,563 | 10.6 % | 0.105 | 0.726 | 773,132 | 10.3 % | 0.098 | 0.886 |
+| `MOTORCYCLE` | 269,182 | 3.6 % | 0.038 | 714,894 | 9.6 % | 0.099 | 0.741 | 680,233 | 9.1 % | 0.091 | 0.902 | 818,851 | 11.0 % | 0.104 | 0.893 |
 
-**2015 also carries a Saturday**, which no other measured year does: 6,567,176
-trips a day in the four modes inside the units against 7,439,872 on the weekday,
-88.3 % of it. Both columns hold the same number for 2015, because its factor
-already expands to one day of the record's own kind.
+**Three years carry a Saturday and 2019 does not.** In the four modes inside the
+units: 2011 gives 7,133,989 trips a day against 7,442,046 on its weekday, 95.9 % of
+it; 2015 gives 6,567,176 against 7,439,872, 88.3 %. Both columns hold the same
+number for all three of 2011, 2015 and 2019, because their factors already expand
+to one day of the record's own kind; 2023's do not and its Saturday is the rescaled
+column. **2011's Saturday rows carry `SAMPLE_SUPPORT = CITY_LEVEL_ONLY`** and are
+not an estimate of the same kind as the rest; §4 says why.
+
+**Four checks fire between 2011 and 2015 and all four survived investigation.** The
+pedestrian share moves −13.7 points, cycling per inhabitant +92 %, motorcycle
++161 %, and cycling orders the units at Spearman 0.474. The 2015 delivery publishes
+the same three city-level changes from its own reading of the 2011 file — −13.9
+points, +38.50 % and +102.82 % — and the difference between those and the figures
+above is the funnel: **2011 delivers a smaller share of its city totals to the
+thirty units than any other year**, 53.1 % of its cycling against 2015's 74.8 %,
+because the imputed sixth of its records carries no geography and its shorter
+reported durations fail the plausibility test more often. The cycling ranking is a
+finding about the city and not about the reading — the two years share a zoning, the
+allocation rules agree with each other at 0.944 inside 2011, and the raw files with
+no pipeline at all give Spearman 0.485. See
+[`implementing-2011.md`](implementing-2011.md) §5.
 
 **These are `TRIPS_PER_DAY_OF_TYPE` and they have to be.** It is the only column
 two years are comparable on, because what `TRIPS_PER_AVERAGE_DAY` holds depends on
@@ -878,9 +996,21 @@ And what each set aside, as a share of what it measured:
 
 | | Impossible for their mode | Intra-zonal | Outside the thirty units |
 |---|---:|---:|---:|
+| 2011 | 6.6 % | **32.7 %** | **8.3 %** |
 | 2015 | **1.9 %** | 20.1 % | 16.0 % |
 | 2019 | 13.1 % | 21.5 % | 19.5 % |
 | 2023 | 9.4 % | 20.0 % | 18.4 % |
+
+**2011 departs on two of the three and both come from one fact: it reports shorter
+trips than any other year, in every mode.** Its median trip is 10 minutes against
+2015's 17 on foot, 15 against 25 by bicycle, 30 against 40 by motorcycle and 30
+against 45 by car. Shorter trips stay inside one zone, which is the 32.7 %; shorter
+trips also leave the thirty units less often, which is the 8.3 %. The intra-zonal
+figure is not a property of the zoning, because 2011 uses the same one as 2015, and
+splitting the walking at fifteen minutes brings the two years within four points of
+each other in each band. 2011 also has a fourth column no other year needs: **16.1 %
+of its trips cannot be placed at all**, because the sixth of its records that the
+consultant imputed carries no origin or destination zone.
 
 A year departing sharply from those proportions is a year whose duration rule,
 mode map or zoning is not doing what it was declared to do. **2019 does not**: no
@@ -1037,6 +1167,27 @@ That the second of the two surfaced at the second year rather than the fourth is
 exactly what this section asked for. It is not a second reader and the design did
 not have to bend: it is the same mechanism the day type already used, applied to
 the one other field that turns out to vary by administration.
+
+**And the fourth year did need a third thing, which this section said should be
+reported rather than absorbed.** 2011 splits its two day types across two Access
+databases, so the day type is a property of the file a record came out of and no
+field of `MobilitySurvey` could say that. It was reported, the advisor took the
+decision, and the change is the one this section would have wanted: `trips` is a
+tuple of `TripSource`, each pairing a table with the day type its file carries;
+`AccessTable` is a third registry entry beside `DelimitedTable`; and
+`DayTypeFromSource` reads a tag the reader writes rather than opening a file
+itself. **The three years delivered as one file came out of the run identical over
+all 720 of their rows and every column.** The prediction that held is the one that
+matters: a fourth year cost one declaration, two registry entries and a field whose
+default leaves the other three unchanged — not a second reader.
+
+**What it cost to find that out was reading, not code.** Four of the six things
+§6b requires were settled from documents the data files do not contain: the
+questionnaire's instruction about walking trips, the database manual's statement
+that the imputed module is the one to consult, Tomo I's two published universes and
+Tomo III's two expansion procedures. And the one artefact that looked like the
+year's best control — the eight Emme matrices — turned out not to be a reading of
+the household survey at all, which only the matrix training deck says.
 
 **Interpolation will meet the ρ correction.** The four measured years sit in very
 different places in the history of casualty recording: 2011 and 2015 before the

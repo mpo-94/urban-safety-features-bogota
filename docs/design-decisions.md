@@ -2980,17 +2980,13 @@ predictor bundle until then, which is exactly what having the constant is for.
 what source, at what shape, and it retires the variable every earlier exposure
 figure was measured on.
 
-**Status:** Closed for 2023, 2019 and 2015. **Not closed for the machinery the
-fourth year needs**: 2011 splits its two day types across two Access databases, and
-a year is declared with one source, so it asks for a change to `MobilitySurvey`
-rather than an entry in `MOBILITY_SURVEYS`. That is the case the §6b contract says
-must be reported rather than bent, and it is reported in
-`docs/implementing-2011.md`. **Two things are open** and both are named at the end: which day type
-the models take, and whether a day-type comparison is supportable at all — a
-question 2019 made sharper and 2015 has now made answerable.
+**Status:** Closed for all four years. **Two things are open** and both are named
+at the end: which day type the models take, and whether a day-type comparison is
+supportable at all — a question 2019 made sharper, 2015 made answerable and 2011
+has now given a third point.
 
 **Built:** Yes. `src/surveys.py` and the second half of `src/exposure.py`, route
-`exposure`. Run `run_20260908_044524`.
+`exposure`. Run `run_20260908_101110`.
 
 **Amended by 2019**, in four places, each marked below: the day type is not a
 dimension every year carries; the duration is a declared rule and not a column
@@ -3005,6 +3001,17 @@ kind *and* has more than one kind broke a check that no earlier year could have.
 published origin-destination matrices, reproduced to the last decimal on both kinds
 of day — and nothing downstream moved: 2019 and 2023 come out of the run identical
 across all 480 of their rows.
+
+**Amended by 2011**, in four places, each marked below: a year's trips may live in
+more than one file and the day type may be a property of the file rather than of
+the record; a delivery may arrive as a database rather than as text; a row may rest
+on a sample that does not reach the scale of one unit, which is a different fact
+from whether the row has a number in it; and the zone code has to be spelled by one
+function on both sides of the join rather than by two that happened to agree. 2011
+is the year the §6b contract was written for — the one that could not be made to
+fit without a change — and the change was reported, decided by a person, and made
+once: **2015, 2019 and 2023 come out of the run identical across all 720 of their
+rows and every column.**
 
 ### What replaced what, and why it had to
 
@@ -3089,6 +3096,19 @@ those years cannot offer the narrower one. And the numerator cannot separate it
 either: the crash source has no motorised-bicycle category at all, only
 `BICICLETA` and `BICITAXI`, so a rider hurt on one is recorded as a cyclist or a
 motorcyclist and there is no way to know which.
+
+**The bicitaxi is inside an aggregate in two of the four years, and what that costs
+is now measured in both.** 2019 gives it a label of its own, 2.4 % of that year's
+cycling, and D38 puts it in `BICYCLE` because the crash source does. 2015 folds it
+into `ILEGAL` and 2011 into `Informal`, together with the mototaxi, the informal car,
+the collective taxi and the unlicensed charter, and neither can split the category
+at the trip level. Reading the stages says the bicitaxi is 46,840 trips a day in
+2015, 3.0 % of its cycling, and **11,354 in 2011, 1.9 %** — so the category is not
+identical across the four years and the size of the difference runs between a
+fiftieth and a thirtieth of one mode. 2011's mototaxi, in the same aggregate, is
+1,032 trips a day, 0.25 % of its motorcycle travel. Recovering either would mean
+taking the stage rather than the trip as the unit of analysis, which is a different
+study.
 
 **Every source label is accounted for, and one that is not stops the run.** Each
 of the eleven mode labels of 2023 is either mapped to an actor type or declared
@@ -3324,6 +3344,35 @@ the list still stops the run.** This is the one field that could quietly swallow
 real zone, so the reason for each code is written at the declaration rather than
 inferred from the fact that it failed to match.
 
+**Amended by 2011 — the zone code is spelled by one function on both sides of the
+join.** It had been spelled twice, by two pieces of code that happened to agree: the
+zoning cast its float code to an integer and then to text, and the trips were cast
+straight to text. That works while the trips carry text, and 2011's arrive out of a
+database as a double — `903.0` against the zoning's `903`, one zone to a reader and
+two keys to a join that would then have matched nothing at all and taken every 2011
+trip with it. `surveys.zone_code_text` now does both sides: a code that reads as a
+whole number comes out as its digits, a code that reads as no number keeps its text
+so that it still reaches the check that refuses codes the zoning does not have, and
+a code with a fraction stops the run, because a zone numbered 810.5 is not a
+rounding of anything. Nothing moved for the three years already measured, which is
+the point — they were being spelled correctly by accident and are now spelled
+correctly on purpose.
+
+**2011 declares no `zone_codes_meaning_no_zone` and that is measured.** No record
+of either database names a `0`, a `1000` or any code outside the zoning's range. Its
+unplaceable records carry no zone at all, at both ends together, and **they are
+exactly the records the consultant imputed** — `DONANTE` is set on 21,515 weekday
+records and 440 Saturday ones and on no others, and those are exactly the records
+with no zone. The imputation replaced the trips of 8,218 people who travelled and
+did not answer the trip module, from a donor of similar occupation, stratum,
+locality and day; it did not impute a geography, and the unimputed table carries no
+origin or destination zone at all. So there is nothing to decide and nothing to
+recover: 12,733 records of the four measured modes, 2,452,373 trips a day, counted
+in the balance beside every other trip that cannot be placed. What follows for the
+study is that **2011's exposure rests on its directly reported trips**, and that the
+non-response correction the consultant performed is undone for this study's
+geography — which is a limitation to state and not a defect to fix.
+
 **Amended by 2015 — a zone may be delivered in several pieces, and that is
 declared per year too.** `ZATs_2012_MAG.shp` has 948 features and 945 codes: 794
 arrives as two detached polygons and 806 as three. The reader refused repeated
@@ -3372,10 +3421,22 @@ fragments run continuously across the cut — the largest below it is 0.0994 % o
 zone and the smallest above it 0.1007 % — so there is nothing for the threshold to
 sit inside. Swept across the same two orders of magnitude, from a ten-thousandth to
 a hundredth, **the largest per-unit pedestrian figure moves 0.096 %** and the city
-total moves 799 trips a day in 4,459,688, which is 0.018 %. 2019's equivalent was
-0.16 %. Two of the three measured years therefore keep the threshold on measured
-indifference and one on an empirical gap, which is the pattern this amendment
-predicted rather than the exception it feared.
+total moves 799 trips a day in 4,459,688, which is 0.018 %.
+
+**2011 borrows 2015's zoning, so it inherits the overlay and not the indifference.**
+The fragment distribution is the same one — 1,285 fragments, the largest below the
+cut at 0.0994 % and the smallest above it at 0.1007 % — because the overlay is a
+property of the zoning and the cartography and not of the year. What is a property
+of the year is how much travel sits on the fragments, and that had to be measured
+again: swept across the same two orders of magnitude, **2011's largest per-unit
+figure moves 0.41 %** and its pedestrian one 0.33 %, against 0.16 % for 2019 and
+0.096 % for 2015. Larger than either, because 2011 puts more of its travel in the
+peripheral zones the fragments touch, and still two orders below anything a figure
+in this study rests on. Three of the four measured years therefore keep the
+threshold on measured indifference and one on an empirical gap, which is the pattern
+this amendment predicted rather than the exception it feared — and the lesson is the
+one it was written for: **two years sharing a zoning share the gap and not the
+indifference, so the sweep is re-run per year and never cited from the year before.**
 
 Not renormalising is the other half of the decision. A zone's shares are left as
 they come out, so they sum to one where the zone lies wholly inside the study area
@@ -3404,11 +3465,32 @@ row per mode there is nothing left to collide.
 30 units × 4 actor types × 3 day types = 360 rows for 2023 — so a combination
 nothing reached is a measured zero the code materialised on purpose, while a day
 type a year cannot support is simply not in the table. That distinction is D10
-applied to a dimension that is ragged by construction, and 2011 is the year it
-will matter: its Saturday is 4,035 records expanding to 14,022,328 trips, so one
-record stands for about 3,475 of them and a cell holds roughly 34 records after four
-modes and thirty units. It should be expected to fail rather than published quietly,
-and whether it is marked or excluded outright is a decision for a person.
+applied to a dimension that is ragged by construction.
+
+**Amended by 2011 — a row can be measured and still not reach the scale of a unit,
+and that is a column of its own.** This decision expected 2011's Saturday to be the
+ragged case and to be dropped or marked. It is marked, and the decision was the
+advisor's: the rows are built, exported and flagged. What the implementation added
+is that the flag could not go in `VALUE_STATUS`. That column answers "is there a
+number here" — `MEASURED` against `NOT_MEASURED` — and every check in the run
+filters on `MEASURED` meaning "rows that have a number in them", so a third value
+would have silently taken 120 rows out of each of those checks. Whether a sample
+reaches the scale of one unit is a different question and it gets
+**`SAMPLE_SUPPORT`**, with `SUPPORTS_UNIT` and `CITY_LEVEL_ONLY`, declared per year
+and per day type in `day_types_below_unit_resolution` with the year's own statement
+beside it.
+
+2011's Saturday is 4,035 records over 565 households expanding to 14,022,328 trips,
+so one record stands for about 3,475 of them and a cell holds roughly 34 records
+after four modes and thirty units; seven of the 240 rows come out at zero, three of
+them whole units with no cycling at all. What makes the marking a statement rather
+than a judgement of ours is that the consultant said it first: Tomo III expanded and
+analysed the Saturday *"a nivel de ciudad y estrato socioeconómico"* where the
+weekday was analysed *"a nivel de UPZ"*, its non-response imputation used the code
+`TL` for every locality together because there was no sample by locality, and Tomo I
+adds that *"el nivel de error de esta estimación es mayor que para el día hábil"*.
+The figure is still real at the scale it was made for, which is why it is published
+rather than dropped.
 
 ### The day type, and the thing the survey's own weighting turns out to say
 
@@ -3532,6 +3614,41 @@ own evidence.** The rule has a `stated_by` field quoted in the log on every run,
 because "this survey covers one day" is a claim about somebody else's fieldwork
 and the cost of getting it wrong is a Saturday that silently never existed. A
 declaration with no statement warns.
+
+**Amended by 2011 — the day type can be a property of the file and not of the
+record, and that is the one thing that changed the declaration.** Its `DiaTipico`
+database holds 122,361 trips over 15,592 households and its `DiaSabado` 4,035 over
+565: different samples of different households, in separate Access databases with
+the same schema. Nothing on a record says which kind of day it is, and a rule
+reading an already-loaded frame cannot see which file the frame came from.
+
+`MobilitySurvey.trips` is therefore a **tuple of `TripSource`**, and a `TripSource`
+pairs one table with the day type that file carries — or with `None`, meaning the
+file holds more than one kind of day and the year's rule says which. The reader
+tags every row with its source and `DayTypeFromSource` reads the tag. Three
+properties were the point of taking it this way rather than any other:
+
+- the ragged fact sits in the declaration, beside the path it is a fact about;
+- **no day-type handler opens a file.** A rule that declared the Saturday database
+  and loaded it would have been the smallest diff and the worst shape — the second
+  reader this design has refused since 2023;
+- the three years delivered as one file did not change meaning. They declare a
+  one-entry tuple with no day type on it, and 720 rows came out unchanged.
+
+*The shape first proposed for this did not close.* It was a mapping,
+`trips={source: day_type}`, which cannot express a single file carrying three day
+types the way 2023's does; the value would have had to be `None` and the field
+would have meant two things. Putting the day type on the source is the same idea
+with one meaning.
+
+**And 2011 needed a reader, which went in as the third registry in the module.**
+`AccessTable(path, table)` sits beside `DelimitedTable` and `read_table` dispatches
+over `surveys._TABLE_READERS`. `pyodbc` is imported inside the reader so the other
+three years still run where the 64-bit Access driver is absent, and the rows are
+fetched through the cursor rather than through `pandas.read_sql`, which warns on a
+raw connection. This is what the "one reader, four declarations" promise means in
+practice: a container nobody had seen cost one entry in a registry, not a second
+path through the module.
 
 **What the second column then says is not credible, and it is a property of the
 survey and not of the arithmetic.** Rescaled to the universe, the region makes
@@ -4050,6 +4167,25 @@ That does not settle which day type the models take, and it changes what the
 question is. It is no longer "is a Saturday measurable"; it is whether a Saturday
 measured well in 2015 and badly in 2023 can be put in one series. **That is a
 decision for my advisor and it is not taken here.**
+
+*2011 adds a third Saturday and it does not settle it either.* Its Saturday behaves
+the way one should — against its own weekday, inside the thirty units, walking falls
+29 % and cycling 18 % while car travel rises 89 %, which is 2015's pattern — but it
+rests on 565 households and is marked `CITY_LEVEL_ONLY`, and the survey itself only
+ever claimed it for the city. So the series has three Saturdays of three kinds: one
+measured well at the unit (2015), one measured well at the city and marked at the
+unit (2011), and one that needs rescaling to be read as a Saturday at all and then
+says a Saturday carries as much travel as a Tuesday (2023). Whether those three are
+one series is the question, and it is the same question as before with more evidence
+under it.
+
+**And 2011 raises one the other years could not.** Its two day types expand to
+**different territories** — the weekday to Bogotá plus seventeen municipal cabeceras
+and the Saturday to Bogotá alone, because *"la muestra para el día sábado se diseñó
+solo para Bogotá"*. Inside the thirty units, which are all in Bogotá, that is
+largely absorbed, since what falls outside is measured rather than redistributed.
+It is nevertheless a difference of universe and not of sample, and a document
+comparing 2011's Saturday with its weekday has to say so.
 
 **What the delivered layer's 181 lines were selected by** remains unknown, and now
 it does not matter for any result. It is recorded because the question was asked in

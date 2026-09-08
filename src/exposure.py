@@ -1563,6 +1563,33 @@ def build_from_surveys(
     )
     table.loc[unusable_area, counted] = np.nan
 
+    # Whether the sample behind a row reaches the scale of one unit, which is a
+    # different question from whether there is a number in it and therefore a
+    # different column. The rows are computed and exported like any other; what is
+    # marked is that one of the thirty numbers is not an estimate of the same kind
+    # as the rest. Declared per year and per day type, with the year's own
+    # statement beside it.
+    table[config.SAMPLE_SUPPORT_COL] = config.SAMPLE_SUPPORTS_UNIT
+    thin = pd.Series(False, index=table.index)
+    for survey in survey_list:
+        for day_type, stated_by in survey.day_types_below_unit_resolution.items():
+            marked = (table[config.YEAR_COL] == survey.year) & (
+                table[config.DAY_TYPE_COL] == day_type
+            )
+            thin |= marked
+            if not marked.any():
+                continue
+            log.warn(
+                "%s: the %s rows are marked %s on %d row(s). The measurement is real and the "
+                "city total is usable; what the sample does not carry is the unit. Stated by %s",
+                survey.label,
+                day_type,
+                config.SAMPLE_CITY_LEVEL_ONLY,
+                int(marked.sum()),
+                stated_by,
+            )
+    table.loc[thin, config.SAMPLE_SUPPORT_COL] = config.SAMPLE_CITY_LEVEL_ONLY
+
     table[config.SCALE_COL] = scale.label
     table = (
         table[list(config.survey_exposure_columns())]
@@ -1590,6 +1617,8 @@ def build_from_surveys(
             f"{untouched} combination(s) with no trip at all, each an observed zero",
             f"{int(unusable_area.sum())} row(s) with no usable area, marked "
             f"{config.NOT_MEASURED_STATUS}",
+            f"{int(thin.sum())} row(s) whose sample the survey itself only claims at the scale "
+            f"of the city, marked {config.SAMPLE_CITY_LEVEL_ONLY}",
         ],
     )
     return table, apportionments
@@ -1607,7 +1636,7 @@ def survey_dictionary_table(
     """
     survey_list = survey_list or config.MOBILITY_SURVEYS
     sources = "; ".join(
-        f"{survey.year}: {survey.trips.path.name} with {survey.zoning.shapefile.name}"
+        f"{survey.year}: {survey.trips_label} with {survey.zoning.shapefile.name}"
         for survey in survey_list
     )
 
@@ -1664,6 +1693,32 @@ def survey_dictionary_table(
                 f"{config.MEASURED_STATUS} where the unit was measured, whatever came out, and "
                 f"{config.NOT_MEASURED_STATUS} where it could not be; a unit no trip reaches is "
                 f"{config.MEASURED_STATUS} with a zero"
+            ),
+            "IS_ALTERNATIVE_ALLOCATION": False,
+            "SOURCE": "",
+        }
+    )
+    marked = {
+        f"{survey.year} {day_type}": stated_by
+        for survey in survey_list
+        for day_type, stated_by in survey.day_types_below_unit_resolution.items()
+    }
+    rows.append(
+        {
+            "COLUMN": config.SAMPLE_SUPPORT_COL,
+            "UNIT": "",
+            "MEANS": (
+                f"{config.SAMPLE_SUPPORTS_UNIT} where the sample behind the row reaches the "
+                f"scale of one unit, and {config.SAMPLE_CITY_LEVEL_ONLY} where the survey "
+                "itself only ever claimed the figure for the city. A marked row still carries "
+                "a real measurement and a usable city total; what it does not carry is thirty "
+                "of them. This is not the same question as "
+                f"{config.PREDICTOR_STATUS_COL}, which says whether there is a number at all. "
+                + (
+                    "Marked: " + "; ".join(f"{when} — {why}" for when, why in marked.items())
+                    if marked
+                    else "Nothing is marked in this run."
+                )
             ),
             "IS_ALTERNATIVE_ALLOCATION": False,
             "SOURCE": "",
