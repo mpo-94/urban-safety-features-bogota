@@ -671,6 +671,12 @@ the same decision D38 already took for 2011's Saturday: the row is built, export
 and flagged, because the measurement is real at the scale it was made for and what it
 does not carry is that one unit.
 
-**Whether to mark Torca's 2005 pedestrian row alone, or all four of its rows, or
-neither, is a decision for a person** — and it is the only one left before 2005 can
-be declared.
+**Decided by my advisor on 2026-09-10: all four of Torca's 2005 rows are marked**,
+not the pedestrian one alone. The reason is that the cause is the same for all four
+— the zoning does not cover that unit well — and it only shows on one of them
+because the other three travel far enough to leave it. Marking one row and leaving
+three unflagged would hide a property of the unit behind a property of the mode.
+
+**What that needs, and it does not exist yet.** `day_types_below_unit_resolution`
+marks a whole day type of a year, which is what 2011's Saturday needed. Torca needs
+a *unit* of a year marked, which is a different key and a second field beside it.
