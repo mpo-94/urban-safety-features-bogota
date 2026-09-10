@@ -1657,6 +1657,27 @@ def build_from_surveys(
                 int(marked.sum()),
                 stated_by,
             )
+        # And the same marking keyed on a unit rather than on a kind of day. A
+        # sample too thin to carry one unit and a zoning that reaches one unit
+        # badly are different causes with the same consequence, so they share the
+        # column: the figure is real at the scale it was made for, and what it does
+        # not carry is that one place.
+        for area_code, stated_by in survey.units_below_unit_resolution.items():
+            marked = (table[config.YEAR_COL] == survey.year) & (
+                table[config.AREA_CODE_COL] == area_code
+            )
+            thin |= marked
+            if not marked.any():
+                continue
+            log.warn(
+                "%s: the %s rows are marked %s on %d row(s), every mode of that unit and not "
+                "only the one it shows on, because the cause is the unit. Stated by %s",
+                survey.label,
+                area_code,
+                config.SAMPLE_CITY_LEVEL_ONLY,
+                int(marked.sum()),
+                stated_by,
+            )
     table.loc[thin, config.SAMPLE_SUPPORT_COL] = config.SAMPLE_CITY_LEVEL_ONLY
 
     table[config.SCALE_COL] = scale.label
@@ -1705,7 +1726,7 @@ def survey_dictionary_table(
     """
     survey_list = survey_list or config.MOBILITY_SURVEYS
     sources = "; ".join(
-        f"{survey.year}: {survey.trips_label} with {survey.zoning.shapefile.name}"
+        f"{survey.year}: {survey.trips_label} with {survey.zoning_label}"
         for survey in survey_list
     )
 
@@ -2184,6 +2205,7 @@ def verify_from_surveys(
             + float(allocation.trips.not_measured_totals.sum())
             + allocation.trips.unzoned_total
             + implausible
+            + allocation.trips.set_aside_total
         )
         checks.append((
             f"{survey.year}: every trip the file weights is measured or named as set aside",
@@ -2191,7 +2213,8 @@ def verify_from_surveys(
             f"{measured_total:,.1f} measured + "
             f"{float(allocation.trips.not_measured_totals.sum()):,.1f} in modes outside the "
             f"study + {allocation.trips.unzoned_total:,.1f} unzoned + {implausible:,.1f} "
-            f"impossible for their mode = {accounted:,.1f} "
+            f"impossible for their mode + {allocation.trips.set_aside_total:,.1f} counted as a "
+            f"trip by the year and not by the study = {accounted:,.1f} "
             f"against {allocation.trips.file_total:,.1f}",
         ))
 
@@ -2762,6 +2785,33 @@ def compare_years(
                 (weekday[config.YEAR_COL] == later) & (weekday[config.ACTOR_TYPE_COL] == actor)
             ]
             if before.empty or after.empty:
+                continue
+
+            # A year may declare that it measures a column and that the column is
+            # not comparable with another year's — 2005 does, for the pedestrian,
+            # because it collected no walk under fifteen minutes. Comparing across
+            # that boundary measures the definition and reports it as the city,
+            # which is what these thresholds exist to catch and would here be
+            # catching themselves. The step is skipped for that mode and the
+            # reason is printed, because a comparison not made must not look like
+            # a comparison that passed.
+            declared = [
+                apportionments[year].survey.not_comparable_on.get(_COMPARABLE_TRIPS_COL)
+                for year in (earlier, later)
+                if _COMPARABLE_TRIPS_COL in apportionments[year].survey.not_comparable_on
+            ]
+            if declared and actor == config.PEDESTRIAN:
+                log.info(
+                    "%s is not compared between %d and %d on %s, because one of the two "
+                    "declares that column not comparable: %s. The two years can be compared on "
+                    "%s, where they measure the same thing",
+                    actor,
+                    earlier,
+                    later,
+                    _COMPARABLE_TRIPS_COL,
+                    declared[0],
+                    config.TRIPS_PER_DAY_OF_TYPE_OVER_15MIN_COL,
+                )
                 continue
 
             moved = _mode_share(weekday, later, actor) - _mode_share(weekday, earlier, actor)

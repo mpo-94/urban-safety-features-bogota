@@ -180,7 +180,9 @@ def build(
     totals = aggregate(raw, log)
 
     study_units = units[[config.AREA_CODE_COL, config.AREA_NAME_COL]].copy()
-    years = pd.DataFrame({config.YEAR_COL: list(config.STUDY_YEARS)})
+    # Not `STUDY_YEARS`: a rate is formed at every survey year too, and 2005 sits
+    # outside the window. See `config.population_years`.
+    years = pd.DataFrame({config.YEAR_COL: list(config.population_years())})
     # The full grid first, then the file joined onto it. Built this way round so a
     # unit-year the file does not cover arrives as a null that the checks catch,
     # rather than as a row that is simply not there and that a later join would
@@ -202,7 +204,7 @@ def build(
     outside = sorted(set(totals[_UNIT_CODE_COL]) - set(study_units[config.AREA_CODE_COL]))
     covered = totals[
         totals[_UNIT_CODE_COL].isin(set(study_units[config.AREA_CODE_COL]))
-        & totals[config.YEAR_COL].isin(list(config.STUDY_YEARS))
+        & totals[config.YEAR_COL].isin(list(config.population_years()))
     ]
     log.record(
         "restrict the population to the study",
@@ -212,7 +214,7 @@ def build(
             (
                 -(len(totals) - len(covered)),
                 f"unit-years outside the study: {len(outside)} unit(s) the cartography does not "
-                f"carry, and the years outside {config.FIRST_YEAR}-{config.LAST_YEAR}",
+                f"carry, and the years outside those the panel covers",
             ),
             (
                 len(table) - len(covered),
@@ -378,7 +380,7 @@ def verify(
     checks: list[tuple[str, bool, str]] = []
 
     expected_units = set(units[config.AREA_CODE_COL])
-    expected_years = set(config.STUDY_YEARS)
+    expected_years = set(config.population_years())
     expected_cells = len(expected_units) * len(expected_years)
 
     checks.append((

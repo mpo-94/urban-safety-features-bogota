@@ -219,6 +219,23 @@ FIRST_YEAR = 2007
 LAST_YEAR = 2024
 STUDY_YEARS = range(FIRST_YEAR, LAST_YEAR + 1)
 
+
+def population_years() -> tuple[int, ...]:
+    """Every year the population panel has to cover, which is not only the study's.
+
+    The denominator is needed wherever a rate is formed, and a rate is formed at
+    every survey year as well as at every year of the window. Four of the five
+    surveys sit inside 2007-2024 and 2005 does not, so a panel built over the
+    window alone would have nothing to divide that year's trips by — and it would
+    fail at the moment of forming the rate rather than at the moment of building
+    the panel, which is far from where the cause is.
+
+    The census file covers 2005-2035, so every year this returns is in it. Declared
+    as a function rather than a constant because it depends on which surveys are
+    declared, and a fifth one was added after the window was fixed.
+    """
+    return tuple(sorted(set(STUDY_YEARS) | {survey.year for survey in MOBILITY_SURVEYS}))
+
 # ---------------------------------------------------------------------------
 # Coordinate reference systems
 # ---------------------------------------------------------------------------
@@ -2269,6 +2286,84 @@ class SurveyZoning:
 
 
 @dataclass(frozen=True)
+class ZoningFromUpzAndRing:
+    """A zoning assembled at run time instead of read from a delivery.
+
+    2005 ships no zoning of its own and none of the three it codes its trips on is
+    obtainable: the EMME zoning it was designed around exists only inside a
+    proprietary model file, and the JICA one is older still. What it does carry is a
+    UPZ code for every end inside Bogota, and the study already has a UPZ layer.
+
+    So the zoning is the UPZ of Bogota with one polygon added for each of the
+    seventeen municipalities of the ring, those built by `surveys.ring_municipalities`
+    out of the 2015 delivery. Without them a trip with one end outside the city
+    cannot be drawn at all and is lost whole rather than falling partly outside, and
+    the measured cost of that is section 9 of `docs/implementing-2005.md`: eighteen
+    per cent of the trips and, on Torca, five sixths of its motorised travel.
+
+    Nothing of it is written to disk. `data/` is the record of what arrived; a
+    zoning whose sources are declared is traceable where a shapefile appearing under
+    `data/` with no provenance would not be.
+    """
+
+    upz_layer: Path
+    upz_code_column: str
+    # Prefixed so that a UPZ numbered 9 and a municipality numbered 609 cannot
+    # collide in a column that now carries two code systems at once.
+    upz_prefix: str = "UPZ"
+    municipality_prefix: str = ""
+    describes: str = ""
+
+
+@dataclass(frozen=True)
+class ZoneOutsideTheCity:
+    """A second zone code, for the ends the survey's main zoning does not reach.
+
+    Four of the five years state each end of a trip in one column and one code
+    system. 2005 states it in two: a UPZ for everything inside Bogota, and — in a
+    different column, on a different zoning — the municipality's own zone number for
+    everything outside. The dictionary is explicit that the first is empty for the
+    municipalities, and the records agree without a single exception on either end.
+
+    So the code is composed rather than read: the main column where it has a value,
+    this one where it does not and names one of the declared places. A record with
+    neither is unplaceable, which is where it belongs and is the same category as
+    2011's imputed sixth.
+    """
+
+    origin_column: str
+    destination_column: str
+    # The codes this column may legitimately carry, and what each of them is. A
+    # code in neither this list nor the main zoning still stops the run, which is
+    # what keeps it a declaration rather than a catch-all.
+    codes: dict[int, str]
+    stated_by: str
+
+
+@dataclass(frozen=True)
+class PublishedTotalOverSubset:
+    """The publication summed a part of the file, and this says which part.
+
+    Every other year publishes a total over everything its expansion factor
+    weights, so the run checks the sum of the whole file against it. 2005's
+    publication covers the households surveyed in Bogota and not the whole
+    surveyed region, which is a different universe and not a different reading:
+    the sum over that subset reproduces the published figure to a tenth of a trip
+    in nine and a half million.
+
+    Declared rather than absorbed, because a check made on a different subset from
+    the one the publication made is a check that passes or fails for the wrong
+    reason.
+    """
+
+    column: str
+    # The subset is the records where that column has a value. The one case is
+    # 2005, whose `ID_UPZ` is empty for exactly the municipality households.
+    where_present: bool
+    describes: str
+
+
+@dataclass(frozen=True)
 class DayTypeFromHouseholdDate:
     """The day type comes from the household's interview date, shifted back.
 
@@ -2650,7 +2745,7 @@ class MobilitySurvey:
     # The three years delivered as one file declare a one-entry tuple and nothing
     # about them changes; see `TripSource`.
     trips: tuple[TripSource, ...]
-    zoning: SurveyZoning
+    zoning: SurveyZoning | ZoningFromUpzAndRing
     weight_column: str  # trips per day the record stands for
     origin_zone_column: str
     destination_zone_column: str
@@ -2687,10 +2782,13 @@ class MobilitySurvey:
         DayTypeFromHouseholdDate | DayTypeIsAlwaysOne | DayTypeFromRecordFlags | DayTypeFromSource
     )
     measures: str  # one line: what the variable is, for the log and the dictionary
-    # Zone codes that name no place, whether because the delivery uses them as a
-    # sentinel for a missing answer or because they are a capture error. Records
-    # carrying one are counted in the balance beside the records with no zone at
-    # all, which is where they belong: they cannot be put on the map either.
+    # Zone codes that name no place *for this study*, whether because the delivery
+    # uses them as a sentinel for a missing answer, because they are a capture
+    # error, or — the case 2005 adds — because the code names a real place the
+    # zoning available to us does not carry. Records carrying one are counted in
+    # the balance beside the records with no zone at all, which is where they
+    # belong: they cannot be put on the map either. The three causes are different
+    # and the reason written at each declaration is what keeps them apart.
     #
     # Declared per year and per code, with the reason written at the declaration,
     # because this is the one list that can quietly swallow a real zone. A code
@@ -2721,6 +2819,56 @@ class MobilitySurvey:
     # decision to mark rather than drop is the advisor's; what makes it a marking
     # and not a judgement of ours is that the consultant said the same thing.
     day_types_below_unit_resolution: dict[str, str] = field(default_factory=dict)
+    # Units of this year whose sample or whose zoning cannot carry a figure at the
+    # scale of that unit, keyed to what says so. The same idea as the field above
+    # and a different key: that one marks a whole kind of day, this one marks one
+    # place. 2005 is why it exists — its zoning reaches Torca badly enough that its
+    # walking there comes out at a fifth of what a fine zoning gives — and the
+    # marking covers all four of that unit's modes rather than the one it shows on,
+    # because the cause is the unit and not the mode.
+    units_below_unit_resolution: dict[str, str] = field(default_factory=dict)
+    # Columns of the exposure table this year measures but must not anchor an
+    # interpolation on, keyed to the reason. 2005 is the case and the only one:
+    # it collected no walk under fifteen minutes, so its TRIPS_PER_DAY_OF_TYPE is a
+    # narrower universe for the pedestrian than every other year's, and an
+    # interpolation laid across that boundary would read the definitional
+    # difference as growth. Measured, it would read a rise of 34% a year through
+    # 2007-2010 where the comparable column reads 18%.
+    #
+    # **The value is still exported.** The measured table is the record of what the
+    # surveys say and 2005 did measure walking; what a null would have said is that
+    # there is no figure, which is false. What is not true is that the figure is
+    # comparable, and that is what this declares. See D39.
+    not_comparable_on: dict[str, str] = field(default_factory=dict)
+    # A second zone code for the ends the main zoning cannot reach, or None where
+    # one column states the zone as it does for four of the five years.
+    zone_outside_the_city: ZoneOutsideTheCity | None = None
+    # Which part of the file the published total covers, or None where it covers
+    # all of it as it does for four of the five years.
+    published_total_covers: PublishedTotalOverSubset | None = None
+    # The motive value marking a leg that ends at a transfer point rather than at a
+    # destination, or None for a year that counts a journey once. 2005 is the only
+    # year that does not: it counts each leg as a trip, and a walking leg with this
+    # motive is the walk to the stop, which D38 already decided is not pedestrian
+    # exposure. Dropped, and named in the balance like every other removal.
+    transfer_motive: tuple[str, int] | None = None
+    # The shortest walk this year is taken to have collected, or None for a year
+    # that states no floor. 2005 declares walks above fifteen minutes and delivers
+    # a residue of 4.7% below it; applying the floor as a removal is what makes its
+    # pedestrian column exactly D39's, rather than nearly it.
+    pedestrian_floor_minutes: float | None = None
+
+    @property
+    def zoning_label(self) -> str:
+        """What the zoning is called, whether it was delivered or built.
+
+        Four years name a shapefile and one builds its zoning at run time, so the
+        log, the dictionary and the report ask for this instead of reaching for a
+        path that one of the five does not have.
+        """
+        if isinstance(self.zoning, ZoningFromUpzAndRing):
+            return f"a zoning built at run time ({self.zoning.describes})"
+        return self.zoning.shapefile.name
 
     @property
     def modes_declared(self) -> tuple[str, ...]:
@@ -3318,8 +3466,161 @@ SURVEY_2011 = MobilitySurvey(
 )
 
 
+
+# The 2005 delivery. Four files, which is everything the Alcaldia publishes about
+# this survey: the microdata as an Access database, a dictionary, a later study that
+# validated its matrices against traffic counts, and the results presentation. The
+# whole inspection pass is `docs/implementing-2005.md`; what follows is only what
+# that pass established.
+_EODH_2005 = SURVEYS_DIR / "2005" / "Encuesta  de Movilidad 2005"
+
+SURVEY_2005 = MobilitySurvey(
+    year=2005,
+    label="Mobility survey 2005",
+    label_es="Encuesta de movilidad 2005",
+    # An Access database, like 2011, so the reader it needs already exists. Its four
+    # tables are household, vehicles, persons and trips; MODULOD is the trips.
+    trips=(TripSource(table=AccessTable(path=_EODH_2005 / "Encuesta.mdb", table="MODULOD")),),
+    # 2005 ships no zoning and none of the three it codes its trips on can be
+    # obtained: the EMME zoning it was designed around survives only inside a
+    # proprietary model file and the JICA one is older still. So the zoning is
+    # built — see ZoningFromUpzAndRing, and section 12 of implementing-2005.md for
+    # what the ring recovers.
+    zoning=ZoningFromUpzAndRing(
+        upz_layer=CARTOGRAPHY_DIR / "bog_upz" / "bog_upz.shp",
+        upz_code_column="cod_upz",
+        describes=(
+            "the UPZ of Bogota plus the seventeen municipalities of the first perimeter ring, "
+            "the second dissolved out of the 2015 delivery and stamped with the zone number "
+            "Tabla 4.1 of the 2011 Tomo II gives each of them"
+        ),
+    ),
+    weight_column="FACTRED_FI",
+    origin_zone_column="D29_UPZ",
+    destination_zone_column="D32_UPZ",
+    # The UPZ column is empty for exactly the municipality households, which the
+    # dictionary states and the records confirm with no exception on either end.
+    zone_outside_the_city=ZoneOutsideTheCity(
+        origin_column="D29_EMME",
+        destination_column="D32_EMME",
+        codes={zone: name for name, zone in RING_MUNICIPALITY_ZONES.items()},
+        stated_by=(
+            "EODH 2005, Descripcion Encuesta: ID_UPZ is \"Ubicacion de la encuesta de acuerdo a "
+            "las UPZ. Para las encuestas de los municipios este campo se encuentra vacio\"; and "
+            "Tabla 4.1 of the 2011 delivery's Tomo II gives each municipality of the ring the "
+            "zone number the 2005 survey codes it with"
+        ),
+    ),
+    mode_column="D35_MEDIO",
+    duration_rule=DurationFromMinutesColumn(column="TIEMPO_VIA"),
+    mode_map={
+        # The dictionary lists sixteen labels in order and the records carry sixteen
+        # values. 2005 splits the private vehicle into driver and passenger, which no
+        # other year does and which this adds back together, and it has no ILEGAL or
+        # Informal aggregate at all — so unlike 2011 and 2015 it buries no bicitaxi.
+        "1": PEDESTRIAN,
+        "2": BICYCLE,
+        "3": MOTORCYCLE,
+        "4": CAR,
+        "5": CAR,
+    },
+    modes_not_measured=(
+        # Public transport, split six ways by this year. Not a fifth mode, for D38's
+        # reason: the matrix counts the occupants of a bus and the survey counts the
+        # passengers of a system.
+        "6",   # Taxi
+        "7",   # TransMilenio
+        "8",   # Bus alimentador
+        "9",   # Bus
+        "10",  # Buseta
+        "11",  # Microbus
+        "12",  # Transporte intermunicipal
+        "13",  # Bus privado / De compania
+        "14",  # Bus escolar
+        "15",  # Camion
+        "16",  # Otro
+    ),
+    # One kind of day and no other, and by construction rather than by chance: the
+    # presentation's slide 32 says the module asked about "los desplazamientos
+    # realizados el dia anterior, y en caso de ser sabado, domingo o lunes sobre el
+    # dia jueves", so every reference day of the survey is a weekday.
+    day_type_rule=DayTypeIsAlwaysOne(
+        day_type=WEEKDAY_TYPE,
+        stated_by=(
+            "EODH 2005, Presentacion Encuesta STT, slide 32: the trip module asked about \"los "
+            "desplazamientos realizados el dia anterior, y en caso de ser sabado, domingo o "
+            "lunes sobre el dia jueves\", so the reference day is a weekday by construction and "
+            "the survey has no Saturday and no Sunday to distinguish"
+        ),
+    ),
+    weight_expands_to=WEIGHT_EXPANDS_TO_DAY_OF_TYPE,
+    published_total=9_689_027.0,
+    published_total_source=(
+        "EODH 2011, Tomo II, paragraph 4.26: \"el numero total de viajes reportado en la "
+        "encuesta de movilidad para el area de estudio en el ano 2005 fue de 9.689.027\". The "
+        "2011 Tomo III's \"aproximadamente 9.700.000\" is that figure rounded"
+    ),
+    published_total_covers=PublishedTotalOverSubset(
+        column="ID_UPZ",
+        where_present=True,
+        describes="the households surveyed in Bogota, which is what that publication summed",
+    ),
+    # 2005 counts each leg of a journey as a trip, and D34_MOTI marks the ones that
+    # end at a transfer point. A walking leg with that motive is the walk to the
+    # stop, which D38 already decided is not pedestrian exposure; the other four
+    # years do not count it and this one should not either. It is 2.14% of what
+    # these four modes weigh.
+    # UPZ 89. The 2005 records number their UPZ as their era did and the layer this
+    # study has is a later vintage: it carries 111 codes over a range of 1 to 117,
+    # missing 4, 5, 6, 7, 8 and 89, and the trips name the last of those. It is a
+    # real place with no polygon here rather than a code that means nothing, which
+    # is a third cause of the same consequence, and it is 74 records at the origin
+    # and 66 at the destination — 4,367 trips a day, 0.14% of what this year
+    # measures in the four modes.
+    zone_codes_meaning_no_zone=("UPZ89",),
+    transfer_motive=("D34_MOTI", 7),
+    # The survey declares walks above fifteen minutes and delivers a residue of 4.7%
+    # of the mode's weight below it. Applying the floor is what makes this year's
+    # pedestrian column exactly D39's rather than nearly it.
+    pedestrian_floor_minutes=PEDESTRIAN_LONG_WALK_MIN_MINUTES,
+    # And having applied it, this year's TRIPS_PER_DAY_OF_TYPE for the pedestrian is
+    # a narrower universe than every other year's, because 2005 never collected a
+    # short walk at all. The value is exported — the measured table is the record of
+    # what the surveys say — and it is declared not to be comparable, so that no
+    # interpolation is laid across the boundary. See D39.
+    not_comparable_on={
+        # Named rather than referenced because the column constants are declared
+        # below the surveys, with the quantities they belong to.
+        # `check_declared_columns` further down proves the name is a real one.
+        "TRIPS_PER_DAY_OF_TYPE": (
+            "2005 collected no walk under fifteen minutes, so this column holds long walking "
+            "for this year and all walking for the other four. Anchoring an interpolation on "
+            "it would read the difference of definition as growth: measured, 34% a year "
+            "through 2007-2010 where TRIPS_PER_DAY_OF_TYPE_OVER_15MIN reads 18%"
+        ),
+    },
+    # Torca. Its motorised travel and its cycling come back once the ring is in
+    # place, and its walking does not: it is short, local and stays inside expansion
+    # land the urban UPZ layer barely covers, and it comes out at a fifth of what a
+    # fine zoning gives. All four of its modes are marked and not the one it shows
+    # on, because the cause is the unit and not the mode.
+    units_below_unit_resolution={
+        "UPL07": (
+            "measured on 2015, which has both zonings: read on UPZ and the ring rather than on "
+            "its own ZAT, Torca's walking comes out at 0.22 of its ZAT figure where its "
+            "motorcycle is 1.02, its car 1.07 and its bicycle 1.18. See section 12 of "
+            "docs/implementing-2005.md"
+        ),
+    },
+    measures=(
+        "trips per day of the four measured modes, on one typical weekday of 2005, apportioned "
+        "to the unit by the share of each desire line's length inside it"
+    ),
+)
+
 # Every survey the pipeline measures. A year is added here and nowhere else.
 MOBILITY_SURVEYS: tuple[MobilitySurvey, ...] = (
+    SURVEY_2005,
     SURVEY_2011,
     SURVEY_2015,
     SURVEY_2019,
@@ -3494,6 +3795,26 @@ SURVEY_EXPOSURE_QUANTITIES: tuple[SurveyExposureQuantity, ...] = (
               "read at; see D36 and D38",
     ),
 )
+
+
+def check_declared_columns() -> None:
+    """Every column a survey declares itself not comparable on must be a real one.
+
+    `not_comparable_on` is keyed by column name and the names are written in the
+    survey declarations, which sit above the block that defines the column
+    constants. A name that drifted from the column it means would silently stop
+    excluding anything, which is the failure this whole field exists to prevent —
+    so it is checked once, at import, against the table's own declaration.
+    """
+    columns = set(survey_exposure_columns())
+    for survey in MOBILITY_SURVEYS:
+        unknown = sorted(set(survey.not_comparable_on) - columns)
+        if unknown:
+            raise ValueError(
+                f"{survey.label} declares itself not comparable on {', '.join(unknown)}, which "
+                "the exposure table does not carry. A name that does not match a column "
+                "excludes nothing and says it excluded something"
+            )
 
 
 def survey_exposure_columns() -> tuple[str, ...]:
@@ -3888,6 +4209,9 @@ def interpolated_exposure_columns() -> tuple[str, ...]:
         # on top of 2011's Saturday says so as loudly as 2011's Saturday does.
         SAMPLE_SUPPORT_COL,
     )
+
+check_declared_columns()
+
 
 # ---------------------------------------------------------------------------
 # Figures

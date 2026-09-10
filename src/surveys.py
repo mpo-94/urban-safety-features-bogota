@@ -130,6 +130,12 @@ class SurveyTrips:
     # balance can name them and the report can say how much of each mode went.
     implausible_totals: pd.Series
     implausible_records: int
+    # Trips per day this year counts and this study does not: a leg ending at a
+    # transfer point, or a walk under the floor the year itself declares. Named in
+    # the balance beside every other removal, so the file's own total still closes
+    # over them. Zero for a year that declares neither, which is four of the five.
+    set_aside_total: float = 0.0
+    set_aside_records: int = 0
 
     @property
     def pedestrian_definitions(self) -> pd.DataFrame:
@@ -833,7 +839,13 @@ def map_modes(trips: pd.DataFrame, survey: config.MobilitySurvey, log: RunLog) -
     of scope, so an unrecognised label is a question for a person and not a
     category.
     """
-    labels = trips[survey.mode_column]
+    # Spelled by the same function that spells a zone code, and for the same
+    # reason 2011 forced that one: a label is an identifier that may arrive as
+    # text or as a number depending on the container it came out of. The four
+    # delimited years deliver "13" and "A PIE > 15 MIN" as text and are unchanged
+    # by this; 2005 comes out of Access as 13.0, which is one label to a reader
+    # and two keys to a mapping that would then account for neither.
+    labels = zone_code_text(trips[survey.mode_column], f"{survey.label} {survey.mode_column}")
     present = set(labels.dropna().unique())
     undeclared = sorted(present - set(survey.modes_declared))
     if undeclared:
@@ -1090,6 +1102,21 @@ def read(survey: config.MobilitySurvey, log: RunLog) -> SurveyTrips:
         )
 
     file_total = float(weights.sum())
+    # What the publication actually summed. Four of the five years publish a total
+    # over everything their factor weights; 2005 publishes one over the households
+    # surveyed in Bogota, which is a different universe and not a different
+    # reading. Checking the whole file against a figure computed on a part of it
+    # would fail a year that is right.
+    covers = survey.published_total_covers
+    if covers is None:
+        control_total, control_says = file_total, "the whole file"
+    else:
+        require_columns(frame, (covers.column,), survey.label)
+        subset = frame[covers.column].notna() if covers.where_present else frame[
+            covers.column
+        ].isna()
+        control_total = float(weights[subset].sum())
+        control_says = covers.describes
 
     # The reconstructed total against the one the survey publishes. This is the
     # check that turns "we believe this column is the expansion factor" into
@@ -1104,19 +1131,23 @@ def read(survey: config.MobilitySurvey, log: RunLog) -> SurveyTrips:
             survey.label,
             survey.weight_column,
         )
-    elif not np.isclose(file_total, survey.published_total, rtol=config.SURVEY_CONTROL_TOTAL_RTOL):
+    elif not np.isclose(
+        control_total, survey.published_total, rtol=config.SURVEY_CONTROL_TOTAL_RTOL
+    ):
         raise ValueError(
-            f"{survey.label}: {survey.weight_column} sums to {file_total:,.1f} but the survey "
-            f"publishes {survey.published_total:,.1f} ({survey.published_total_source}). "
+            f"{survey.label}: {survey.weight_column} sums to {control_total:,.1f} over "
+            f"{control_says} but the survey publishes {survey.published_total:,.1f} "
+            f"({survey.published_total_source}). "
             "Either the column is not the expansion factor, or it is being read or filtered "
             "differently from the way it was published; both are decisions, not rounding"
         )
     else:
         log.info(
-            "%s: %s sums to %s, matching the published %s (%s)",
+            "%s: %s sums to %s over %s, matching the published %s (%s)",
             survey.label,
             survey.weight_column,
-            f"{file_total:,.1f}",
+            f"{control_total:,.1f}",
+            control_says,
             f"{survey.published_total:,.1f}",
             survey.published_total_source,
         )
@@ -1174,6 +1205,50 @@ def read(survey: config.MobilitySurvey, log: RunLog) -> SurveyTrips:
         else totals_before_removals.iloc[:0].droplevel(config.ACTOR_TYPE_COL)
     )
 
+    # -- what this year counts as a trip and this study does not --------------
+    # Both are removals and both are named in the balance, exactly like the records
+    # whose geometry contradicts them. Neither is a filter applied before counting:
+    # the file's own total still closes over them.
+    set_aside = pd.Series(False, index=measured.index)
+    set_aside_causes: list[tuple[str, int, float]] = []
+
+    if survey.transfer_motive is not None:
+        column, value = survey.transfer_motive
+        require_columns(measured, (column,), survey.label)
+        legs = pd.to_numeric(measured[column], errors="coerce") == value
+        set_aside_causes.append(
+            ("legs ending at a transfer point", int(legs.sum()),
+             float(measured.loc[legs, TRIPS_COL].sum()))
+        )
+        set_aside |= legs
+
+    if survey.pedestrian_floor_minutes is not None and duration is not None:
+        short = (
+            (measured[config.ACTOR_TYPE_COL] == config.PEDESTRIAN)
+            & (duration.loc[measured.index] < survey.pedestrian_floor_minutes)
+        )
+        set_aside_causes.append(
+            (f"walks under the {survey.pedestrian_floor_minutes:g} minute floor this year "
+             "declares", int(short.sum()), float(measured.loc[short, TRIPS_COL].sum()))
+        )
+        set_aside |= short
+
+    set_aside_total = float(measured.loc[set_aside, TRIPS_COL].sum())
+    set_aside_records = int(set_aside.sum())
+    if set_aside.any():
+        log.warn(
+            "%s: %d record(s) are set aside as things this year counts as a trip and this "
+            "study does not, %s trips per day. By cause: %s. They are named in the balance "
+            "rather than filtered before counting, so the file's own total still closes",
+            survey.label,
+            int(set_aside.sum()),
+            f"{set_aside_total:,.1f}",
+            "; ".join(f"{cause} {count:,} records, {trips:,.0f} trips"
+                      for cause, count, trips in set_aside_causes),
+        )
+        measured = measured[~set_aside]
+
+
     for source_column, target in (
         (survey.origin_zone_column, ZONE_ORIGIN_COL),
         (survey.destination_zone_column, ZONE_DESTINATION_COL),
@@ -1186,6 +1261,56 @@ def read(survey: config.MobilitySurvey, log: RunLog) -> SurveyTrips:
         # nothing at all.
         measured[target] = zone_code_text(
             measured[source_column], f"{survey.label} {source_column}"
+        )
+
+    # A second code, for the ends the main zoning does not reach. 2005 is the only
+    # year that needs it: its UPZ column is empty for exactly the municipality
+    # households, and the municipality's own zone number is in another column on
+    # another zoning. Composed rather than read, and only where the first is
+    # absent — a record that has both would mean the two zonings disagree about
+    # where it is, and the run says so rather than choosing.
+    outside = survey.zone_outside_the_city
+    if outside is not None:
+        # Both sides of the composed code carry the prefix the zoning gives their
+        # half, on the trips exactly as on the polygons. Today's UPZ run to 117 and
+        # today's municipalities start at 609, so they would not collide — but a
+        # code system that happens not to overlap another is not the same as one
+        # that cannot, and the prefix is what makes it cannot.
+        inside_prefix = getattr(survey.zoning, "upz_prefix", "")
+        prefix = getattr(survey.zoning, "municipality_prefix", "")
+        if inside_prefix:
+            for target in (ZONE_ORIGIN_COL, ZONE_DESTINATION_COL):
+                present = measured[target].notna()
+                measured.loc[present, target] = inside_prefix + measured.loc[present, target]
+        for source_column, target in (
+            (outside.origin_column, ZONE_ORIGIN_COL),
+            (outside.destination_column, ZONE_DESTINATION_COL),
+        ):
+            codes = pd.to_numeric(measured[source_column], errors="coerce")
+            named = codes.isin(list(outside.codes))
+            both = named & measured[target].notna()
+            if both.any():
+                raise ValueError(
+                    f"{survey.label}: {int(both.sum())} record(s) carry a zone in "
+                    f"{source_column} and in the main zoning at once, so the two zonings "
+                    "disagree about where they are. Which is right is a question for a person"
+                )
+            measured.loc[named, target] = prefix + codes[named].astype(int).astype(str)
+        placed = int(
+            (measured[ZONE_ORIGIN_COL].notna() & measured[ZONE_DESTINATION_COL].notna()).sum()
+        )
+        log.info(
+            "%s: %s. The second code places %d record(s) at the origin and %d at the "
+            "destination that the main zoning cannot reach, leaving %d of %d with a zone at "
+            "both ends",
+            survey.label,
+            outside.stated_by,
+            int(pd.to_numeric(measured[outside.origin_column], errors="coerce")
+                .isin(list(outside.codes)).sum()),
+            int(pd.to_numeric(measured[outside.destination_column], errors="coerce")
+                .isin(list(outside.codes)).sum()),
+            placed,
+            len(measured),
         )
 
     # A zone is missing in two ways and both end the same place. It can be absent,
@@ -1271,8 +1396,14 @@ def read(survey: config.MobilitySurvey, log: RunLog) -> SurveyTrips:
         changes=[
             (-without_weight, f"records with no {survey.weight_column}, outside the file's own total"),
             (
-                -(records_read - without_weight - implausible_count - len(measured)),
+                -(records_read - without_weight - implausible_count - set_aside_records
+                  - len(measured)),
                 "records of a mode outside the four measured, or with no origin or destination zone",
+            ),
+            (
+                -set_aside_records,
+                "records this year counts as a trip and this study does not — a leg ending at a "
+                "transfer point, or a walk under the floor the year itself declares",
             ),
             (
                 -implausible_count,
@@ -1322,12 +1453,62 @@ def read(survey: config.MobilitySurvey, log: RunLog) -> SurveyTrips:
         unzoned_total=unzoned_total,
         implausible_totals=implausible_totals,
         implausible_records=implausible_count,
+        set_aside_total=set_aside_total,
+        set_aside_records=set_aside_records,
     )
 
 
 # ---------------------------------------------------------------------------
 # The zoning
 # ---------------------------------------------------------------------------
+
+
+def build_upz_and_ring(
+    zoning: config.ZoningFromUpzAndRing, survey: config.MobilitySurvey, log: RunLog
+) -> gpd.GeoDataFrame:
+    """The UPZ of Bogota with one polygon for each municipality of the ring.
+
+    Assembled here rather than read from a delivery, because 2005 ships no zoning
+    and none of the three it codes its trips on can be obtained. The two prefixes
+    keep the two code systems apart: a UPZ numbered 9 and a municipality numbered
+    609 would otherwise share a column and mean different places.
+    """
+    upz = gpd.read_file(config.resolve_source_path(zoning.upz_layer))
+    if zoning.upz_code_column not in upz.columns:
+        raise ValueError(
+            f"{survey.label}: the UPZ layer does not carry {zoning.upz_code_column}"
+        )
+    upz = upz.to_crs(epsg=config.PROJECTED_CRS)
+    upz[ZONE_CODE_COL] = zoning.upz_prefix + zone_code_text(
+        upz[zoning.upz_code_column], f"{survey.label} UPZ {zoning.upz_code_column}"
+    )
+    upz = upz[[ZONE_CODE_COL, "geometry"]].dissolve(by=ZONE_CODE_COL, as_index=False)
+
+    ring = ring_municipalities(log)
+    ring[ZONE_CODE_COL] = zoning.municipality_prefix + ring[ZONE_CODE_COL].astype(str)
+
+    zones = gpd.GeoDataFrame(
+        pd.concat([upz, ring[[ZONE_CODE_COL, "geometry"]]], ignore_index=True),
+        geometry="geometry",
+        crs=upz.crs,
+    )
+    repeated = int(zones[ZONE_CODE_COL].duplicated().sum())
+    if repeated:
+        raise ValueError(
+            f"{survey.label}: {repeated} code(s) appear in both halves of the built zoning, so "
+            "a trip keyed on one of them would be placed twice. The prefixes exist to stop "
+            "exactly that and one of them is not doing its job"
+        )
+    log.info(
+        "%s: zoning built at run time, %d UPZ of Bogota and %d municipalities of the ring, "
+        "%d zone(s) in all. %s",
+        survey.label,
+        len(upz),
+        len(ring),
+        len(zones),
+        zoning.describes,
+    )
+    return zones
 
 
 def read_zoning(survey: config.MobilitySurvey, log: RunLog) -> gpd.GeoDataFrame:
@@ -1340,6 +1521,9 @@ def read_zoning(survey: config.MobilitySurvey, log: RunLog) -> gpd.GeoDataFrame:
     metres produces an empty overlay and no error at all.
     """
     zoning = survey.zoning
+    if isinstance(zoning, config.ZoningFromUpzAndRing):
+        return build_upz_and_ring(zoning, survey, log)
+
     path = config.resolve_source_path(zoning.shapefile)
     zones = gpd.read_file(path)
 
@@ -1433,7 +1617,7 @@ def _require_known_zones(
     )
     raise ValueError(
         f"{survey.label}: {len(codes)} zone code(s) named by the trips are not in "
-        f"{survey.zoning.shapefile.name}, carrying "
+        f"{survey.zoning_label}, carrying "
         f"{float(trips.loc[unknown, TRIPS_COL].sum()):,.1f} trips per day: "
         f"{', '.join(codes[:20])}{' ...' if len(codes) > 20 else ''}. A trip whose zone has no "
         "polygon has no place, and dropping it silently is how a mode ends up smaller than it is"
