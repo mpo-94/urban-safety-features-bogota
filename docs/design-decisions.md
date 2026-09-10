@@ -4901,6 +4901,48 @@ fewer than ten casualties and exactly one saw none at all — and that one impli
 exposure of zero, which is the method failing rather than a finding, so it is
 counted apart.
 
+### The 2020 departure is not a level, it is spatially structured, and that is worse
+
+Measured on 2026-09-10, after five candidate external sources were read and none of
+them turned out to carry a usable series. Two of them said something about the
+*shape* of the pandemic instead, and that was testable against the diagnostic
+already built.
+
+The INTALInC LAC observatory's Bogota report finds that **58 % of low-income
+residents could not work from home against 10 % of high-income ones**. And Guerrero
+Ayala et al. (Uniandes, COPA), tracking GPS movement in **San Cristobal and Ciudad
+Bolivar**, conclude that at the population level there was **no significant change
+in movement dynamics** between 2019 and 2021 — a negative result in two peripheral,
+low-income localities. Together they predict that the collapse in travel was
+concentrated where people could afford to stay home.
+
+**The diagnostic says exactly that.** The 2020 ratio, unit by unit, on the corrected
+casualties:
+
+| Mode | Most overstated by the panel | Least overstated | Spread |
+|---|---|---|---|
+| `CAR` | Chapinero 0.45, Teusaquillo 0.50, Usaquen 0.52, Barrios Unidos 0.57 | Lucero 1.18, Torca 1.08, Tibabuyes 0.97, Rincon de Suba 0.97 | 0.45–1.18 |
+| `PEDESTRIAN` | Barrios Unidos 0.40, Tabora 0.42, Engativa 0.43, Teusaquillo 0.46 | Rafael Uribe 0.83, Patio Bonito 0.81, Britalia 0.77, Tibabuyes 0.71 | 0.40–0.83 |
+
+And the mechanism is measurable rather than merely legible in the names. Against
+each unit's car trips per inhabitant in 2019 — a proxy for motorisation and for
+income — the 2020 ratio correlates at **Spearman −0.49 for the car and −0.53 for the
+pedestrian**, and at **−0.09 for the bicycle**, which is the mode whose city ratio
+was 0.99 to begin with.
+
+**Whichever of the two smoothness assumptions is taken, 2020 departs from it in a
+spatially structured way, and the structure runs along a proxy for income.** Under
+the exposure-is-smooth assumption the departure sits in the exposure; under the
+risk-is-smooth assumption it sits in the risk. The study cannot say which without an
+external series, and it does not need to in order to see the danger: **a denominator
+whose error is correlated with the socioeconomic geography of the city, inside a
+model whose whole purpose is to relate risk to urban form, would present itself as a
+finding about urban form.**
+
+That is a different and larger problem than three years sitting at the wrong level,
+and it makes the least defensible option the one that requires no decision: leaving
+those years in the models untouched and unmarked.
+
 ### What is open, and it is a decision rather than a measurement
 
 **Whether the pandemic years are patched by the mirror assumption.** The diagnostic
@@ -4962,3 +5004,25 @@ The table above puts the bicycle at 0.99 in 2020 and the pedestrian at 0.60. An
 independent count agreeing that cycling held and walking collapsed would let those
 years be patched with a corroboration instead of a preference, and that is a
 different kind of argument from anything available today.
+
+**Four other candidates were read on 2026-09-10 and none carries a usable series**,
+which is recorded here so that they are not read a second time:
+
+| Source | What it is | Why it does not serve |
+|---|---|---|
+| Posada Parada et al. (2021), *Revista Pensamiento Udecino* | perception survey of Bogota residents | perceptions rather than travel, and no time series at all |
+| Guerrero Ayala et al. (Uniandes, COPA) | GPS traces from the Muevelo app, 2019 and 2021 | 213 participants in two localities; a sample that size cannot carry a city series — but its negative finding is used above |
+| Gacharna Pinto and Aponte Sanchez (U. Libre Cucuta) | national bibliographic review | a review rather than a source; **it points at Google's Community Mobility Reports**, which is the one lead in it |
+| INTALInC LAC, Bogota report 3 | web survey, 776 responses, March to May 2020, self-declared as not representative | a two-point comparison and not a series — but its income split is used above |
+| Sanin Riano (Uniandes, 2022) | university students, EM2019 plus 400 own surveys, 2019 against 2022 | one subpopulation and two points |
+
+**Google's Community Mobility Reports are the second lead, and their shape is right
+where the theses' is wrong**: daily, published for Bogota, running from early 2020
+to late 2022, and exogenous to everything this study measures. Three things have to
+be established before they could be used, and none of them off an abstract either:
+that they are indexed to a pre-pandemic baseline rather than given as levels; that
+they are categorised by **destination** — workplaces, transit stations, residential
+— and not by mode, so what they can anchor is an activity index and not a mode's
+exposure; and that the population behind them is whoever carries a phone with
+location history enabled, whose composition is unknown and may itself have moved
+during the period being measured.
