@@ -91,8 +91,9 @@ spatial operator. It falls instead:
 Almost certainly because 2005 collected no walk under fifteen minutes, and short
 walks are what stays inside one zone. Its trip mix is long by construction.
 
-**The test that would settle whether this is good enough is named in §8** and it has
-not been run.
+**The test that settles whether this is good enough was run on 2026-09-10 and it is
+§9.** The short of it: the coarseness costs almost nothing, and the boundary costs
+something real.
 
 ---
 
@@ -277,7 +278,7 @@ legs, and §4 shows that decision is worth 2.14 % of the four modes.
 
 ---
 
-## 8. What has not been done, and what should be done first
+## 8. What has not been done, and what is left open
 
 **Not done:** the whole of stage 1 onwards. Nothing is declared, nothing is
 implemented, no figure from 2005 has entered any table.
@@ -289,19 +290,7 @@ figure can be reconciled, the honest options are to declare the year with no con
 total and say so loudly, as `MobilitySurvey.published_total = None` already allows,
 or to leave 2005 as a city-level reference rather than a panel year.
 
-**The test that should come before any of it** is the one that decides whether a
-UPZ-based year belongs in the panel at all, and it can be run today without touching
-2005: **re-read 2015 on UPZ instead of its own ZAT** — mapping each ZAT to the UPZ
-containing its centroid — and compare the per-unit result against the ZAT version
-already measured. It measures what the coarse zoning costs on a year whose right
-answer is known.
-
-If the per-unit figures barely move, 2005 enters the panel as a fifth anchor. If they
-move a great deal, 2005 is a city-level anchor for the annual total and not a panel
-year — which is still worth having, because it is the anchored version D40 defers,
-but it is a different object.
-
-**And two changes to the interpolation are already known to be needed** if 2005 does
+**Two changes to the interpolation are already known to be needed** if 2005 does
 become an anchor, both because it would be the first anchor outside the study window:
 
 - the population panel is built over 2007–2024 only, and the anchor loop would ask
@@ -311,3 +300,82 @@ become an anchor, both because it would be the first anchor outside the study wi
 
 Neither is a redesign. Both are places that quietly assume every anchor is inside the
 window, and 2005 would be the first that is not.
+
+**The test that had to come before any of this is §9**, and it has been run.
+
+
+---
+
+## 9. What the coarse zoning costs, measured on a year that has both
+
+2005 can only reach the units through UPZ, and whether that is good enough is not
+answerable from 2005: it has no ZAT version to be compared against. **2015 has
+both.** So it was read twice — once on its own ZAT, once with every ZAT collapsed
+into the UPZ its centroid falls in — and the two results compared per unit. Same
+records in both runs, and the plausibility test applied once on the ZAT geometry and
+its verdict carried across unchanged, so that what is measured is the apportionment
+and not two effects at once.
+
+**The coarseness itself costs almost nothing.** On a 2015 weekday, per unit:
+
+| Mode | City on ZAT | City on UPZ | Gap | Spearman | Pearson | Per-unit ratio, median |
+|---|---:|---:|---:|---:|---:|---:|
+| `PEDESTRIAN` | 4,459,658 | 4,394,305 | −1.5 % | 0.994 | 0.997 | 0.99 |
+| `BICYCLE` | 633,406 | 616,027 | −2.7 % | 0.988 | 0.992 | 0.98 |
+| `MOTORCYCLE` | 714,894 | 656,032 | −8.2 % | 0.981 | 0.992 | 0.93 |
+| `CAR` | 1,631,914 | 1,545,259 | −5.3 % | 0.971 | 0.997 | 0.96 |
+
+Spearman 0.97 to 0.99 and Pearson 0.99 or better on all four modes. **Collapsing
+945 zones into 110 barely moves either the ordering of the thirty units or their
+levels.** The intra-zonal share rises only from 20.1 % to 24.7 %, far less than the
+factor-of-eight change in zone size would suggest, because what a bigger zone
+captures is short trips and 2015's short trips were already mostly intra-zonal.
+
+**What costs is the boundary, and it is a different thing entirely.** UPZ stops at
+Bogotá's edge: 827 of the 945 ZAT fall inside a UPZ and 118 do not, and **18.1 % of
+2015's trips have an end that cannot be placed**. A ZAT year keeps such a trip and
+gives the units the share of its line that falls inside them; a UPZ year cannot draw
+the line at all and loses it whole. That is what the negative city gaps above are,
+and it is why they are largest on the two motorised modes, which travel furthest and
+cross the city boundary most.
+
+**It falls on the perimeter, and on one unit above all.** The units below 0.90 of
+their ZAT figure:
+
+| Mode | Units below 0.90 |
+|---|---|
+| `PEDESTRIAN` | Torca 0.16, Tibabuyes 0.83 |
+| `BICYCLE` | Torca 0.51, Arborizadora 0.79, Toberín 0.84, Bosa 0.87 |
+| `MOTORCYCLE` | Torca 0.15, Bosa 0.59, Porvenir 0.70, Arborizadora 0.81, Tibabuyes 0.82, Patio Bonito 0.84, Britalia 0.85, Engativá 0.88, Tunjuelito 0.90, Fontibón 0.90 |
+| `CAR` | Torca 0.22, Bosa 0.69, Tibabuyes 0.70, Edén 0.72, Fontibón 0.76, Britalia 0.77, Arborizadora 0.87, Suba 0.89 |
+
+Every one of them is on the city's edge, facing Soacha, Mosquera, Funza, Chía or
+Cota. **Torca is the extreme in all four modes** — the largest and most peripheral
+unit, the one the delivered desire-lines layer never reached and the one D36 records
+as having sextupled its population, mostly expansion land the urban UPZ layer barely
+covers.
+
+**And this is not an artefact of the test.** In 2005 the municipality households
+genuinely carry no UPZ — the dictionary says the field is empty for them — so the
+loss the test simulates is exactly the loss a 2005 read would suffer.
+
+### What follows
+
+**2005 can enter the panel as a fifth anchor**, and two things have to be declared
+with it rather than discovered later:
+
+- **Torca is not usable from 2005.** Its figure would be a sixth to a half of what
+  the same trips give on a fine zoning. Marking that row rather than publishing it
+  is the same decision D38 already took for 2011's Saturday, and
+  `SAMPLE_SUPPORT` is the column for it.
+- **The perimeter units are understated relative to the ZAT years**, by 10 % to 40 %
+  and by a mode-dependent amount. That belongs in the same table as the share of
+  each survey's own total that reaches the units, which already ranges from 53 % to
+  89 % across years and modes — so 2005 would sit inside a spread the study already
+  reports rather than outside it.
+
+**The mitigation, if it is ever wanted, is the JICA zoning.** 2005 carries it on
+88,232 records against UPZ's 81,254, and the difference is precisely the municipality
+ends, because JICA was a regional master plan and its zones do not stop at the city
+line. Its geometry is not on disk and not in either delivery. Looking for it is worth
+one search before accepting the boundary loss as fixed.
