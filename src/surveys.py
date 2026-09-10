@@ -1438,3 +1438,82 @@ def _require_known_zones(
         f"{', '.join(codes[:20])}{' ...' if len(codes) > 20 else ''}. A trip whose zone has no "
         "polygon has no place, and dropping it silently is how a mode ends up smaller than it is"
     )
+
+
+# ---------------------------------------------------------------------------
+# The ring of municipalities
+# ---------------------------------------------------------------------------
+
+
+def ring_municipalities(log: RunLog) -> gpd.GeoDataFrame:
+    """One polygon for each of the seventeen municipalities around Bogota.
+
+    Built at run time out of three files of the 2015 delivery — its ZAT geometry,
+    its table of which ZAT belongs to which municipality, and its master table of
+    names — and never written to disk. A survey whose zoning stops at the city line
+    needs them: without a polygon there is no centroid, without a centroid there is
+    no line, and a trip with one end outside is not partly outside but wholly lost.
+
+    The zone number each polygon carries is the one the **2005** survey uses for
+    that municipality, from Tabla 4.1 of the 2011 delivery's Tomo II, so the result
+    can be concatenated with a zoning of Bogota and joined to 2005's own codes.
+
+    It raises rather than returning a short layer if any of the seventeen is
+    missing. A ring with a hole in it would place some trips and quietly lose the
+    others, which is the failure the whole exercise exists to remove.
+    """
+    zat = read_zoning(config.SURVEY_2015, log)
+    belongs = pd.read_csv(
+        config.resolve_source_path(config.RING_ZAT_TO_MUNICIPALITY),
+        sep=config.RING_TABLE_SEPARATOR,
+        dtype=str,
+    )
+    names = pd.read_csv(
+        config.resolve_source_path(config.RING_MUNICIPALITY_NAMES),
+        sep=config.RING_TABLE_SEPARATOR,
+        dtype=str,
+    )
+
+    # `MUNICIPIO.xls` writes the name, the department and the DANE code into one
+    # field — "SOACHA-cundinamarca 25754" — so the name is what precedes the first
+    # hyphen, and "LA CALERA 25377" has no hyphen at all and needs the trailing
+    # number stripped as well.
+    names["NAME"] = (
+        names["NOMBRE"].str.split("-").str[0].str.replace(r"\s+\d+$", "", regex=True).str.strip()
+    )
+    lookup = names.set_index("ID")[["NAME", "CODIGO_DANE"]]
+
+    belongs = belongs.rename(columns={"ZAT": ZONE_CODE_COL})
+    belongs[ZONE_CODE_COL] = zone_code_text(belongs[ZONE_CODE_COL], "ZAT_LOCALIDAD")
+    joined = belongs.join(lookup, on="ID_MUNICIPIO").merge(
+        zat[[ZONE_CODE_COL, "geometry"]], on=ZONE_CODE_COL, how="inner"
+    )
+    ring = gpd.GeoDataFrame(
+        joined[joined["NAME"].isin(config.RING_MUNICIPALITY_ZONES)],
+        geometry="geometry",
+        crs=zat.crs,
+    )
+
+    dissolved = ring.dissolve(by="NAME", aggfunc={"CODIGO_DANE": "first"}).reset_index()
+    missing = sorted(set(config.RING_MUNICIPALITY_ZONES) - set(dissolved["NAME"]))
+    if missing:
+        raise ValueError(
+            f"the ring of municipalities is missing {len(missing)} of "
+            f"{len(config.RING_MUNICIPALITY_ZONES)}: {', '.join(missing)}. A ring with a hole "
+            "in it places some trips and loses the rest without saying so"
+        )
+
+    dissolved[ZONE_CODE_COL] = (
+        dissolved["NAME"].map(config.RING_MUNICIPALITY_ZONES).astype(str)
+    )
+    log.info(
+        "built the ring of %d municipalities at run time from the %d delivery, dissolved from "
+        "%d of its zones; median area %.2f km2, largest %s at %.1f km2",
+        len(dissolved),
+        config.SURVEY_2015.year,
+        len(ring),
+        float((dissolved.geometry.area / 1e6).median()),
+        dissolved.loc[dissolved.geometry.area.idxmax(), "NAME"],
+        float(dissolved.geometry.area.max() / 1e6),
+    )
+    return dissolved[[ZONE_CODE_COL, "NAME", "CODIGO_DANE", "geometry"]]

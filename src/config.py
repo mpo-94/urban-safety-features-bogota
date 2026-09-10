@@ -3099,6 +3099,57 @@ SURVEY_2015 = MobilitySurvey(
 )
 
 
+
+# -- the ring of municipalities, derived and never delivered -----------------
+# 2005 codes an end outside Bogota with the zone number Tabla 4.1 of the 2011
+# delivery's Tomo II gives each of the seventeen municipalities of the city's first
+# perimeter ring. UPZ stops at the city line, so without a polygon for each of them
+# a trip with one end outside cannot be drawn at all and is lost whole — which is
+# what §9 and §10 of `docs/implementing-2005.md` measure and what this fixes.
+#
+# **The polygons are built at run time and no shapefile of them is written.** They
+# are derived from three files of the 2015 delivery that are already declared — its
+# ZAT geometry, its table of which ZAT belongs to which municipality, and its master
+# table of municipality names and DANE codes — so the layer is traceable to its
+# sources rather than appearing under `data/` with a provenance nobody can
+# reconstruct. `data/` is the record of what arrived; this is a construction.
+#
+# It works because the two surveys cover the same seventeen municipalities: the set
+# Tabla 4.1 names and the set `MUNICIPIO.xls` carries are identical, so the join is
+# by name and one to one. What comes out is the urban area of each — Zipaquira at
+# 8.6 km2, Facatativa at 6.2 — which is what both surveys measured, with Soacha the
+# exception at 183.8 km2 because 2015 covers the whole of it with thirty-four zones.
+RING_ZAT_TO_MUNICIPALITY = _EODH_2015 / "Base de Datos Completa" / "ZAT_LOCALIDAD.xls"
+RING_MUNICIPALITY_NAMES = _EODH_2015 / "Base de Datos Completa" / "MUNICIPIO.xls"
+
+# Both of those are semicolon-delimited text with a `.xls` extension, which is the
+# same trap this project has met before and the reason the extension is never taken
+# as evidence of a format.
+RING_TABLE_SEPARATOR = ";"
+
+# Name as `MUNICIPIO.xls` spells it, against the zone number the 2005 survey gives
+# it. Tomo II writes Mosquera with a z; the master table does not, and the master
+# table is the one the join runs on.
+RING_MUNICIPALITY_ZONES: dict[str, int] = {
+    "COTA": 609,
+    "CHIA": 610,
+    "FUNZA": 611,
+    "MOSQUERA": 612,
+    "SOPO": 613,
+    "CAJICA": 614,
+    "TOCANCIPA": 615,
+    "TABIO": 616,
+    "ZIPAQUIRA": 617,
+    "GACHANCIPA": 618,
+    "TENJO": 619,
+    "MADRID": 620,
+    "BOJACA": 621,
+    "FACATATIVA": 622,
+    "SOACHA": 624,
+    "SIBATE": 626,
+    "LA CALERA": 635,
+}
+
 # The 2011 delivery. 357 files, of which 323 are an Emme model that is out of
 # scope. The survey itself is two Access databases, a questionnaire, three volumes
 # of the final report, two database manuals and two training decks.

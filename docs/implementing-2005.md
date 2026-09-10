@@ -430,10 +430,10 @@ an end outside Bogotá, 9,157 — 71.2 % — have both ends as either a UPZ or a
 municipality**, and they are worth **750,536 trips a day**. What stays unplaceable is
 3,703 records and 324,477 trips.
 
-**What that needs is municipal boundaries and nothing else**: seventeen polygons of
-standard national cartography, to be used exactly as an outer ZAT is used in every
-other year — one zone, one centroid, a line drawn from it. It is not under `data/`
-yet and it is a far smaller thing to obtain than a 2005 GIS archive.
+**What that needs is municipal boundaries and nothing else**: seventeen polygons, to
+be used exactly as an outer ZAT is used in every other year — one zone, one centroid,
+a line drawn from it. **They turned out to be in the 2015 delivery already**, and
+§12 measures what they recover.
 
 ---
 
@@ -539,3 +539,138 @@ that ordering unambiguously**. An assumption validated on eight cases is the one
 trust for the two it cannot be validated on. So `PEDESTRIAN 0.14` and `CAR 0.16`
 stand, and what is recorded instead is that our reading puts the private vehicle
 about a point below what the chart shows.
+
+
+---
+
+## 12. The ring of municipalities, and what it recovers
+
+§9 found that a UPZ reading loses the boundary, not the resolution. §10 found that
+the seventeen municipalities are named and coded in the sources. What was missing was
+a polygon for each, and **it was already on disk** — three files of the 2015 delivery
+between them carry everything needed:
+
+| File | What it contributes |
+|---|---|
+| `ZATs/ZATs_2012_MAG.shp` | the geometry, 945 zones covering the whole surveyed region |
+| `Base de Datos Completa/ZAT_LOCALIDAD.xls` | which ZAT belongs to which municipality |
+| `Base de Datos Completa/MUNICIPIO.xls` | each municipality's name and DANE code |
+
+Both tables are semicolon-delimited text carrying a `.xls` extension, which is the
+same trap this project has met before and the reason an extension is never taken as
+evidence of a format.
+
+**It works because the two surveys cover the same seventeen municipalities.** The set
+Tabla 4.1 of the 2011 Tomo II names and the set `MUNICIPIO.xls` carries are
+identical, so the join is by name and one to one.
+
+### It is built at run time and no shapefile of it is written
+
+`surveys.ring_municipalities` dissolves the fifty ZAT that belong to the ring into
+seventeen polygons and stamps each with the zone number the **2005** survey gives it,
+so the result can be concatenated with a zoning of Bogotá and joined to 2005's own
+codes. `data/` stays the record of what arrived; this is a construction, and a
+construction whose sources are declared is traceable where a shapefile appearing in
+`data/` would not be.
+
+| | DANE | 2005 zone | km² | | | DANE | 2005 zone | km² |
+|---|---|---:|---:|---|---|---|---:|---:|
+| Cota | 25214 | 609 | 1.55 | | Tenjo | 25799 | 619 | 1.00 |
+| Chía | 25175 | 610 | 6.77 | | Madrid | 25430 | 620 | 5.79 |
+| Funza | 25286 | 611 | 5.78 | | Bojacá | 25099 | 621 | 1.14 |
+| Mosquera | 25473 | 612 | 6.86 | | Facatativá | 25269 | 622 | 6.24 |
+| Sopó | 25758 | 613 | 1.55 | | Soacha | 25754 | 624 | 183.84 |
+| Cajicá | 25126 | 614 | 1.92 | | Sibaté | 25740 | 626 | 1.42 |
+| Tocancipá | 25817 | 615 | 0.67 | | La Calera | 25377 | 635 | 0.89 |
+| Tabio | 25785 | 616 | 0.57 | | | | | |
+| Zipaquirá | 25899 | 617 | 8.63 | | | | | |
+| Gachancipá | 25295 | 618 | 0.72 | | | | | |
+
+**The check that depends on none of the three files** is where each centroid lands.
+Soacha and Sibaté come out south-west, the Sabana corridor west — Facatativá, Bojacá,
+Madrid, Mosquera, Funza — the northern corridor north, and **La Calera east**, which
+is the only one of the seventeen on the far side of the eastern hills. All seventeen
+sit where they should.
+
+The areas say what the polygons are: **the urban area of each**, which is what both
+surveys measured. Soacha is the exception at 183.84 km², the whole municipality,
+because 2015 covers it with thirty-four zones rather than one.
+
+### What it recovers
+
+The same test as §9, run again with the composite zoning a 2005 read would use —
+the UPZ of Bogotá plus the seventeen — against the ZAT answer that is known to be
+right:
+
+| | UPZ alone | **UPZ + the ring** |
+|---|---:|---:|
+| ZAT landing on a zone | 827 of 945 | **876 of 945** |
+| **Trips lost for want of a zone at one end** | **18.1 %** | **0.6 %** |
+| Trips falling outside the thirty units | 100,245 | 2,699,127 |
+
+That last row is the one to read twice. On ZAT the figure is 2,663,069, and the ring
+brings it back to **2,699,127, within 1.4 %** — the accounting that the boundary loss
+had destroyed behaves like the ZAT year again.
+
+Per unit, on a 2015 weekday:
+
+| Mode | City on ZAT | UPZ alone | **UPZ + ring** | Spearman | Pearson |
+|---|---:|---:|---:|---:|---:|
+| `PEDESTRIAN` | 4,459,658 | −1.5 % | **−1.1 %** | 0.995 | 0.997 |
+| `BICYCLE` | 633,406 | −2.7 % | **−1.0 %** | 0.989 | 0.994 |
+| `MOTORCYCLE` | 714,894 | −8.2 % | **−1.8 %** | 0.991 | 0.996 |
+| `CAR` | 1,631,914 | −5.3 % | **−0.9 %** | 0.993 | 0.998 |
+
+**Every city total is now within about a point, and the ordering of the thirty units
+is preserved at 0.989 to 0.995.** The motorcycle, which lost 8.2 % to the boundary,
+loses 1.8 %.
+
+**Torca is recovered on three of its four modes:**
+
+| Torca | On ZAT | UPZ alone | UPZ + ring |
+|---|---:|---:|---:|
+| `MOTORCYCLE` | 7,746 | 1,190 (0.15) | **7,888 (1.02)** |
+| `CAR` | 21,622 | 4,729 (0.22) | **23,122 (1.07)** |
+| `BICYCLE` | 3,044 | 1,555 (0.51) | **3,606 (1.18)** |
+| `PEDESTRIAN` | 5,938 | 924 (0.16) | **1,311 (0.22)** |
+
+Its motorised travel and its cycling come back; **its walking does not.** And the
+reason is not the ring's business: Torca's walking is short, local and stays inside
+Torca, which is largely expansion land the *urban* UPZ layer barely covers. The
+municipalities fixed the trips that leave Bogotá; nothing fixes a trip inside a part
+of Bogotá the zoning does not reach.
+
+### What is left, and it is eight cells
+
+Units more than a tenth away from their ZAT figure, with the ring in place:
+
+| Mode | Below 0.90 | Above 1.10 |
+|---|---|---|
+| `PEDESTRIAN` | **Torca 0.22**, Tibabuyes 0.83 | — |
+| `BICYCLE` | Toberín 0.84 | Lucero 1.23, Torca 1.18, Usme–Entrenubes 1.17, Tintal 1.10 |
+| `MOTORCYCLE` | Bosa 0.74 | Arborizadora 1.13, Usaquén 1.11 |
+| `CAR` | Bosa 0.76, Edén 0.78, Britalia 0.84 | Porvenir 1.32, Arborizadora 1.16, Lucero 1.16, Patio Bonito 1.15, Usme–Entrenubes 1.14 |
+
+Eight cells below and eleven above, out of 120 — and unlike §9's list these are no
+longer all one-directional, which is what a coarser zoning redistributing between
+neighbours looks like rather than a systematic loss. The exception is **Torca's
+walking**, which is the one cell the ring cannot reach.
+
+**One thing does move and it is expected:** the intra-zonal share rises from 20.1 %
+on ZAT to 37.9 % with the ring, because a trip within Soacha is now a trip within one
+zone. Those trips are outside the thirty units either way, so they change nothing the
+study measures, but a reader comparing intra-zonal shares across years has to know
+that 2005's would not be comparable with the other four.
+
+### What follows
+
+**2005 enters the panel as a fifth anchor, and the residual is one unit and one
+mode.** Torca's 2005 walking would be about a fifth of what a fine zoning gives, on a
+figure of a few thousand trips a day — 0.13 % of the city's walking. Marking it is
+the same decision D38 already took for 2011's Saturday: the row is built, exported
+and flagged, because the measurement is real at the scale it was made for and what it
+does not carry is that one unit.
+
+**Whether to mark Torca's 2005 pedestrian row alone, or all four of its rows, or
+neither, is a decision for a person** — and it is the only one left before 2005 can
+be declared.
