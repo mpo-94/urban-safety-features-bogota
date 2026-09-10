@@ -82,6 +82,11 @@ class MeasuredExposure:
     """
 
     table: pd.DataFrame
+    # What each survey measures over the whole surveyed region, per mode and day
+    # type, before this study's removals. It is here because every figure the
+    # deliveries publish is stated on that footprint and none on the thirty units,
+    # so a comparison against a published number has to come back to it.
+    city_totals: pd.DataFrame
     source_run: str
 
     @property
@@ -129,6 +134,19 @@ def read_measured(log: RunLog, run: str | None = None) -> MeasuredExposure:
             "from before that column existed cannot be interpolated. Re-run the exposure route"
         )
 
+    city_totals_path = (
+        run_dir / config.DATA_SUBDIR / f"{config.SURVEY_CITY_TOTALS_FILENAME}.parquet"
+    )
+    if not city_totals_path.exists():
+        raise FileNotFoundError(
+            f"{run_dir.name} exported no {config.SURVEY_CITY_TOTALS_FILENAME}. The comparison "
+            "against what the 2005 survey published is made over the whole surveyed region, "
+            "because that is the footprint every delivery states its figures on, and this "
+            "table is the only place the region totals survive apportionment. Re-run the "
+            "exposure route"
+        )
+    city_totals = pd.read_parquet(city_totals_path)
+
     log.record(
         "read the measured exposure table",
         rows_in=len(table),
@@ -148,10 +166,12 @@ def read_measured(log: RunLog, run: str | None = None) -> MeasuredExposure:
                 for day_type in config.DAY_TYPES
                 if day_type in set(table[config.DAY_TYPE_COL])
             ),
-            "this stage reads no survey and writes no change to this table",
+            f"{len(city_totals)} row(s) of region totals per year, mode and day type read "
+            "beside it, which is the footprint every published figure is stated on",
+            "this stage reads no survey and writes no change to either table",
         ],
     )
-    return MeasuredExposure(table=table, source_run=run_dir.name)
+    return MeasuredExposure(table=table, city_totals=city_totals, source_run=run_dir.name)
 
 
 # ---------------------------------------------------------------------------
@@ -983,6 +1003,7 @@ def step_volatility(
 
 
 def compare_with_2005(
+    measured: MeasuredExposure,
     table: pd.DataFrame,
     panel: pd.DataFrame,
     log: RunLog,
@@ -996,27 +1017,23 @@ def compare_with_2005(
     2011 delivery publishes for 2005. If it lands far from them, 2005 is worth
     implementing and the reason for implementing it is a number.
 
-    **The comparison is of compositions and of growth, never of levels**, and that
-    is not a convenience. The published figures are for the whole surveyed region
-    and this table is the thirty units, so no level of one is the level of the
-    other; but the share of one mode among three, and the factor by which a mode
-    grew, survive the change of footprint. The control is what makes even that
-    safe: the same source publishes 2011, this study read 2011, and if the two
-    disagree about 2011 then nothing can be concluded about 2005.
+    **It is made on the whole surveyed region and not on the thirty units**, which
+    is not a convenience. Every figure the deliveries publish is stated on that
+    territory, and the share of a mode that reaches the units differs by mode and
+    by year — 53 % of 2011's cycling against 75 % of its car travel — so comparing
+    a per-unit composition against a published one would measure the funnel and
+    call it a change in the city. What makes the region comparison transfer to the
+    panel is that the held block carries the anchor year's composition by
+    construction, and the run checks how far that is from true.
 
-    It also compares what the source calls the mobility index — trips per person —
-    against the one thing the held block asserts, which is that the rate did not
-    move. That is the closest the source comes to the quantity D40 holds flat.
+    The control is what makes any of it safe: the same source publishes 2011, this
+    study read 2011, and if the two disagree about 2011 then nothing can be
+    concluded about 2005.
     """
     reference = reference or config.PUBLISHED_2005
     series_column = config.TRIPS_PER_DAY_OF_TYPE_OVER_15MIN_COL
     modes = [actor for actor in config.ROAD_USER_TYPES if actor in reference.mode_shares]
-
-    weekday = table[
-        (table[config.DAY_TYPE_COL] == config.WEEKDAY_TYPE)
-        & (table[config.ACTOR_TYPE_COL].isin(modes))
-    ]
-    by_year = weekday.groupby([config.YEAR_COL, config.ACTOR_TYPE_COL])[series_column].sum()
+    control_year = reference.control_year
 
     log.info(
         "comparing the held block against %s. Source: %s. Both years count %s",
@@ -1026,12 +1043,23 @@ def compare_with_2005(
     )
 
     # -- the control -------------------------------------------------------
-    control_year = reference.control_year
-    published_control = pd.Series(reference.control_mode_shares)
+    region = measured.city_totals
+    anchor = region[
+        (region[config.YEAR_COL] == control_year)
+        & (region[config.DAY_TYPE_COL] == config.WEEKDAY_TYPE)
+        & (region[config.ACTOR_TYPE_COL].isin(modes))
+    ]
+    if len(anchor) != len(modes):
+        raise ValueError(
+            f"the exported region totals do not cover the four modes of {control_year} on a "
+            f"{config.WEEKDAY_TYPE}, so the comparison has no control to rest on"
+        )
+    ours = anchor.set_index(config.ACTOR_TYPE_COL)[series_column].reindex(modes)
+    ours_share = ours / ours.sum()
+
+    published_control = pd.Series(reference.control_mode_shares).reindex(modes)
     published_control = published_control / published_control.sum()
-    ours_control = by_year.xs(control_year, level=config.YEAR_COL)
-    ours_control = ours_control / ours_control.sum()
-    control_gap = float((ours_control - published_control).abs().max()) * 100
+    control_gap = float((ours_share - published_control).abs().max()) * 100
 
     lines = [
         f"{'mode':>11}  {'published ' + str(control_year):>15}  {'this study':>11}  {'gap':>7}",
@@ -1039,14 +1067,13 @@ def compare_with_2005(
     ]
     for mode in modes:
         lines.append(
-            f"{mode:>11}  {published_control[mode]:>15.1%}  {ours_control[mode]:>11.1%}  "
-            f"{(ours_control[mode] - published_control[mode]) * 100:>+6.1f}"
+            f"{mode:>11}  {published_control[mode]:>15.1%}  {ours_share[mode]:>11.1%}  "
+            f"{(ours_share[mode] - published_control[mode]) * 100:>+6.1f}"
         )
     log.table(
-        f"the control: how the three modes the source pins divide between themselves in "
-        f"{control_year}, as that source publishes it for the whole region and as this study "
-        f"measures it inside the thirty units. A composition survives the change of footprint "
-        f"where a level does not:",
+        f"the control: how the {len(modes)} modes of this study divide between themselves in "
+        f"{control_year}, as the source publishes it and as this study measures it — both over "
+        "the whole surveyed region, which is the only footprint the two share:",
         "\n".join(lines),
     )
     if control_gap > 2.0:
@@ -1067,27 +1094,48 @@ def compare_with_2005(
             reference.year,
         )
 
-    # -- the comparison ----------------------------------------------------
-    published_old = pd.Series(reference.mode_shares)
-    published_old = published_old / published_old.sum()
+    # -- does the held block carry the anchor's composition? ---------------
+    # It has to, or the region comparison says nothing about the panel. It is not
+    # exactly the anchor's, because the thirty units grow at different rates and a
+    # composition of levels moves with them; the run measures how far.
     first_year = int(table[config.YEAR_COL].min())
-    held = by_year.xs(first_year, level=config.YEAR_COL)
-    held = held / held.sum()
+    weekday = table[
+        (table[config.DAY_TYPE_COL] == config.WEEKDAY_TYPE)
+        & (table[config.ACTOR_TYPE_COL].isin(modes))
+    ]
+    inside = weekday.pivot_table(
+        index=config.YEAR_COL, columns=config.ACTOR_TYPE_COL, values=series_column, aggfunc="sum"
+    )[modes]
+    inside = inside.div(inside.sum(axis=1), axis=0)
+    drift = float((inside.loc[first_year] - inside.loc[control_year]).abs().max()) * 100
+    log.info(
+        "inside the thirty units the held block's composition at %d differs from the anchor's "
+        "at %d by %.2f point(s) at most, which is the different pace at which the units grow "
+        "and nothing else — holding a rate flat holds the composition with it, so the region "
+        "comparison below transfers to the panel",
+        first_year,
+        control_year,
+        drift,
+    )
+
+    # -- the test ----------------------------------------------------------
+    published_old = pd.Series(reference.mode_shares).reindex(modes)
+    published_old = published_old / published_old.sum()
 
     lines = [
         f"{'mode':>11}  {'published ' + str(reference.year):>15}  "
-        f"{'held ' + str(first_year):>11}  {'gap':>7}",
+        f"{'held block':>11}  {'gap':>7}",
         f"{'-' * 11}  {'-' * 15}  {'-' * 11}  {'-' * 7}",
     ]
     for mode in modes:
         lines.append(
-            f"{mode:>11}  {published_old[mode]:>15.1%}  {held[mode]:>11.1%}  "
-            f"{(held[mode] - published_old[mode]) * 100:>+6.1f}"
+            f"{mode:>11}  {published_old[mode]:>15.1%}  {ours_share[mode]:>11.1%}  "
+            f"{(ours_share[mode] - published_old[mode]) * 100:>+6.1f}"
         )
     log.table(
         f"and the test: the same composition in {reference.year} as published, against what the "
-        f"held block puts in {first_year}. The held block cannot differ from {control_year} at "
-        "all, because holding the rate flat holds the composition with it:",
+        f"held block carries. The held block cannot differ from {control_year} at all, because "
+        "holding the rate flat holds the composition with it:",
         "\n".join(lines),
     )
 
@@ -1097,41 +1145,64 @@ def compare_with_2005(
     demographic = float(residents[control_year] / residents[first_year]) ** (
         span / (control_year - first_year)
     )
+
+    rounding = reference.share_rounding
     rows = []
     for mode in modes:
-        published_growth = (
-            reference.control_mode_shares[mode] * reference.control_total_trips_per_weekday
-        ) / (reference.mode_shares[mode] * reference.total_trips_per_weekday)
+        old_share = reference.mode_shares[mode]
+        new_share = reference.control_mode_shares[mode]
+        old_level = old_share * reference.total_trips_per_weekday
+        new_level = new_share * reference.control_total_trips_per_weekday
         rows.append(
             {
                 "MODE": mode,
-                f"PUBLISHED_{reference.year}": reference.mode_shares[mode]
-                * reference.total_trips_per_weekday,
-                f"PUBLISHED_{control_year}": reference.control_mode_shares[mode]
-                * reference.control_total_trips_per_weekday,
-                "PUBLISHED_GROWTH": published_growth,
+                f"PUBLISHED_{reference.year}": old_level,
+                f"PUBLISHED_{control_year}": new_level,
+                "PUBLISHED_GROWTH": new_level / old_level,
+                # The shares are labels on a pie chart, in whole per cent. Half a
+                # point of rounding is nothing at 46 % and half the value at 1 %, so
+                # the factor is a band and quoting its midpoint alone would claim a
+                # precision the source does not have.
+                "GROWTH_LOW": (
+                    (new_share - rounding) * reference.control_total_trips_per_weekday
+                ) / ((old_share + rounding) * reference.total_trips_per_weekday),
+                "GROWTH_HIGH": (
+                    (new_share + rounding) * reference.control_total_trips_per_weekday
+                ) / ((old_share - rounding) * reference.total_trips_per_weekday),
                 "HELD_GROWTH": demographic,
-                "RATIO": published_growth / demographic,
             }
         )
     growth = pd.DataFrame(rows)
+    growth["CONTRADICTED"] = growth["GROWTH_LOW"] > growth["HELD_GROWTH"]
 
     lines = [
         f"{'mode':>11}  {str(reference.year):>12}  {str(control_year):>12}  "
-        f"{'published':>10}  {'held':>7}  {'ratio':>7}",
-        f"{'-' * 11}  {'-' * 12}  {'-' * 12}  {'-' * 10}  {'-' * 7}  {'-' * 7}",
+        f"{'published':>10}  {'band':>16}  {'held':>7}  ",
+        f"{'-' * 11}  {'-' * 12}  {'-' * 12}  {'-' * 10}  {'-' * 16}  {'-' * 7}  ",
     ]
     for _, row in growth.iterrows():
         lines.append(
             f"{row['MODE']:>11}  {row[f'PUBLISHED_{reference.year}']:>12,.0f}  "
             f"{row[f'PUBLISHED_{control_year}']:>12,.0f}  {row['PUBLISHED_GROWTH']:>10.2f}x  "
-            f"{row['HELD_GROWTH']:>6.2f}x  {row['RATIO']:>6.2f}x"
+            f"{row['GROWTH_LOW']:>7.2f}x-{row['GROWTH_HIGH']:<7.2f}  {row['HELD_GROWTH']:>6.2f}x  "
+            + ("contradicts the held rate" if row["CONTRADICTED"] else "consistent with it")
         )
     log.table(
         f"what the level did between {reference.year} and {control_year}, as published, against "
         f"what the held rate implies it did over the same span — which is the population and "
-        f"nothing else, because a held rate moves only with its denominator:",
+        "nothing else, because a held rate moves only with its denominator. The band is what "
+        "the shares' rounding allows:",
         "\n".join(lines),
+    )
+
+    contradicted = list(growth.loc[growth["CONTRADICTED"], "MODE"])
+    log.info(
+        "%d of the %d modes contradict the held rate even at the most forgiving end of their "
+        "rounding: %s. The others are %s",
+        len(contradicted),
+        len(modes),
+        ", ".join(contradicted) or "none",
+        ", ".join(sorted(set(modes) - set(contradicted))) or "none",
     )
 
     # -- the rate itself, which is the quantity being held ------------------

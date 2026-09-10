@@ -1796,12 +1796,45 @@ def survey_dictionary_table(
     return pd.DataFrame(rows)
 
 
+def survey_city_totals_table(
+    apportionments: dict[int, SurveyApportionment],
+) -> pd.DataFrame:
+    """What each survey measures over the whole surveyed region, per mode and day type.
+
+    Before any of this study's removals, and on `TRIPS_PER_DAY_OF_TYPE` — one day of
+    the kind named, whatever that year's factor happens to expand to — so that two
+    years can be put side by side and so that a published figure can be compared
+    against it without changing footprint. Every total a survey publishes is stated
+    on this territory; not one of them is stated on the thirty units.
+    """
+    rows: list[dict[str, object]] = []
+    for year, allocation in sorted(apportionments.items()):
+        shares = allocation.trips.universe_shares
+        for (actor, day_type), row in allocation.trips.totals_before_removals.iterrows():
+            share = float(shares.get(day_type, 1.0))
+            rows.append(
+                {
+                    config.YEAR_COL: year,
+                    config.ACTOR_TYPE_COL: actor,
+                    config.DAY_TYPE_COL: day_type,
+                    config.TRIPS_PER_DAY_OF_TYPE_COL: float(row[surveys.TRIPS_COL]) / share,
+                    config.TRIPS_PER_DAY_OF_TYPE_OVER_15MIN_COL: float(
+                        row[surveys.TRIPS_OVER_15MIN_COL]
+                    ) / share,
+                }
+            )
+    return pd.DataFrame(rows).sort_values(
+        [config.YEAR_COL, config.DAY_TYPE_COL, config.ACTOR_TYPE_COL], kind="stable"
+    ).reset_index(drop=True)
+
+
 def export_from_surveys(
     table: pd.DataFrame,
     log: RunLog,
     survey_list: tuple[config.MobilitySurvey, ...] | None = None,
+    apportionments: dict[int, SurveyApportionment] | None = None,
 ) -> dict[str, Path]:
-    """Write the long exposure table and the dictionary that reads it."""
+    """Write the long exposure table, the region totals, and the dictionary."""
     survey_list = survey_list or config.MOBILITY_SURVEYS
     data_dir = log.run_dir / config.DATA_SUBDIR
     data_dir.mkdir(parents=True, exist_ok=True)
@@ -1815,6 +1848,13 @@ def export_from_surveys(
     dictionary_path = data_dir / f"{config.REFERENCE_PREFIX}__exposure_dictionary.csv"
     survey_dictionary_table(survey_list).to_csv(dictionary_path, index=False, encoding="utf-8")
     paths["survey_dictionary"] = dictionary_path
+
+    if apportionments:
+        city_totals = survey_city_totals_table(apportionments)
+        city_path = data_dir / f"{config.SURVEY_CITY_TOTALS_FILENAME}.csv"
+        city_totals.to_csv(city_path, index=False, encoding="utf-8")
+        city_totals.to_parquet(city_path.with_suffix(".parquet"))
+        paths["survey_city_totals"] = city_path
 
     log.info(
         "exported the long exposure table (%d rows) and its dictionary to %s/",
@@ -2493,7 +2533,7 @@ def report_pedestrian_definitions(
         allocation = apportionments[year]
         definitions = allocation.trips.pedestrian_definitions
         if config.WEEKDAY_TYPE not in definitions.index:
-            continue
+            continue  # a year with no weekday would be a year with nothing to compare
         share = float(allocation.trips.universe_shares.get(config.WEEKDAY_TYPE, 1.0))
         full = float(definitions.loc[config.WEEKDAY_TYPE, surveys.TRIPS_COL]) / share
         narrow = float(

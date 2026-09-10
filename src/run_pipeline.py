@@ -157,7 +157,7 @@ def run_interpolation(log: RunLog) -> None:
 
     interpolation.report(table, measured, log)
     interpolation.step_volatility(measured, panel, log)
-    interpolation.compare_with_2005(table, panel, log)
+    interpolation.compare_with_2005(measured, table, panel, log)
 
 
 def run_rho(log: RunLog) -> None:
@@ -242,7 +242,7 @@ def run_exposure(log: RunLog) -> None:
     units = loading.load_territorial_units(log)
 
     table, apportionments = exposure.build_from_surveys(units, log)
-    paths = exposure.export_from_surveys(table, log)
+    paths = exposure.export_from_surveys(table, log, apportionments=apportionments)
     exposure.render_survey_figures(table, units, apportionments, log)
 
     delivered_ok = True

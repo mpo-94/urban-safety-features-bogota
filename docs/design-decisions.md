@@ -4407,8 +4407,8 @@ the 2005 survey joins the series is open, and the measurement that decides it ha
 now been made** — see the last section.
 
 **Built:** Yes. `src/interpolation.py`, route `interpolation`. Run
-`run_20260910_004623`: 6,480 rows, 17 checks, none failed, on the exposure table of
-`run_20260909_221932`. `docs/interpolating-the-exposure.md` was the specification
+`run_20260910_021628`: 6,480 rows, 17 checks, none failed, on the exposure table of
+`run_20260910_021307`. `docs/interpolating-the-exposure.md` was the specification
 and is now the record.
 
 ### What has to be filled, and what is already annual
@@ -4549,32 +4549,75 @@ quince (15) minutos"*, which is D39's second pedestrian column and nothing else.
 figures are declared in `config.PUBLISHED_2005` with that citation beside them, so
 the comparison is made by the run rather than typed into a report.
 
-**Levels cannot cross the two footprints and compositions can.** The published
-figures are the whole surveyed region and the study's table is the thirty units, so
-no level of one is a level of the other — but the share of one mode among three, and
-the factor by which a mode grew, survive the change. **The control is what makes even
-that safe, and it is as good as this project has had:** the same source publishes
-2011, and how the three pinned modes divide between themselves comes out 60.9 / 6.5 /
-32.6 published against **61.0 / 6.4 / 32.6 measured**, a tenth of a point at worst.
+**The prose of that chapter pins three modes and the figures beside it pin all
+four.** Paragraphs 5.15 and 5.16 give walking, motorcycle and public transport and
+say only that *"el vehículo privado se mantiene entre el rango del 14% y el 16%"*
+across the two years. Figura 5.16 and Figura 5.17, on page 265, are the two modal
+splits drawn in full, and they say which end of that range belongs to which year —
+**car is 16 % in 2005 and 14 % in 2011, not a flat 15 % in both** — and they state
+the bicycle, which the prose never does. Both were read before this comparison was
+made, and the difference matters: on the prose alone the car row appeared to grow
+1.36× and it actually grows 1.19×.
 
-**The test, then.** The held block cannot differ from 2011 at all — holding a rate
-flat holds the composition with it — so this is 2005 against 2011 with two years of
-population growth in between:
+**The comparison is made over the whole surveyed region and not over the thirty
+units.** Every figure any of the four deliveries publishes is stated on that
+territory, and the share of a mode that reaches the units differs by mode and by
+year — 53 % of 2011's cycling against 75 % of its car travel — so a per-unit
+composition compared against a published one would measure the funnel and call it a
+change in the city. The `exposure` route therefore exports
+`reference__survey_city_totals`, which is what each survey measures per mode and day
+type before any of this study's removals, and the `interpolation` route reads it.
+What makes the region comparison transfer to the panel is that holding a rate flat
+holds the composition with it: **inside the thirty units the held block's
+composition at 2007 is within 0.10 points of the anchor's at 2011**, and that
+remainder is only the different pace at which the units grow.
 
-| | `PEDESTRIAN` | `MOTORCYCLE` | `CAR` |
+**The control, and it is as good as this project has had:**
+
+| Mode | Published 2011 | This study, 2011 | Gap |
 |---|---:|---:|---:|
-| Published 2005 | 46.7 % | 3.3 % | 50.0 % |
-| The held block at 2007 | 60.8 % | 6.5 % | 32.7 % |
-| Gap | **+14.2** | **+3.1** | **−17.3** |
+| `PEDESTRIAN` | 56.0 % | 56.8 % | +0.8 |
+| `BICYCLE` | 10.0 % | 9.3 % | −0.7 |
+| `MOTORCYCLE` | 6.0 % | 6.3 % | +0.3 |
+| `CAR` | 28.0 % | 27.7 % | −0.3 |
+
+**Eight tenths of a point at worst, on four modes**, which is what says the 2005
+column is being compared against something.
+
+**The test.** The held block cannot differ from 2011 at all, so this is 2005 against
+2011 with two years of population growth in between:
+
+| | `PEDESTRIAN` | `BICYCLE` | `MOTORCYCLE` | `CAR` |
+|---|---:|---:|---:|---:|
+| Published 2005 | 41.2 % | 8.8 % | 2.9 % | 47.1 % |
+| The held block | 56.8 % | 9.3 % | 6.3 % | 27.7 % |
+| Gap | **+15.6** | +0.5 | **+3.3** | **−19.4** |
+
+**The bicycle is the one mode that barely moves**, which is a finding rather than a
+null result: cycling grew at almost exactly the rate the rest of the city's travel
+grew, so its *share* is flat while its level more than doubles. Walking and the car
+are where the composition turns over.
 
 And the same thing as growth, which is what the held rate asserts. A held rate moves
-only with its denominator, so over the six years it grows 6 %:
+only with its denominator, so over the six years it grows 1.06×. The band is what
+the rounding of the two pie charts allows — the shares are labelled in whole per
+cent, which is nothing on a mode at 46 % and half the value on a mode at 1 %:
 
-| | Published 2005 | Published 2011 | Published growth | Held growth |
-|---|---:|---:|---:|---:|
-| `PEDESTRIAN` | 1,358,000 | 3,696,000 | 2.72× | 1.06× |
-| `MOTORCYCLE` | 97,000 | 396,000 | 4.08× | 1.06× |
-| `CAR` | 1,455,000 | 1,980,000 | 1.36× | 1.06× |
+| | Published 2005 | Published 2011 | Growth | Band | Held |
+|---|---:|---:|---:|---|---:|
+| `PEDESTRIAN` | 1,358,000 | 3,696,000 | 2.72× | 2.58–2.87× | 1.06× |
+| `BICYCLE` | 291,000 | 660,000 | 2.27× | 1.75–2.99× | 1.06× |
+| `MOTORCYCLE` | 97,000 | 396,000 | 4.08× | 2.27–9.53× | 1.06× |
+| `CAR` | 1,552,000 | 1,848,000 | 1.19× | 1.11–1.27× | 1.06× |
+
+**All four contradict the held rate even at the most forgiving end of their
+rounding** — but they do not contradict it equally, and the report has to say so.
+Motorcycle and bicycle are the strong rows: large factors, and neither is subject to
+the walking caveat or to the transfer rule. Walking is larger still and is the row
+the chapter itself warns about. **Car is contradicted by five per cent**, 1.11×
+against 1.06× at the bottom of its band, which is inside any reasonable allowance
+for two surveys run six years apart by different consultants. On the car alone this
+test would be inconclusive.
 
 **And the source publishes the held quantity itself.** The same chapter gives trips
 per person on a weekday by socioeconomic stratum for both years — 0.95 → 1.48, 1.08 →
@@ -4583,24 +4626,28 @@ per person on a weekday by socioeconomic stratum for both years — 0.95 → 1.4
 Nothing in the comparison is closer to the assumption being tested and nothing
 contradicts it more directly.
 
-**Four caveats, all of them printed by the run.** 2005 counted a transfer as a trip
+**Five caveats, all of them printed by the run.** 2005 counted a transfer as a trip
 of its own, so its total is inflated and the real growth is *larger* than the
-published one — the gap above is conservative. The chapter says the walking of the two
-surveys was collected differently even at the same threshold, so the pedestrian row is
-the weakest of the three and the motorcycle and car rows are not subject to it. The
-2015 delivery's Tomo IV states that a direct comparison with 2005 **is not possible**
-and publishes 2005 only as reference values — which is a statement about levels, and
-is why this test decides whether to implement 2005 rather than anchoring anything to
-it. And the source states no bicycle share for 2005, so that mode has nothing to be
-compared against.
+published one — the gaps above are conservative. The chapter says the walking of the
+two surveys was collected differently even at the same threshold, so the pedestrian
+row is the weakest of the four and motorcycle and car are subject to neither that
+nor the transfer rule. The 2015 delivery's Tomo IV states that a direct comparison
+with 2005 **is not possible** and publishes 2005 only as reference values — a
+statement about levels, and the reason this test decides whether to implement 2005
+rather than anchoring anything to it. The shares are read off pie charts in whole
+per cent, hence the bands. And **these are the figures the 2011 delivery published
+about 2005, not the 2005 survey itself**: what a reading of its own records would
+support is a different question and a larger one.
 
 **What this settles and what it leaves.** It settles that **the held block is the
-weakest part of the panel and is weak in a direction the data can name**: it is 14 to
-17 points away from the only external evidence about those years, on a comparison
-whose control agrees to a tenth of a point. It does not settle that implementing 2005
-is worth a session — that is my advisor's decision and it is a full implementation
-pass, a fifth zoning and six years containing TransMilenio's phases II and III. What
-D40 promised was a number rather than an impression, and the number is above.
+weakest part of the panel and is weak in a direction the data can name**: it sits
+15 to 19 points away from the only external evidence about those years on the two
+modes that turn over, on a comparison whose control agrees to eight tenths of a
+point, and it asserts a flat trips-per-person where the source measures a 36 % rise.
+It does not settle that implementing 2005 is worth a session — that is my advisor's
+decision, and it is a full implementation pass, a fifth zoning and six years
+containing TransMilenio's phases II and III. What D40 promised was a number rather
+than an impression, and the number is above.
 
 **One thing the same exercise found that this decision did not ask for.** The
 interpolated curve was compared against the one annual series the study already has,

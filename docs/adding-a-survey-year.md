@@ -269,6 +269,13 @@ If any of this comes out differently, the declaration is wrong — not the shape
 
 - One row per unit, year, actor type and day type, in the columns
   `config.survey_exposure_columns()` declares, in that order.
+- A row per actor type and day type in `reference__survey_city_totals`, which is
+  what the year measures over the **whole surveyed region** before this study's
+  removals. A new year contributes to it by existing; nothing has to be declared
+  for it. It is there because every figure the deliveries publish is stated on that
+  footprint and none of them on the thirty units, so a comparison against a
+  published number has to come back to it — which is what the interpolation's
+  comparison against 2005 does.
 - Two figures per combination, filed as
   `figures/exposure/<year>/<mode>/<kind>/`, with the year and mode repeated in
   the file name.

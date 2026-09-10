@@ -1,7 +1,7 @@
 # Interpolating the exposure over the years no survey covers
 
 **Both halves are built.** D39 landed on `run_20260909_214626` and D40 on
-`run_20260910_004623`, and this document is no longer a specification: it is what
+`run_20260910_021628`, and this document is no longer a specification: it is what
 was built, what it is checked against, and what building it changed. **Section 8 is
 the last of those** and it is the part a reader who knows the decisions should start
 from. Section 16 of [`verification-report.md`](verification-report.md) is the
@@ -54,9 +54,9 @@ what the first writes:
   720 that were required to be. What building it revealed is in section 7, and
   section 3 of this document is where it matters: the monotone series is the
   region's, and inside the thirty units the same column turns at 2019.
-- **D40's interpolation, in a route of its own. Built** on `run_20260910_004623`:
+- **D40's interpolation, in a route of its own. Built** on `run_20260910_021628`:
   6,480 rows, 17 checks, none failed, `src/interpolation.py` and the route
-  `interpolation`, reading the exposure table of `run_20260909_221932` and the
+  `interpolation`, reading the two tables of `run_20260910_021307` and the
   population panel and no survey at all. Sections 1 to 4 are what it does; section 8
   is what building it settled and what it found.
 
@@ -384,13 +384,29 @@ why D39 had to come first. They are declared in `config.PUBLISHED_2005` with the
 citation beside them, so the run makes the comparison rather than a report quoting
 it.
 
-**The control is a tenth of a point.** How the three modes the source pins divide
-between themselves in 2011: 60.9 / 6.5 / 32.6 published against 61.0 / 6.4 / 32.6
-measured. **The test is 14 to 17 points.** The held block puts 2007 at 60.8 / 6.5 /
-32.7 against a published 2005 of 46.7 / 3.3 / 50.0 — and it cannot do otherwise,
-because holding a rate flat holds the composition with it. And the same chapter
-publishes trips per person for both years, by stratum, rising 15 % to 56 % where
-the held block asserts no change at all.
+**Read the figures, not only the prose.** The chapter's paragraphs pin three modes
+and leave the car as a range across both years; **Figura 5.16 and Figura 5.17 on
+page 265 draw both modal splits in full** and settle it — car 16 % in 2005 falling
+to 14 % in 2011, and a bicycle of 3 % rising to 5 % that the prose never mentions.
+On the prose alone the car appeared to grow 1.36× and it actually grows 1.19×.
+
+**Do it over the region and not over the units.** Every published figure is stated
+on the whole surveyed region, and the share of a mode that reaches the thirty units
+differs by mode and by year — 53 % of 2011's cycling against 75 % of its car travel
+— so a per-unit composition compared against a published one measures the funnel.
+The `exposure` route exports `reference__survey_city_totals` for this. It transfers
+to the panel because holding a rate flat holds the composition with it: inside the
+units the held block's 2007 composition is within 0.10 points of the anchor's.
+
+**The control is eight tenths of a point on four modes**: 56.0 / 10.0 / 6.0 / 28.0
+published against 56.8 / 9.3 / 6.3 / 27.7 measured. **The test is 15 to 19 points on
+the two modes that turn over**: the held block carries 56.8 / 9.3 / 6.3 / 27.7
+against a published 2005 of 41.2 / 8.8 / 2.9 / 47.1. As growth, against the 1.06×
+the held rate allows: walking 2.72×, bicycle 2.27×, motorcycle 4.08×, car 1.19×,
+and all four survive the rounding of the charts — though the car survives it by
+five per cent, which is inconclusive on its own. And the same chapter publishes
+trips per person for both years, by stratum, rising 15 % to 56 % where the held
+block asserts no change at all.
 
 **So the held block is the weakest part of the panel and it is weak in a direction
 the data can name.** Whether that is worth implementing 2005 is a decision about a

@@ -3502,6 +3502,17 @@ def survey_exposure_columns() -> tuple[str, ...]:
 # cannot be identified is traceable to nothing.
 INTERPOLATION_SOURCE_RUN: str | None = None
 
+# What each survey measures over the WHOLE SURVEYED REGION, per mode and day type,
+# before this study sets anything aside. The `exposure` route writes it and the
+# `interpolation` route reads it, because every figure any of the four deliveries
+# publishes is stated on that footprint and none of them is stated on the thirty
+# units. Comparing a per-unit figure against a published one without coming back to
+# this table compares two different territories — and the share of a mode that
+# reaches the units differs by mode and by year, so the error it hides is not even
+# constant.
+SURVEY_CITY_TOTALS_FILENAME = f"{REFERENCE_PREFIX}__survey_city_totals"
+
+
 EXPOSURE_PROVENANCE_COL = "EXPOSURE_PROVENANCE"
 MEASURED_EXPOSURE = "MEASURED"          # a survey year: the value is the survey's
 INTERPOLATED_EXPOSURE = "INTERPOLATED"  # between two surveys
@@ -3593,6 +3604,12 @@ class PublishedYear:
     control_total_trips_per_weekday: float
     control_mode_shares: dict[str, float]
     caveats: tuple[str, ...] = ()
+    # How coarsely the source states its shares. The two modal splits are pie charts
+    # labelled in whole per cent, so every share carries half a point of rounding —
+    # which is nothing on a mode at 46 % and is half the value on a mode at 1 %. The
+    # run turns it into a band around every growth factor rather than quoting a point
+    # estimate the source cannot support.
+    share_rounding: float = 0.005
 
 
 # Chapter 5 of Tomo III of the 2011 delivery, which was written to compare the two
@@ -3605,7 +3622,9 @@ PUBLISHED_2005 = PublishedYear(
     label="Encuesta de movilidad 2005",
     source=(
         "EODH 2011, Tomo III, chapter 5 (Comparacion de indicadores de las encuestas de "
-        "movilidad 2005-2011), paragraphs 5.14 to 5.16 and Figures 5.15 to 5.17"
+        "movilidad 2005-2011): the totals from paragraph 5.14, the modal splits read off "
+        "Figura 5.16 (2005) and Figura 5.17 (2011) on page 265, which state all ten modes "
+        "where paragraphs 5.15 and 5.16 state only six"
     ),
     definition=(
         "one weekday of the study region, all modes, including walking of fifteen minutes or "
@@ -3613,19 +3632,25 @@ PUBLISHED_2005 = PublishedYear(
         "counts"
     ),
     total_trips_per_weekday=9_700_000.0,
+    # All four modes of this study, from Figura 5.16. The prose of the chapter pins
+    # only three of them and says of the fourth that "el vehiculo privado se mantiene
+    # entre el rango del 14% y el 16%" across the two years; the chart says which end
+    # of that range belongs to which year, and it is 16 % in 2005 falling to 14 % in
+    # 2011 rather than a flat 15 % in both. Reading the chart also recovers the
+    # bicycle, which the prose never states at all.
     mode_shares={
         PEDESTRIAN: 0.14,
+        BICYCLE: 0.03,
         MOTORCYCLE: 0.01,
-        # "el vehiculo privado se mantiene entre el rango del 14% y el 16%" across the
-        # two years; 0.15 is the midpoint of the range the chapter states.
-        CAR: 0.15,
+        CAR: 0.16,
     },
     control_year=2011,
     control_total_trips_per_weekday=13_200_000.0,
     control_mode_shares={
         PEDESTRIAN: 0.28,
+        BICYCLE: 0.05,
         MOTORCYCLE: 0.03,
-        CAR: 0.15,
+        CAR: 0.14,
     },
     caveats=(
         "the chapter states that 2005 counted a transfer as a trip of its own where 2011 counts "
@@ -3633,12 +3658,16 @@ PUBLISHED_2005 = PublishedYear(
         "between them is larger than the published totals imply",
         "the chapter says outright that the walking of the two surveys was collected differently "
         "even at the same fifteen-minute threshold, so the pedestrian row is the weakest of the "
-        "three",
+        "four; MOTORCYCLE and CAR are subject to neither that nor the transfer rule above",
         "the 2015 delivery's Tomo IV states that a direct comparison with 2005 is not possible "
         "and publishes 2005 figures only as reference values, which is why this comparison "
         "decides whether to implement 2005 rather than anchoring anything",
-        "the source states no bicycle share for 2005 anywhere, so BICYCLE has nothing to be "
-        "compared against",
+        "the shares are read off pie charts labelled in whole per cent, so each carries half a "
+        "point of rounding; on MOTORCYCLE at 1 % that is half the value, which is why every "
+        "growth factor is reported as a band and not as a point",
+        "these are the figures the 2011 delivery published about 2005 and not the 2005 survey "
+        "itself, which is neither on disk nor implemented; what a reading of its own records "
+        "would support is a different question and a larger one",
     ),
 )
 

@@ -110,12 +110,14 @@ class SurveyTrips:
     # of the second column is checked against, and it is a separate measurement
     # of the file rather than a fraction of the first.
     totals_over_15min: pd.Series
-    # What the two pedestrian definitions come to over the whole surveyed region,
-    # per day type, before any record is set aside for its zone or its geometry.
-    # Kept because it is the figure the four years are compared on and the one
-    # the survey's own publications state: the removals are the study's and the
-    # published splits are not made over them.
-    pedestrian_definitions: pd.DataFrame
+    # What each mode comes to over the whole surveyed region, per day type, on both
+    # pedestrian definitions, BEFORE any record is set aside for its zone or its
+    # geometry. Kept because it is the footprint every published figure is stated
+    # on: the removals are this study's and no publication makes them, and what
+    # reaches the thirty units is a share of this that differs by mode and by year.
+    # Comparing a per-unit figure against a published one without coming back here
+    # first compares two different territories.
+    totals_before_removals: pd.DataFrame
     # Trips per day of the modes deliberately left outside the study, by the label
     # the file gives them, and of the records that carry no origin or destination
     # zone. Both are here so the run can check that the four measured modes plus
@@ -128,6 +130,18 @@ class SurveyTrips:
     # balance can name them and the report can say how much of each mode went.
     implausible_totals: pd.Series
     implausible_records: int
+
+    @property
+    def pedestrian_definitions(self) -> pd.DataFrame:
+        """The two walking definitions per day type, before any record is set aside.
+
+        The one mode that has two definitions, pulled out of the table that holds
+        all four, so that the figure D39 was decided on has one place to come from.
+        """
+        modes = self.totals_before_removals.index.get_level_values(config.ACTOR_TYPE_COL)
+        if config.PEDESTRIAN not in set(modes):
+            return self.totals_before_removals.iloc[:0].droplevel(config.ACTOR_TYPE_COL)
+        return self.totals_before_removals.xs(config.PEDESTRIAN, level=config.ACTOR_TYPE_COL)
 
 
 # ---------------------------------------------------------------------------
@@ -1145,15 +1159,20 @@ def read(survey: config.MobilitySurvey, log: RunLog) -> SurveyTrips:
                 survey.label,
                 unjudged_walk,
             )
-        pedestrian_definitions = (
-            measured[walking]
-            .groupby(config.DAY_TYPE_COL)[[TRIPS_COL, TRIPS_OVER_15MIN_COL]]
-            .sum()
+
+    # Every mode, per day type, as the file expands it and before this study sets
+    # anything aside. This is the footprint the surveys publish on.
+    totals_before_removals = measured.groupby(
+        [config.ACTOR_TYPE_COL, config.DAY_TYPE_COL]
+    )[[TRIPS_COL, TRIPS_OVER_15MIN_COL]].sum()
+    # The one mode with two definitions, for the note below and for nothing else.
+    walking_definitions = (
+        totals_before_removals.xs(config.PEDESTRIAN, level=config.ACTOR_TYPE_COL)
+        if config.PEDESTRIAN in set(
+            totals_before_removals.index.get_level_values(config.ACTOR_TYPE_COL)
         )
-    else:
-        pedestrian_definitions = measured.iloc[:0].groupby(config.DAY_TYPE_COL)[
-            [TRIPS_COL, TRIPS_OVER_15MIN_COL]
-        ].sum()
+        else totals_before_removals.iloc[:0].droplevel(config.ACTOR_TYPE_COL)
+    )
 
     for source_column, target in (
         (survey.origin_zone_column, ZONE_ORIGIN_COL),
@@ -1282,7 +1301,7 @@ def read(survey: config.MobilitySurvey, log: RunLog) -> SurveyTrips:
                 f"{day_type} {row[TRIPS_COL] / universe_shares.get(day_type, 1.0):,.0f} on every "
                 f"walking trip and {row[TRIPS_OVER_15MIN_COL] / universe_shares.get(day_type, 1.0):,.0f} "
                 f"of fifteen minutes or more ({100 * row[TRIPS_OVER_15MIN_COL] / row[TRIPS_COL]:.1f}%)"
-                for day_type, row in pedestrian_definitions.iterrows()
+                for day_type, row in walking_definitions.iterrows()
             ),
         ],
     )
@@ -1298,7 +1317,7 @@ def read(survey: config.MobilitySurvey, log: RunLog) -> SurveyTrips:
         file_total=file_total,
         totals=totals,
         totals_over_15min=totals_over_15min,
-        pedestrian_definitions=pedestrian_definitions,
+        totals_before_removals=totals_before_removals,
         not_measured_totals=not_measured_totals,
         unzoned_total=unzoned_total,
         implausible_totals=implausible_totals,
