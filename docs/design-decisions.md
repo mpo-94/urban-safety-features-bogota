@@ -4928,3 +4928,37 @@ annual series per mode gives a second equation instead of a second assumption, a
 2020 is precisely the year for which such series are most likely to exist and to be
 published. Looking for one is cheaper than it was when D40 deferred it, because now
 only three years have to be covered well.
+
+**And there is a candidate, recorded here so the lead is not lost.** Gómez Triana,
+I. (2021), directed by Á. Rodríguez Valencia, Universidad de los Andes,
+`hdl.handle.net/1992/53693`, compares three modes across 2019–2021 using the
+**aforos and fare validations of the Secretaría Distrital de Movilidad**. The
+period covers 2020 and 2021 exactly, and counts and validations are genuinely
+exogenous to the crash record, which is the property that turns a second assumption
+into a second equation. Four things have to be established before it can be used,
+and none of them can be read off an abstract:
+
+- **which three modes**, because the pairing with aforos and validations suggests
+  bicycle, public transport and private vehicle — and public transport is not one
+  of this study's four (D38), while the pedestrian is both absent from that likely
+  trio and the mode with the worst diagnostic;
+- **whether the counting programme itself ran through the lockdowns.** Stations
+  suspended in April and May 2020 would bias an annual mean upward, and it is the
+  same class of defect as the recording change in the crash data: a measurement
+  whose completeness moved with the thing being measured;
+- **what a count is measuring**, because an aforo is a flow across a screenline and
+  this study's exposure is trips per day apportioned to a unit. What transfers is
+  the **city-level temporal shape**, not the level and not the spatial
+  distribution — which is exactly the anchored design D40 sketches: rescale the
+  annual city total per mode, keep each unit's share from the interpolation;
+- **and whether the numbers exist as data or only as charts.** The work is a
+  pointer to the SDM's own series as much as a source; what is worth asking its
+  author or its director for is which datasets were used and whether they are
+  obtainable, rather than the document itself. A figure read by eye needs its
+  precision declared, as `PublishedYear.share_rounding` does for 2005.
+
+**If it does say what the diagnostic says, that is worth more than either alone.**
+The table above puts the bicycle at 0.99 in 2020 and the pedestrian at 0.60. An
+independent count agreeing that cycling held and walking collapsed would let those
+years be patched with a corroboration instead of a preference, and that is a
+different kind of argument from anything available today.
