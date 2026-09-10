@@ -57,9 +57,26 @@ predictor tables use.** The whole point of this table is to be joined to them.
 5. **Recover the level** as `rate(t) × POPULATION(unit, t)`.
 6. **Mark every cell** with its provenance and its distance to the nearest survey.
 
-**Do it twice, once per pedestrian definition**, or once over a table that already
-carries both quantities. Nothing else in the procedure changes: the three other
-modes have one definition and both columns hold the same number for them.
+**Do it twice, once per pedestrian definition.** Nothing else in the procedure
+changes: the three other modes have one definition and both columns hold the same
+number for them.
+
+**And the second pedestrian column is a second measurement, not a rescaling of the
+first.** This is the one place the temptation is real and cheap: the city-level
+ratio between the two definitions is known for each year, so it looks as though the
+per-unit column could be obtained by multiplying. **It cannot.** Counted at the
+origin zone, each unit's share of city walking under the two definitions correlates
+at Spearman 0.97–0.98 — the ranking barely moves — but the ratio between the two
+shares runs **0.68 to 1.45 across the units**, so a single scale factor would be
+wrong by up to a fifth or a half on an individual unit. And that measurement
+*understates* the difference, because it ignores the part where the two definitions
+diverge most: **short walks are about twice as intra-zonal as long ones** — 49.1 %
+against 25.1 % in 2011, 45.4 % against 19.0 % in 2015 — and an intra-zonal trip is
+spread over a zone's units by area while an inter-zonal one is spread along a line.
+The two definitions go through different spatial operators in different
+proportions. The fifteen-minute column therefore comes from running the
+apportionment again with the duration filter applied to the pedestrian records, in
+the `exposure` route, and it lands in the measured table before this stage reads it.
 
 **The day type is a dimension of this and not a complication.** A year's Saturday
 interpolates against the other years' Saturdays and never against their weekdays.
@@ -89,6 +106,35 @@ decision for a person rather than a default.
 - `TRIPS_PER_INHABITANT × POPULATION` reproduces the level to 1e-12;
 - the provenance column has exactly four `MEASURED` years per series, and
   `YEARS_TO_NEAREST_SURVEY` is zero on exactly those.
+
+**And one the run has to report rather than pass or fail: how far each unit's rate
+moves between two adjacent surveys.** The interpolation is per unit, so it inherits
+whatever sampling noise the unit's own records carry, and the thirty units are not
+equally well sampled. Measured on `run_20260908_101110`, over the weekday and the
+four modes, **64 of the 360 unit × mode × step combinations move by more than a
+factor of two**, and they are not spread evenly:
+
+| Step | `PEDESTRIAN` | `BICYCLE` | `MOTORCYCLE` | `CAR` |
+|---|---:|---:|---:|---:|
+| 2011 → 2015 | 4 | 16 | 22 | 3 |
+| 2015 → 2019 | 3 | 6 | 1 | 2 |
+| 2019 → 2023 | 4 | 1 | 1 | 1 |
+
+**Forty-one of the sixty-four are on the 2011 → 2015 step**, which is the segment
+already known to carry an instrument change in walking, an imputation without
+geography, and the smallest share of city totals reaching the units of any year.
+The widest single step is Chapinero's cycling rate at **8.85×**, and log-linear
+interpolation will spread that as a 72 % rise every year through 2012, 2013 and
+2014.
+
+**The run prints this table and the widest ten steps on every execution.** It does
+not fail: a rate that really did multiply by nine in four years is possible, and
+Chapinero's cycling is a case where 2019 and 2023 hold the higher level, so the
+change is at least partly real. What is not acceptable is producing three
+constructed years on top of a step like that without saying so. **Whether the
+per-unit trajectories need shrinking toward the city trajectory is a question for a
+person, and it should be asked with this table in hand rather than answered by
+smoothing quietly.**
 
 **Against something outside the stage** — and this is the check that matters,
 because everything above can pass on an interpolation of the wrong column:
@@ -125,6 +171,11 @@ with it.
 
 ## 5. What is open when this is built
 
+- **Whether the per-unit trajectories need shrinking toward the city's.** The table
+  in section 3 is what the question gets asked with. The unit is the point of the
+  whole exercise, so the answer must not be to interpolate the city and hand every
+  unit the same curve — but a rate that moves 8.85× on a step that is partly an
+  artefact is not a trajectory either.
 - **Whether the held block enters the models.** Four of eighteen years with no
   behavioural variation, only demographic.
 - **Whether 2005 is implemented.** Settled by the check in section 3.

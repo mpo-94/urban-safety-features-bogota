@@ -4261,6 +4261,19 @@ fifteen-minute one.** The exposure table gains a second pedestrian quantity besi
 the first; every other mode carries the same number in both, because no other mode
 has two definitions.
 
+**The second column is a second measurement and never a rescaling of the first.**
+The city-level ratio between the two definitions is known per year, so multiplying
+looks like a shortcut. It is not one: counted at the origin zone, each unit's share
+of city walking under the two definitions correlates at Spearman 0.97–0.98 while the
+ratio between the two shares runs **0.68 to 1.45 across the thirty units** — the
+ranking survives and the levels do not. And that understates it, because it ignores
+where the definitions diverge most: **short walks are about twice as intra-zonal as
+long ones**, 49.1 % against 25.1 % in 2011, and an intra-zonal trip is apportioned
+over a zone's units by area while an inter-zonal one is spread along a line. The two
+definitions pass through different spatial operators in different proportions, so
+the fifteen-minute column is produced by running the apportionment again with the
+duration filter applied to the pedestrian records.
+
 - **The full column stays** because it is what the surveys measure, because D38's
   two reasons for it have not stopped being true, and because the crash source
   still cannot separate a short walk from a long one — so the full column is the
@@ -4348,6 +4361,18 @@ years backwards from a slope fitted to two points — and for the pedestrian mod
 slope is the 2011→2015 segment, which D39 has just established measures a change of
 instrument. **A trend extrapolated from an artefact is worse than no trend.**
 
+**The unit is the point, and the interpolation is per unit for that reason.** The
+whole study is thirty units over eighteen years; a city curve handed identically to
+every unit would not be an exposure panel. So every one of the 30 × 4 × day-type
+series is interpolated on its own trajectory, and the cost of that is that each
+inherits its own unit's sampling noise. Measured: **64 of the 360 unit × mode × step
+combinations move by more than a factor of two between adjacent surveys, and 41 of
+those 64 are on the 2011 → 2015 step** — the segment that already carries an
+instrument change, an imputation without geography and the smallest share of city
+totals reaching the units. The widest is Chapinero's cycling rate at 8.85×. The run
+reports this on every execution and does not fail on it; whether the trajectories
+need shrinking toward the city's is an open question, asked with that table in hand.
+
 **Every cell says where it came from.** The interpolated table carries
 `EXPOSURE_PROVENANCE`, one of `MEASURED`, `INTERPOLATED` or `HELD`, and
 `YEARS_TO_NEAREST_SURVEY`, which runs 0 to 4. This is the same discipline as
@@ -4409,6 +4434,10 @@ session was spent on it. Doing the cheap thing that tests the expensive thing is
 same move this project made with the delivered desire-lines layer, and it paid then.
 
 ### What this leaves open
+
+**Whether the per-unit trajectories need shrinking toward the city's.** Named above
+and measured; the answer must not be to interpolate the city and give every unit the
+same curve, because the unit is what the study is about.
 
 **Which casualty set the panel is built against**, and therefore whether the window
 starts at 2007 or 2008. The observed set has eighteen years and 2007 among them; the
