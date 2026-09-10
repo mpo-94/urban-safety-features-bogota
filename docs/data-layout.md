@@ -307,8 +307,24 @@ Two things about the delivery belong here rather than there:
   and cannot be: a machine without it can run the other three years and will stop
   with an ODBC error on 2011.
 - **A fifth survey exists and is not here.** Bogotá ran a mobility survey in
-  **2005** and nothing of it is under `data/`. What *is* under `data/` is the
-  chapter that publishes its figures: **chapter 5 of
+  **2005**, and **it is now under `data/`** at
+  `SURVEYS_DIR / "2005" / "Encuesta  de Movilidad 2005"` — note the two spaces in
+  that folder name, which is how it arrived. Four files, which is everything the
+  Alcaldía publishes: `Encuesta.mdb` (the microdata, Access, 57 MB),
+  `Descripcion Encuesta.DOC` (the dictionary),
+  `BM_58 STT VM Informe FinalVersion3.doc` (a later matrix-validation study, not the
+  survey's results report) and `Presentacion Encuesta STT.ppt` (the results
+  presentation).
+
+  **The three Office files are legacy binary formats and were converted by hand into
+  `convertidos/` beside them**, as `.docx`, `.pptx` and `.pdf`. The originals stay
+  untouched: that folder is the record of what was delivered and the conversions are
+  ours. Nothing of 2005 is declared or implemented —
+  [`implementing-2005.md`](implementing-2005.md) is the inspection pass and says what
+  is settled and what is not.
+
+  What was already under `data/` before that, and still matters, is the chapter that
+  publishes 2005's figures second-hand: **chapter 5 of
   `2011/Encuesta de Movilidad 2011/120927_InformeFinal_TomoIII.pdf`**, titled
   *"Comparación de indicadores de las encuestas de movilidad 2005-2011"*. Those
   figures are declared in `config.PUBLISHED_2005` and the `interpolation` route
