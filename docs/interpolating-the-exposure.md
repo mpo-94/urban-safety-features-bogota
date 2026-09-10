@@ -256,10 +256,11 @@ with it.
   which is what section 8's measurement asked for: 2007 to 2010 are interpolated
   between two measured years and there is no weekday held block to decide about. What
   is still held is the Saturday's two ends, the whole Sunday and 2024. See section 9.
-- **Whether the constructed years 2020, 2021 and 2022 enter them either, and
-  whether they are patched before they do.** This was not open before the stage was
-  built and it is now: section 8 has the reason and D41 has the table that isolates
-  them.
+- ~~**Whether the constructed years 2020, 2021 and 2022 are patched.**~~ **Decided on
+  2026-09-10 and it is D42**: patched by the mirror assumption, by a factor per mode
+  computed at the city level, in a variant of the panel rather than in place of it.
+  Not built yet. Whether those years then **enter the models** is still open, and
+  D42's own limitations are the reason it is a real question.
 - ~~**Whether 2005 is implemented.**~~ **It is, on 2026-09-10.** Section 9 is what
   that did to this stage and `docs/implementing-2005.md` is the year's own record.
 - **Whether the anchored version replaces this one.** D40 defers it and says why.

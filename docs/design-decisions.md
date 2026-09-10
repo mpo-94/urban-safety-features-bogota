@@ -67,7 +67,8 @@ carried, so the second is larger for the same underlying records.
 | D38 | Exposure is built from the survey, per unit, year, mode and day type | Methodological | Closed for all five years; which day type the models take is **open** | Yes |
 | D39 | The pedestrian mode is measured twice, and the series is read on the fifteen-minute one | Methodological | Closed | Yes |
 | D40 | Exposure between survey years is interpolated as a rate, not as a level | Methodological | Closed on the method; 2005 joined the series on 2026-09-10 and the weekday held block is gone | Yes |
-| D41 | The panel is compared against the casualty series, and that comparison is a diagnostic and never a constructor | Methodological | Closed on the diagnostic; whether the pandemic years are patched by the mirror assumption is **open** | Yes |
+| D41 | The panel is compared against the casualty series, and that comparison is a diagnostic and never a constructor | Methodological | Closed on the diagnostic; the pandemic patch it left open is decided by D42 | Yes |
+| D42 | The pandemic years are patched by the mirror assumption, at the city level, in a variant of their own | Methodological | Decided on 2026-09-10; not built yet | Not yet |
 
 Methodological decisions: D1-D7, D9, D10, D11, D15, D17, D18, D19, D21, D22, D32, D35,
 D38, D39, D40.
@@ -4819,9 +4820,12 @@ table, which summed to 45 from the first measurement.)*
 to do to the exposure panel, which is the one place where the numerator of every
 model could contaminate its denominator.
 
-**Status:** Closed on the diagnostic. **Open on one thing and it is a live question:
-whether the pandemic years are patched by the mirror assumption instead of by the
-interpolation**, which is the last section.
+**Status:** Closed on the diagnostic. The one thing it left open — whether the
+pandemic years are patched by the mirror assumption instead of by the interpolation,
+which is the last section — **was decided on 2026-09-10 and is D42**. This decision
+stays as the reasoning that made that one possible: it is where the two assumptions
+are shown to be the same system with the assumption moved, and D42 is where one of
+them is applied to three named years.
 
 **Built:** Yes. `src/interpolation.py`, route `interpolation`. Run
 `run_20260910_031907`: 4,200 rows in `reference__exposure_against_casualties`.
@@ -5008,7 +5012,12 @@ That is a different and larger problem than three years sitting at the wrong lev
 and it makes the least defensible option the one that requires no decision: leaving
 those years in the models untouched and unmarked.
 
-### What is open, and it is a decision rather than a measurement
+### What was open here, and it is a decision rather than a measurement
+
+**Decided on 2026-09-10, and it is D42**: the three years are patched, by a factor
+per mode computed at the city level, in a variant of the panel rather than in place
+of it. What follows is the case as it stood when the question was still open, and it
+is left as written because it is the argument D42 rests on.
 
 **Whether the pandemic years are patched by the mirror assumption.** The diagnostic
 was built to say where the panel is least believable and it isolates two blocks. For
@@ -5091,3 +5100,275 @@ they are categorised by **destination** — workplaces, transit stations, reside
 exposure; and that the population behind them is whoever carries a phone with
 location history enabled, whose composition is unknown and may itself have moved
 during the period being measured.
+
+---
+
+## D42 — The pandemic years are patched by the mirror assumption, at the city level, in a variant of their own
+
+**Kind:** Methodological. It decides what the exposure of 2020, 2021 and 2022 is,
+which is the one block of the panel where D40's construction is known to be wrong
+rather than merely uncertain.
+
+**Status:** Decided on 2026-09-10. It answers the question D41 left open, and it is
+the only place in this study where the casualty series constructs an exposure
+instead of checking one.
+
+**Built:** Not yet. **The decision is written before any of it exists on purpose.**
+It is a methodological choice a jury will read, and arguing about the argument is
+cheaper than arguing about an implementation of the argument.
+
+### What the panel asserts about the pandemic today, and why it cannot stand
+
+Inside the thirty units, on the weekday, indexed to 2019 = 100:
+
+| Mode | 2019 | 2020 | 2021 | 2022 | 2023 |
+|---|---:|---:|---:|---:|---:|
+| `PEDESTRIAN` | 100 | 104 | 107 | 111 | 116 |
+| `BICYCLE` | 100 | 100 | 99 | 99 | 98 |
+| `MOTORCYCLE` | 100 | 106 | 110 | 115 | 120 |
+| `CAR` | 100 | 98 | 95 | 91 | 88 |
+
+**The panel says walking grew four per cent in 2020 and kept growing.** That is not
+a defensible sentence in front of a committee, and it is not a defect of the
+interpolation: D40 does exactly what it says it does, which is to draw a smooth line
+between two measured years. The line is right about the years around the pandemic
+and wrong about the pandemic, because the information that 2020 happened is not in
+the two anchors and no care inside D40's own terms can put it there.
+
+D41 states the system: a casualty count is roughly exposure times risk, the
+casualties are known for all eighteen years of the window and the exposure for four
+of them, so every constructed year has one equation and two unknowns. D40 spends its degree of freedom
+on the exposure. **For these three years it is spent on the risk instead.**
+
+### The decision, in four parts
+
+**One. The years are 2020, 2021 and 2022, and all four modes in each.** Not a
+mode-by-mode selection: choosing which cells get the treatment after seeing which
+ones look better under it is fitting, and this decision does not do that.
+
+**Two. The factor is computed at the city level, one per mode and year, and applied
+to all thirty units.** The city's risk at 2019 and at 2023 is measured; the risk
+between them is interpolated log-linearly by D40's own rule; the exposure that risk
+implies is the year's casualties divided by it; the factor is that implied exposure
+over the exposure the panel carries. Each unit keeps the share of the city it already
+had, so **the geography of the panel stays where it comes from, which is the
+survey**.
+
+**Three. The factor is derived from the ρ-corrected casualty series**, with the
+observed variant computed and printed beside it on every run as a sensitivity rather
+than kept as a second product.
+
+**Four. The patched years are a variant of the panel and not a replacement of it**,
+carried as rows under an `EXPOSURE_VARIANT` column, with a fourth provenance value,
+`IMPLIED_FROM_RISK`, beside `MEASURED`, `INTERPOLATED` and `HELD` — and the patch
+applies to the **weekday only**.
+
+### The factors, measured on `run_20260910_154603`
+
+Corrected on the left, observed on the right:
+
+| Mode | 2020 | 2021 | 2022 | | 2020 obs. | 2021 obs. | 2022 obs. |
+|---|---:|---:|---:|---|---:|---:|---:|
+| `PEDESTRIAN` | **0.584** | **0.746** | 0.963 | | 0.584 | 0.746 | 0.963 |
+| `BICYCLE` | 1.001 | **1.126** | 1.054 | | 1.001 | 1.126 | 1.054 |
+| `MOTORCYCLE` | **0.721** | 0.925 | 1.001 | | 0.734 | 0.948 | 1.012 |
+| `CAR` | **0.706** | 0.993 | 1.040 | | 0.695 | 1.101 | 1.084 |
+
+And what they do to the series, on the same index as above:
+
+| Mode | 2019 | 2020 | 2021 | 2022 | 2023 |
+|---|---:|---:|---:|---:|---:|
+| `PEDESTRIAN` | 100 | **61** | **80** | 107 | 116 |
+| `BICYCLE` | 100 | 100 | **112** | 104 | 98 |
+| `MOTORCYCLE` | 100 | **76** | 102 | 115 | 120 |
+| `CAR` | 100 | **69** | 94 | 95 | 88 |
+
+**The four modes tell one story and it is the story that happened**: everything
+collapses in 2020 except cycling, which holds and then peaks in 2021, the year Bogotá
+opened its temporary bike lanes. Nothing in the method knows that. The four series
+are produced independently of one another, from four casualty counts and four
+interpolated risks, and **that they agree is the evidence for the patch** — which is
+the argument to make, rather than the plausibility of any one of them.
+
+### Why all three years and not 2020 alone
+
+2020 is the year with the unambiguous case, and the first version of this decision
+was going to stop there. The measurement above is what changed it: 2021's pedestrian
+at 0.75 and 2022's at 0.96 describe a recovery that is neither instant nor complete,
+which is what a recovery looks like, and cutting the patch after 2020 would assert
+that travel returned to the interpolated line on 1 January 2021.
+
+The two factors above one — cycling at 1.13 in 2021 and the car at 1.04 in 2022 — are
+the ones to look at hardest, since they claim *more* travel than a straight line drawn
+through a period of restrictions. For cycling that is what Bogotá's own reporting says
+happened. For the car in 2022 it is four per cent, which is inside anything this
+method can resolve.
+
+### Why the city and not the unit
+
+The mirror assumption can be inverted cell by cell — D41's diagnostic already does,
+which is what makes the temptation concrete. It should not be, and the reason is
+measured. Per-unit factors for the same mode and year spread like this:
+
+| Mode, 2020 | 5th pct | median | 95th pct | range | median casualties per unit |
+|---|---:|---:|---:|---|---:|
+| `PEDESTRIAN` | 0.42 | 0.58 | 0.79 | 0.40–0.83 | 51 |
+| `BICYCLE` | 0.73 | 0.99 | 1.43 | 0.68–1.74 | 60 |
+| `MOTORCYCLE` | 0.59 | 0.71 | 0.93 | 0.52–0.96 | 146 |
+| `CAR` | 0.51 | 0.72 | 1.03 | 0.45–1.18 | 58.5 |
+
+**At fifty casualties a cell, Poisson noise alone is worth about fourteen per cent**,
+so the bicycle's 0.68 to 1.74 is very nearly all of it noise — a factor of two and a
+half between two units, manufactured out of counting error and then written into the
+exposure of thirty places for three years. The pedestrian's spread is wider than noise
+and may carry something real, since the business districts plausibly emptied more than
+the residential ones. **Separating that from noise needs shrinkage toward the city
+factor, and that is the same open question D40 already has** about the per-unit
+trajectories. It is not answered here. What this decision does instead is publish the
+dispersion as a figure, so that it can be answered on evidence.
+
+The two orders of aggregation were compared. Taking the city total and implying once
+differs from implying per unit and adding up by 0.1 to 1.7 points on three modes, and
+by 3.6 to 4.4 on the car.
+
+### Why the ρ-corrected series, and how much that choice matters
+
+D41 objects that inverting the observed set injects the recording change straight into
+the exposure, and that inverting the corrected set makes the exposure depend on which
+casualty dataset was chosen — destroying the comparison D31 exists to make. **Both
+objections survive this decision and neither is fatal to it, because the choice was
+measured.**
+
+**ρ does not touch the pedestrian at all.** In every one of the seventeen years the
+two sets share, the corrected pedestrian count equals the observed one to the record, so **the factor that
+matters most — 0.584 in 2020, the one that motivated this whole decision — does not
+depend on the ρ question in any way.** The bicycle moves by at most 1.3 %. Where the
+two sets diverge is the car, by up to 129 %, and the motorcycle by up to 24 %, which
+is exactly the population ρ exists to repair: a car occupant recorded as unhurt
+where a pedestrian never is.
+
+So the choice is consequential only for the car and the motorcycle, and there the
+corrected set is the one whose numerator is not moving for a reason that has nothing
+to do with travel. The 2020 factors agree within 1.5 points on all four modes under
+either set; where they disagree is the car in 2021, 0.993 corrected against 1.101
+observed.
+
+**What survives as a real cost:** a model fitted on the observed casualties over the
+patched exposure has, in those three years, a denominator built from the corrected
+ones. It is three years of eighteen, on one variant of the panel, and the variant is a
+filter — but it is stated in the report, and it is why the observed factors are
+printed on every run rather than discarded.
+
+### Why a variant and not a replacement
+
+The precedent is D31 and D39: the observed and the corrected casualty sets live side
+by side, the two pedestrian definitions live side by side, and in both cases what
+chooses between them downstream is a filter rather than a re-run. **A study that
+cannot show the unpatched panel cannot be argued with**, and my advisor has to be able
+to see both.
+
+The cost is that fifteen of the eighteen years are identical between the two variants
+and are carried twice — 12,960 rows where there were 6,480. The alternative considered
+was a parallel column, `..._PATCHED`, which is compact and duplicates nothing; it was
+rejected because in fifteen years out of eighteen it is one number written under two
+names, which is a failure this pipeline has already had once. **What the row design
+needs in exchange is that `EXPOSURE_VARIANT` is part of the key wherever the table is
+joined or summed**, the dictionary saying so and a check enforcing it, because a table
+that can be summed across variants will eventually be summed across variants.
+
+### What it costs, and all of it goes in the report
+
+**In the patched years the risk is not measurable.** By construction it is the
+log-linear interpolation between 2019 and 2023. No model fitted on this variant can be
+read as having measured how risk moved in 2020, 2021 or 2022 — not for the city and
+not for a unit. This is the central limitation and it belongs in the body, not in a
+footnote.
+
+**The direction of the error is known.** The pandemic literature reports that risk per
+trip *rose* on emptied streets — fewer vehicles, higher speeds. If it rose and this
+decision assumes it was smooth, the rise is attributed to a fall in travel and **the
+patch overstates how far travel fell**. That is a bound with a sign, which is worth
+more than an unsigned uncertainty, and it means the patched series is the lower end of
+what those years could have been.
+
+**The patch carries no geography of its own, and this is the objection to it that
+bites.** Every unit is multiplied by the same number, so how differently the pandemic
+hit Chapinero and Kennedy is not measured: only the level moves, never the spatial
+pattern. D41 measured that the 2020 departure **is** spatially structured — against
+each unit's car trips per inhabitant in 2019, a proxy for motorisation and for income,
+the ratio correlates at Spearman −0.49 for the car and −0.53 for the pedestrian — and
+warned where that leads: a denominator whose error runs along the socioeconomic
+geography of the city, inside a model built to relate risk to urban form, presents
+itself as a finding about urban form.
+
+**A uniform factor removes the level of that error and not its structure.** It is an
+improvement and not a solution, and saying otherwise would be worse than not patching
+at all. What it is not is a step in the wrong direction: the alternative that would
+absorb the structure is the per-unit patch, and that one writes the *risk's* spatial
+pattern into the exposure, which is the failure D41's first objection describes and on
+a quantity the thesis exists to estimate. Between leaving the level wrong and leaving
+the structure unabsorbed, this decision takes the second, marks the years, and leaves
+the shrinkage question where D40 already has it.
+
+**And the matrix is two-sided.** D41's second objection stands unaltered — a
+pedestrian casualty in a collision with a car depends on both exposures, and this
+inversion is one-sided. It is adequate for a level correction of three years applied
+per mode; it would not be adequate as a method.
+
+**The Saturday and the Sunday of those years are not patched.** The casualty series
+carries no kind of day, the factor is derived on the weekday pairing D41 declares, and
+the Sunday rests on a single anchor. Their cells keep `INTERPOLATED` and `HELD` and a
+factor of exactly one, and the report says that the pandemic correction is a weekday
+correction.
+
+### What was rejected
+
+**Patching the whole panel by the mirror assumption.** It is D41's first objection and
+it stands: assuming the shape of the risk assumes the shape of what the thesis
+estimates. What makes three named years different is that the cause is known, external
+to the data, dated, and its direction checkable — a declared exception on named years
+and not a method.
+
+**Choosing the years or the modes by how plausible the result looks.** Named above.
+The rule is stated first and applied to all twelve cells.
+
+**Nulling the pandemic years instead.** It is the same mistake 2005's pedestrian column
+would have been: a null says there is no figure, when what is true is that the figure
+rests on a different assumption. Marked and exported beats absent, and a model that
+wants to drop those years can, precisely because they are marked.
+
+**A patch derived per unit.** Measured above and rejected on the dispersion.
+
+### What retires it
+
+**One measured annual series per mode**, which turns the second assumption into a
+second equation. D41's last section names the two candidates — the SDM's aforos and
+fare validations through Gómez Triana (2021), and Google's Community Mobility
+Reports — and says what has to be established about each before it can be used. That
+approach is being made through Universidad de los Andes.
+
+**This decision is built to be retired.** The patch is a factor per mode and year
+applied to a variant of the panel; replacing it with an externally anchored factor
+changes twelve numbers and nothing else, and the unpatched variant is untouched
+throughout. If the external series arrives and agrees — cycling holding, walking
+collapsing — then those years rest on a corroboration instead of on a preference,
+which is a different kind of argument from anything available today.
+
+### What building it has to prove
+
+The checks the implementation is not finished without:
+
+- **the anchors do not move.** 2019 and 2023, and every other measured year, are
+  identical between the two variants to the last decimal.
+- **only twelve mode-year combinations differ**, and only on the weekday.
+- **D39's two invariants survive**: the fifteen-minute column stays inside the full
+  one, and the two remain equal on the three modes with a single definition. Applying
+  one factor per mode and year to both columns is what guarantees this, and the check
+  is what proves the guarantee was not lost on the way.
+- **the patched city total equals the casualties over the smoothed risk**, per mode
+  and year, to a part in 1e-9 — the identity the whole decision rests on, verified
+  rather than assumed.
+- **the factor table is printed on every run**, both datasets, and the run does not
+  fail on it.
+- **`EXPOSURE_VARIANT` is part of the key**, and no exported table can be summed
+  across variants without the check noticing.
