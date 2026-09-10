@@ -2737,7 +2737,7 @@ both.
 
 ## 16. Exposure in the years no survey covers
 
-Run `run_20260910_021628`, route `interpolation`, command
+Run `run_20260910_031907`, route `interpolation`, command
 `python -m src.run_pipeline interpolation`. **Seventeen checks, none failed.** The
 decision is D40 and the specification is
 [`interpolating-the-exposure.md`](interpolating-the-exposure.md).
@@ -2750,7 +2750,8 @@ the fourteen.
 **It reads two tables another run exported and the population panel, and it reads no
 survey.** The source run is named in the log and in the exported dictionary —
 `run_20260910_021307` here, whose exposure table is identical to
-`run_20260909_214626`'s — because a constructed table whose input cannot be
+`run_20260909_214626`'s, and `run_20260901_092654` for the two casualty matrices the
+diagnostic below reads — because a constructed table whose input cannot be
 identified is traceable to nothing. The two tables it reads are
 `analysis__exposure_by_unit`, which is the thirty units, and
 `reference__survey_city_totals`, which is what each survey measures over the whole
@@ -3067,44 +3068,83 @@ provides is the number D40 said would decide it.
 
 ### Against the crash series, which is the one annual series that exists
 
-D40 also asks for the interpolated curve to be compared against any annual series
-that exists per mode — motorcycle and car registrations, TransMilenio ridership.
-**None of them is on disk.** What the deliveries carry is a single year of
-TransMilenio turnstile counts in the 2015 Tomo IV and a 2005 peak-hour figure, and
-neither is a series. Obtaining one per mode is what D40 defers as the anchored
-version of this decision.
+D40 asks for the interpolated curve to be compared against any annual series that
+exists per mode — motorcycle and car registrations, TransMilenio ridership. **None
+of them is on disk.** What the deliveries carry is a single year of TransMilenio
+turnstile counts in the 2015 Tomo IV and a 2005 peak-hour figure, and neither is a
+series. Obtaining one per mode is what D40 defers as the anchored version of this
+decision.
 
-The series that does exist is the study's own casualty count, and comparing them is
-D40's third check. Indexed to 2007 = 100, city-wide, weekday exposure against
-affected parties of the same actor type, on the **observed** casualty set — which
-carries the recording change D28 corrects, so these are not risks:
+The series that does exist is the study's own casualty count, and the comparison is
+D41. It is built and exported as `reference__exposure_against_casualties`, 4,200
+rows, and it is a **diagnostic that enters no model**: D41 has the argument, and its
+short form is that D40 assumes the shape of the denominator while the mirror
+assumption would assume the shape of the estimand.
 
-| Year | `PEDESTRIAN` cas. / exp. | `BICYCLE` cas. / exp. | `MOTORCYCLE` cas. / exp. | `CAR` cas. / exp. |
-|---|---|---|---|---|
-| 2011 | 102 / 103 | 167 / 104 | 122 / 102 | 55 / 103 |
-| 2015 | 97 / 121 | 234 / 203 | 137 / 271 | 51 / 122 |
-| 2019 | 92 / 101 | 432 / 253 | 196 / 258 | 67 / 137 |
-| **2020** | **50** / **104** | 435 / 253 | 160 / 272 | 58 / 134 |
-| 2023 | 73 / 116 | 432 / 248 | 290 / 310 | 157 / 121 |
-| 2024 | 76 / 116 | 407 / 248 | 304 / 310 | 141 / 121 |
+**What it computes.** A casualty count is roughly exposure times risk, so the panel
+implies a risk for every unit, mode and year. Carrying that implied risk across the
+constructed years by D40's own rule — log-linear between surveys, flat outside them
+— and dividing the casualties by it gives the exposure the opposite assumption would
+produce. The ratio between the two exposures is the diagnostic, and it equals the
+ratio between the implied risk and the smooth one, because the casualty count
+cancels. The run checks that identity rather than asserting it.
 
-**2020 is the disagreement, and it is not subtle.** Pedestrian casualties halve
-while the interpolated pedestrian exposure rises 4 %, because 2020 sits on a
-straight line between 2019 and 2023 and the interpolation cannot see it. Bogotá's
-mobility in 2020 was not on a log-linear path from 2019 to 2023, and no external
-series is needed to know that. **The constructed years 2020, 2021 and 2022 are the
-second-weakest block in the panel after the held one**, and for a reason that has a
-name.
+**Neither assumption is better supported than the other**, which had to be measured
+rather than assumed. Between adjacent surveys, at the city and per mode, the
+exposure moves by the larger factor in 4 of 12 steps against the observed casualties
+and in **7 of 12** against the corrected ones — the difference between those two
+columns being the recording change, whose extreme is the car at ×2.66 observed
+against ×1.40 corrected.
 
-Over the whole window the shapes are otherwise coherent, and one of them is
-strikingly so: motorcycle exposure ends at 3.10× its 2007 level and motorcycle
-casualties at 3.04×. What does not agree is the **timing** — the interpolation puts
-all of the motorcycle's growth in 2011–2015, where the survey measures it, while
-the casualties take off after 2018. Cycling exposure ends at 2.48× and cycling
-casualties at 4.07×, so the implied risk per trip rises; walking exposure moves
-within 16 % across eighteen years while its casualties fall by a quarter. None of
-those is a defect of the interpolation, and all of them are things a model will be
-asked to explain.
+**What the diagnostic says**, at the city and against the corrected casualties:
+
+| Year | | `PEDESTRIAN` | `BICYCLE` | `MOTORCYCLE` | `CAR` |
+|---|---|---:|---:|---:|---:|
+| 2008 | `HELD` | 0.77× | 0.75× | 0.77× | 0.89× |
+| 2009 | `HELD` | 0.73× | 0.71× | 0.67× | 0.80× |
+| 2010 | `HELD` | 0.97× | 1.08× | 1.05× | 1.07× |
+| 2012–2018 | `INTERPOLATED` | 0.95–1.08× | 0.93–1.12× | 0.90–1.13× | 0.89–1.15× |
+| **2020** | `INTERPOLATED` | **0.60×** | 0.99× | **0.72×** | **0.67×** |
+| 2021 | `INTERPOLATED` | 0.75× | 1.12× | 0.92× | 0.95× |
+| 2022 | `INTERPOLATED` | 0.97× | 1.05× | 1.00× | 1.00× |
+| 2024 | `HELD` | 1.04× | 0.95× | 1.05× | 0.92× |
+
+And per cell, over the 1,560 constructed unit-year-mode cells of the corrected set,
+how many would move by more than a factor of 1.5:
+
+| Block | Beyond 1.5× | Of | Share |
+|---|---:|---:|---:|
+| `HELD` — 2008–2010 and 2024 | 98 | 480 | 20 % |
+| `INTERPOLATED` 2020–2022 | 64 | 360 | 18 % |
+| `INTERPOLATED` everywhere else | **30** | 720 | **4 %** |
+
+**The two assumptions agree almost everywhere and disagree exactly where the panel
+was already known to be weak.** Outside the held block and the pandemic the
+disagreement is four per cent of cells; inside them it is a fifth, and the city
+ratio reaches 0.60. That the ordinary constructed years come out this close is the
+strongest thing this check could have said about them.
+
+**Two numbers are worth reading on their own.** In 2020 the pedestrian ratio is 0.60
+and the **bicycle ratio is 0.99**: the panel's cycling exposure for the pandemic year
+needs no correction while its walking exposure would have to fall by two fifths.
+Cycling holding up through 2020 while other travel collapsed is what happened in
+most cities that measured it, so the diagnostic is picking up something real. And the
+pedestrian figure says the panel implies **walking risk per trip fell 40 % in 2020**,
+which contradicts what is known about emptier and faster streets — the implied risk
+is implausible in a specific direction, which is evidence about the exposure rather
+than about the fit.
+
+**The noise floor is not the objection it looked like.** The median constructed cell
+rests on 88 pedestrian casualties, 124 motorcycle, 37 car and 34 bicycle, so Poisson
+noise alone is worth 9 % to 17 % of the ratio. Only 45 of the 1,560 cells rest on
+fewer than ten casualties, and exactly one saw none at all — that one implies an
+exposure of zero, which is the method failing rather than a finding, and it is
+counted apart rather than put at the top of a table of ratios.
+
+**What it does not do.** It does not correct anything. Whether the pandemic years
+are patched by the mirror assumption is open and it is D41's last section; what this
+table provides is the ground for taking that decision on named years rather than as
+a method.
 
 ### What is open
 

@@ -67,6 +67,7 @@ carried, so the second is larger for the same underlying records.
 | D38 | Exposure is built from the survey, per unit, year, mode and day type | Methodological | Closed for all four years; which day type the models take is **open** | Yes |
 | D39 | The pedestrian mode is measured twice, and the series is read on the fifteen-minute one | Methodological | Closed | Yes |
 | D40 | Exposure between survey years is interpolated as a rate, not as a level | Methodological | Closed on the method; whether 2005 joins the series is **open, and the measurement has been made** | Yes |
+| D41 | The panel is compared against the casualty series, and that comparison is a diagnostic and never a constructor | Methodological | Closed on the diagnostic; whether the pandemic years are patched by the mirror assumption is **open** | Yes |
 
 Methodological decisions: D1-D7, D9, D10, D11, D15, D17, D18, D19, D21, D22, D32, D35,
 D38, D39, D40.
@@ -4743,3 +4744,187 @@ against 64 and 45 on the full pedestrian column. Walking is the whole difference
 other three modes carry the same number in both. The run prints both figures. *(The
 41 this decision carried until 2026-09-10 was an arithmetic slip against its own
 table, which summed to 45 from the first measurement.)*
+
+
+---
+
+## D41 — The panel is compared against the casualty series, and that comparison is a diagnostic and never a constructor
+
+**Kind:** Methodological. It decides what the study's own casualty counts are allowed
+to do to the exposure panel, which is the one place where the numerator of every
+model could contaminate its denominator.
+
+**Status:** Closed on the diagnostic. **Open on one thing and it is a live question:
+whether the pandemic years are patched by the mirror assumption instead of by the
+interpolation**, which is the last section.
+
+**Built:** Yes. `src/interpolation.py`, route `interpolation`. Run
+`run_20260910_031907`: 4,200 rows in `reference__exposure_against_casualties`.
+
+### The system, stated properly
+
+A casualty count is roughly **exposure times risk**. The casualties are known for
+all eighteen years and the exposure for four, so in every constructed year there is
+**one equation and two unknowns** and something has to be assumed about one of the
+two factors. There is no way out of that by being careful.
+
+- **D40 assumes the exposure is smooth** — log-linear in the rate between surveys —
+  and lets the risk take whatever fluctuation is left.
+- **The mirror is to assume the risk is smooth** and let the exposure take it.
+
+**These are the same underidentified system with the assumption placed on different
+factors, and calling the second one circular and the first one not would be wrong.**
+D40's construction uses the casualty series exactly as much: it just spends its one
+degree of freedom on the other quantity. Saying so is the point of this decision,
+because the alternative is a report that presents a coin flip as the natural choice.
+
+### Which of the two is actually smoother, measured
+
+It is an empirical question, and the four survey years are where both quantities are
+known. Between adjacent surveys, at the city and per mode, the number of steps in
+which each quantity moves by the larger factor:
+
+| | Exposure moves more | Risk moves more |
+|---|---:|---:|
+| Against the **observed** casualties | 4 of 12 | **8 of 12** |
+| Against the **corrected** casualties | **7 of 12** | 5 of 12 |
+
+**On the observed set the risk looks far more volatile, and almost all of that is
+the recording change.** The extreme is the car between 2019 and 2023: implied risk
+×2.66 observed against ×1.40 corrected. Once ρ is taken out it is close to a tie.
+
+**So D40's assumption is not better supported than its mirror.** It is one of two
+defensible choices and the report has to say so rather than presenting it as the
+obvious one. What this decision adds is that the *cost* of the choice can be
+measured cell by cell, and it is.
+
+### Why it is still not the constructor
+
+Three reasons, and the first is the one that decides it.
+
+**It would assume the shape of the estimand.** The study exists to estimate risk as
+a function of urban features. D40 assumes the shape of the **denominator**, which is
+a nuisance parameter: what it contaminates is an auxiliary quantity. Building the
+exposure from an assumed risk trajectory assumes the shape of **the answer**, and a
+model fitted on it would recover part of what was put in. That asymmetry, and not
+circularity, is the difference between the two.
+
+**The matrix is two-sided.** The study's artefact is not "pedestrian casualties", it
+is "pedestrian casualties in collisions with a car". Those depend on the pedestrian
+exposure **and** on the counterpart's. Inverting for one of them needs a functional
+form linking the pair — a safety-in-numbers exponent — and that exponent is one of
+the things the thesis wants to estimate. The one-sided inversion below is adequate
+for a diagnostic and would not be adequate for a panel.
+
+**And ρ leaves no usable choice.** Inverting the observed set injects the recording
+change straight into the exposure — the car's implied risk reaching 266 against a
+corrected 140 is what that looks like. Inverting the corrected set means the
+exposure depends on which casualty dataset was chosen, and **D31 exists to have both
+run side by side**: two runs that do not share a denominator are not comparable, so
+the one comparison D31 was written to make would be destroyed by the thing meant to
+improve it.
+
+### What it produces
+
+One row per unit, year, actor type and casualty dataset, on the weekday exposure —
+a casualty count is annual and carries no kind of day, so the pairing is declared
+rather than smuggled in as a dimension.
+
+| Column | What it holds |
+|---|---|
+| `AFFECTED_PARTIES` | the casualty count of that type, in that unit and year |
+| `TRIPS_PER_DAY_OF_TYPE_OVER_15MIN` | the exposure the panel carries |
+| `IMPLIED_RISK` | the first over the second: what the panel implies about risk |
+| `SMOOTH_RISK` | that same quantity carried across the constructed years by D40's own rule |
+| `IMPLIED_TRIPS_PER_DAY_OF_TYPE_OVER_15MIN` | casualties over the smooth risk: the exposure the mirror assumption gives |
+| `IMPLIED_OVER_INTERPOLATED` | the diagnostic |
+
+**The last column reads two ways and they are the same number**, which is what makes
+it worth exporting:
+
+    implied exposure / interpolated exposure = implied risk / smooth risk
+
+because both sides are the casualty count cancelling. So one column answers "how far
+would the exposure move under the opposite assumption" and "how far does the risk
+this panel implies depart from a smooth path". It is exactly one at every survey
+year, and its distance from one in a constructed year is how much of the movement
+the panel is putting into the risk rather than into the exposure. The run checks the
+identity rather than asserting it.
+
+### What it says, and it is cleaner than expected
+
+At the city, against the corrected casualties, the ratio by year:
+
+| Year | | `PEDESTRIAN` | `BICYCLE` | `MOTORCYCLE` | `CAR` |
+|---|---|---:|---:|---:|---:|
+| 2008 | `HELD` | 0.77× | 0.75× | 0.77× | 0.89× |
+| 2009 | `HELD` | 0.73× | 0.71× | 0.67× | 0.80× |
+| 2010 | `HELD` | 0.97× | 1.08× | 1.05× | 1.07× |
+| 2012–2018 | `INTERPOLATED` | 0.95–1.08× | 0.93–1.12× | 0.90–1.13× | 0.89–1.15× |
+| **2020** | `INTERPOLATED` | **0.60×** | 0.99× | **0.72×** | **0.67×** |
+| 2021 | `INTERPOLATED` | 0.75× | 1.12× | 0.92× | 0.95× |
+| 2022 | `INTERPOLATED` | 0.97× | 1.05× | 1.00× | 1.00× |
+| 2024 | `HELD` | 1.04× | 0.95× | 1.05× | 0.92× |
+
+And per cell, over the 1,560 constructed unit-year-mode cells of the corrected set,
+how many would move by more than a factor of 1.5:
+
+| Block | Cells beyond 1.5× | Of | Share |
+|---|---:|---:|---:|
+| `HELD` — 2008–2010 and 2024 | 98 | 480 | 20 % |
+| `INTERPOLATED` 2020–2022 | 64 | 360 | 18 % |
+| `INTERPOLATED` everywhere else | **30** | 720 | **4 %** |
+
+**The two assumptions agree almost everywhere and disagree exactly where the panel
+was already known to be weak.** Outside the held block and the pandemic the
+disagreement is four per cent of cells and the city ratios sit within about a tenth
+of one; inside them it is a fifth of cells and the city ratio reaches 0.60. That is
+the strongest thing this diagnostic could have said: it means the interpolation is
+not being rescued by luck in the ordinary years, and it means the two weak blocks
+are weak for reasons that show up independently of how they were found.
+
+**Two of the numbers are worth reading on their own.** In 2020 the pedestrian ratio
+is 0.60 and the **bicycle ratio is 0.99** — the panel's cycling exposure for the
+pandemic year needs no correction at all while its walking exposure would have to
+fall by two fifths. Cycling holding up through 2020 while other travel collapsed is
+what happened in most cities that measured it, so the diagnostic is picking up
+something real rather than noise. And the 2020 pedestrian figure says the panel
+implies **walking risk per trip fell by 40 % in the pandemic year**, which
+contradicts what is known about emptier and faster streets: the implied risk is
+implausible in a specific direction, which is evidence about the exposure and not
+merely about the fit.
+
+**The noise floor is not the objection it looked like.** The median constructed cell
+rests on 88 pedestrian casualties, 124 motorcycle, 37 car and 34 bicycle, so Poisson
+noise alone is worth 9 % to 17 % of the ratio. Only 45 of the 1,560 cells rest on
+fewer than ten casualties and exactly one saw none at all — and that one implies an
+exposure of zero, which is the method failing rather than a finding, so it is
+counted apart.
+
+### What is open, and it is a decision rather than a measurement
+
+**Whether the pandemic years are patched by the mirror assumption.** The diagnostic
+was built to say where the panel is least believable and it isolates two blocks. For
+2020–2022 there is a case for using the mirror — assume the risk is smooth there and
+take the exposure the casualties imply — that does not exist for the panel as a
+whole:
+
+- the disagreement is concentrated and dated, so the patch would be a **declared
+  exception on named years** rather than a method;
+- the reason the interpolation fails there is known and external to the data, which
+  is not the case anywhere else;
+- and the direction of the failure is checkable: the implied pedestrian risk falling
+  40 % in 2020 is not merely different from smooth, it is implausible.
+
+What it would still cost is the first objection above, undiluted: those three years'
+exposure would carry an assumption about the risk, and a model estimating risk would
+be reading them. **If it is done, the years have to be marked in the panel** — a
+fourth value beside `MEASURED`, `INTERPOLATED` and `HELD` — so that a model can drop
+them, and the report has to say that the pandemic exposure of this study rests on
+its own casualty counts.
+
+**The better patch is external and it is the same one D40 defers.** One measured
+annual series per mode gives a second equation instead of a second assumption, and
+2020 is precisely the year for which such series are most likely to exist and to be
+published. Looking for one is cheaper than it was when D40 deferred it, because now
+only three years have to be covered well.

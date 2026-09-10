@@ -1325,3 +1325,341 @@ def report(table: pd.DataFrame, measured: MeasuredExposure, log: RunLog) -> None
             "; ".join(blocks),
             config.YEARS_TO_NEAREST_SURVEY_COL,
         )
+
+
+# ---------------------------------------------------------------------------
+# The panel against the casualty series
+# ---------------------------------------------------------------------------
+
+
+CASUALTY_TABLE_FILENAME = f"{config.ANALYSIS_PREFIX}__matrix_long.parquet"
+CORRECTED_CASUALTY_TABLE_FILENAME = (
+    f"{config.ANALYSIS_PREFIX}__matrix_long__{config.CORRECTION_FILE_SUFFIX}.parquet"
+)
+
+
+@dataclass(frozen=True)
+class Casualties:
+    """The two casualty datasets and the run they were read from.
+
+    Both together or neither: the diagnostic is worth making because the difference
+    between the two versions separates what the recording change did from
+    everything else, and one of them alone cannot show that.
+    """
+
+    by_dataset: dict[str, pd.DataFrame]
+    source_run: str
+
+
+def read_casualties(log: RunLog, run: str | None = None) -> Casualties | None:
+    """The observed and corrected casualty matrices, from a run that holds both.
+
+    Returns None rather than raising when no run holds them, because the panel does
+    not need this: the interpolation is complete without it and forcing a matrix run
+    in order to interpolate an exposure would be the wrong coupling. What is not
+    acceptable is skipping it silently, so the run says what it could not do and
+    which route would produce it.
+    """
+    try:
+        run_dir = config.run_directory_holding(CORRECTED_CASUALTY_TABLE_FILENAME, run)
+    except FileNotFoundError as absent:
+        log.warn(
+            "the panel was not compared against the casualty series: %s. Run "
+            "`python -m src.run_pipeline corrected`, which writes both datasets, and run this "
+            "route again. The panel itself is complete without it",
+            absent,
+        )
+        return None
+
+    frames: dict[str, pd.DataFrame] = {}
+    for dataset, filename in (
+        (config.OBSERVED_DATASET, CASUALTY_TABLE_FILENAME),
+        (config.CORRECTED_DATASET, CORRECTED_CASUALTY_TABLE_FILENAME),
+    ):
+        path = run_dir / config.DATA_SUBDIR / filename
+        if not path.exists():
+            log.warn(
+                "%s holds %s but not %s, so only one of the two casualty datasets is available "
+                "and the diagnostic is skipped: the point of it is the difference between them",
+                run_dir.name,
+                CORRECTED_CASUALTY_TABLE_FILENAME,
+                filename,
+            )
+            return None
+        frames[dataset] = pd.read_parquet(path)
+
+    log.info(
+        "read the casualty matrices of %s: %s",
+        run_dir.name,
+        "; ".join(
+            f"{dataset} {len(frame):,} rows over {int(frame[config.YEAR_COL].min())}-"
+            f"{int(frame[config.YEAR_COL].max())}"
+            for dataset, frame in frames.items()
+        ),
+    )
+    return Casualties(by_dataset=frames, source_run=run_dir.name)
+
+
+def build_diagnostic(
+    panel: pd.DataFrame,
+    casualties: Casualties,
+    measured: MeasuredExposure,
+    log: RunLog,
+) -> pd.DataFrame:
+    """What the panel implies about risk, and what smooth risk would imply about exposure.
+
+    D40's third external check, and the one that answers "where is the panel least
+    believable" with a year and a unit rather than an impression.
+
+    Four quantities per unit, mode, year and casualty dataset. The **implied risk**
+    is the casualty count over the exposure the panel carries — what the study will
+    be dividing by when it fits a model, so it is not a hypothetical. The **smooth
+    risk** is that same quantity carried across the constructed years by the rule
+    D40 applies to the exposure, log-linear between surveys and flat outside them.
+    The **implied exposure** is the casualty count over the smooth risk: the
+    exposure that would follow from assuming the risk is smooth rather than the
+    exposure. And the **ratio** between the two exposures is the diagnostic.
+
+    That ratio reads two ways and they are the same number, which is what makes it
+    worth exporting:
+
+        implied exposure / interpolated exposure = implied risk / smooth risk
+
+    So one column answers both "how much would the exposure have to move under the
+    opposite assumption" and "how far does the risk this panel implies depart from a
+    smooth path". It is one at every survey year by construction, and its distance
+    from one in a constructed year is exactly how much of the movement the panel is
+    putting into the risk rather than into the exposure.
+
+    **It enters no model.** See D41 and the note beside
+    `config.EXPOSURE_DIAGNOSTIC_FILENAME`.
+    """
+    series_column = config.TRIPS_PER_DAY_OF_TYPE_OVER_15MIN_COL
+    # A casualty count is annual and carries no kind of day, so it is paired with
+    # the weekday exposure and the pairing is declared rather than inferred. The
+    # diagnostic is a ratio of ratios, so the choice cancels as long as the day-type
+    # mix does not move — which nothing in the panel says it does, all three day
+    # types resting on the same anchors.
+    weekday = panel[panel[config.DAY_TYPE_COL] == config.WEEKDAY_TYPE]
+    exposure = weekday.set_index(
+        [config.AREA_CODE_COL, config.ACTOR_TYPE_COL, config.YEAR_COL]
+    )[[series_column, config.EXPOSURE_PROVENANCE_COL, config.YEARS_TO_NEAREST_SURVEY_COL]]
+
+    anchors = [
+        year
+        for year in measured.anchors_of(config.WEEKDAY_TYPE)
+    ]
+
+    blocks: list[pd.DataFrame] = []
+    undefined = 0
+    for dataset, matrix in casualties.by_dataset.items():
+        counted = (
+            matrix.groupby(
+                [config.AREA_CODE_COL, config.PARTY_TYPE_COL, config.YEAR_COL], as_index=False
+            )[config.AFFECTED_PARTIES_COL]
+            .sum()
+            .rename(columns={config.PARTY_TYPE_COL: config.ACTOR_TYPE_COL})
+        )
+        # Only the four modes the exposure measures. PUBLIC_TRANSPORT and OTHER are
+        # in the matrix and have no exposure to be divided by, which is D38's
+        # decision and not a gap here.
+        counted = counted[counted[config.ACTOR_TYPE_COL].isin(set(panel[config.ACTOR_TYPE_COL]))]
+        window = range(
+            int(counted[config.YEAR_COL].min()), int(counted[config.YEAR_COL].max()) + 1
+        )
+
+        joined = counted.join(
+            exposure,
+            on=[config.AREA_CODE_COL, config.ACTOR_TYPE_COL, config.YEAR_COL],
+            how="inner",
+        )
+        joined[config.IMPLIED_RISK_COL] = (
+            joined[config.AFFECTED_PARTIES_COL] / joined[series_column]
+        )
+
+        smooth: list[float] = []
+        for (code, actor), rows in joined.groupby(
+            [config.AREA_CODE_COL, config.ACTOR_TYPE_COL], sort=False
+        ):
+            by_year = rows.set_index(config.YEAR_COL)[config.IMPLIED_RISK_COL]
+            measured_risk = {
+                year: float(by_year[year]) for year in anchors if year in by_year.index
+            }
+            filled = fill_series(measured_risk, window)
+            smooth.extend(filled[int(year)].rate for year in rows[config.YEAR_COL])
+        joined[config.SMOOTH_RISK_COL] = smooth
+
+        # A smooth risk of exactly zero means both anchors of the segment saw no
+        # casualty of that type in that unit. Dividing by it would be inventing an
+        # infinite exposure out of an observed zero, so the two derived columns are
+        # left empty and the run counts them.
+        possible = joined[config.SMOOTH_RISK_COL] > 0
+        undefined += int((~possible).sum())
+        joined[config.IMPLIED_EXPOSURE_COL] = np.where(
+            possible,
+            joined[config.AFFECTED_PARTIES_COL] / joined[config.SMOOTH_RISK_COL].where(possible),
+            np.nan,
+        )
+        joined[config.EXPOSURE_RATIO_COL] = (
+            joined[config.IMPLIED_EXPOSURE_COL] / joined[series_column]
+        )
+        joined[config.DATASET_COL] = dataset
+        blocks.append(joined)
+
+    table = pd.concat(blocks, ignore_index=True)
+
+    names = panel[[config.AREA_CODE_COL, config.AREA_NAME_COL]].drop_duplicates()
+    table = table.merge(names, on=config.AREA_CODE_COL, how="left")
+    table[config.SCALE_COL] = config.active_scale().label
+    table = (
+        table[list(config.exposure_diagnostic_columns())]
+        .sort_values(
+            [config.DATASET_COL, config.YEAR_COL, config.AREA_CODE_COL, config.ACTOR_TYPE_COL],
+            kind="stable",
+        )
+        .reset_index(drop=True)
+    )
+
+    # The identity the docstring rests on, checked rather than asserted: the ratio of
+    # the two exposures is the ratio of the two risks. If it ever stopped holding,
+    # one of the four columns would have been computed from something other than
+    # what its name says.
+    both = table[table[config.EXPOSURE_RATIO_COL].notna()]
+    identity = np.allclose(
+        both[config.EXPOSURE_RATIO_COL].to_numpy(),
+        (both[config.IMPLIED_RISK_COL] / both[config.SMOOTH_RISK_COL]).to_numpy(),
+        rtol=1e-9,
+        equal_nan=True,
+    )
+    if not identity:
+        raise ValueError(
+            "the ratio of the two exposures is not the ratio of the two risks, which it is by "
+            "algebra; one of the four columns is not what its name says"
+        )
+
+    weekday_rows = len(weekday)
+    log.record(
+        "compare the panel against the casualty series",
+        rows_in=len(panel),
+        rows_out=len(table),
+        changes=[
+            (
+                weekday_rows - len(panel),
+                "rows of a day type the casualty series cannot be paired with, a casualty count "
+                f"being annual and carrying no kind of day; only {config.WEEKDAY_TYPE} is kept",
+            ),
+            (
+                len(table) - weekday_rows,
+                "a second row per unit, year and actor type for the corrected casualty dataset, "
+                "over the years D30 leaves it",
+            ),
+        ],
+        notes=[
+            f"casualty source run={casualties.source_run}, "
+            + ", ".join(sorted(casualties.by_dataset)),
+            f"one row per unit, year, actor type and casualty dataset, on "
+            f"{config.WEEKDAY_TYPE} exposure",
+            f"{undefined} cell(s) where the smoothed risk is zero, so no exposure can be "
+            "implied from it",
+            "diagnostic only: it enters no model, for the reason D41 gives",
+        ],
+    )
+    return table
+
+
+def export_diagnostic(table: pd.DataFrame, log: RunLog) -> dict[str, Path]:
+    """Write the diagnostic beside the panel it diagnoses."""
+    data_dir = log.run_dir / config.DATA_SUBDIR
+    data_dir.mkdir(parents=True, exist_ok=True)
+    path = data_dir / f"{config.EXPOSURE_DIAGNOSTIC_FILENAME}.csv"
+    table.to_csv(path, index=False, encoding="utf-8")
+    table.to_parquet(path.with_suffix(".parquet"))
+    log.info("exported the casualty diagnostic (%d rows) to %s/", len(table), config.DATA_SUBDIR)
+    return {"exposure_diagnostic": path}
+
+
+def report_diagnostic(table: pd.DataFrame, log: RunLog) -> None:
+    """Where the panel is least believable, by year and by unit.
+
+    Two readings of one number, as the build's docstring sets out: at the city it
+    says how far the risk this panel implies departs from a smooth path, and at the
+    unit it says which cells would move most under the opposite assumption.
+    """
+    modes = [
+        actor for actor in config.ROAD_USER_TYPES if actor in set(table[config.ACTOR_TYPE_COL])
+    ]
+    for dataset in (config.OBSERVED_DATASET, config.CORRECTED_DATASET):
+        block = table[table[config.DATASET_COL] == dataset]
+        if block.empty:
+            continue
+        city = block.groupby([config.YEAR_COL, config.ACTOR_TYPE_COL]).apply(
+            lambda rows: float(rows[config.IMPLIED_EXPOSURE_COL].sum())
+            / float(rows[config.TRIPS_PER_DAY_OF_TYPE_OVER_15MIN_COL].sum()),
+            include_groups=False,
+        ).unstack()[modes]
+        provenance = block.groupby(config.YEAR_COL)[config.EXPOSURE_PROVENANCE_COL].first()
+
+        lines = [
+            f"{'year':>6}  {'':>13}  " + "  ".join(f"{actor:>12}" for actor in modes),
+            f"{'-' * 6}  {'-' * 13}  " + "  ".join("-" * 12 for _ in modes),
+        ]
+        for year, row in city.iterrows():
+            lines.append(
+                f"{year:>6}  {provenance[year]:>13}  "
+                + "  ".join(f"{value:>11.2f}x" for value in row)
+            )
+        log.table(
+            f"the panel against the {dataset.lower()} casualty series: the exposure that a "
+            "smooth risk would imply, over the exposure the panel carries. One at every survey "
+            "year by construction; away from one it is how much of the movement the panel is "
+            "putting into the risk rather than into the exposure:",
+            "\n".join(lines),
+        )
+
+    # The widest constructed cells, on the corrected set, because on the observed
+    # one the widest cells are mostly the recording change.
+    dataset = (
+        config.CORRECTED_DATASET
+        if (table[config.DATASET_COL] == config.CORRECTED_DATASET).any()
+        else config.OBSERVED_DATASET
+    )
+    constructed = table[
+        (table[config.DATASET_COL] == dataset)
+        & (table[config.EXPOSURE_PROVENANCE_COL] != config.MEASURED_EXPOSURE)
+        & table[config.EXPOSURE_RATIO_COL].notna()
+    ].copy()
+    # A cell with no casualty at all implies an exposure of exactly zero, which is
+    # not a wide ratio but the method breaking down: a mode nobody was hurt in that
+    # year is not a mode nobody travelled in. Those cells have no factor and are
+    # counted apart rather than put at the top of a table of ratios.
+    ratio = constructed[config.EXPOSURE_RATIO_COL]
+    empty = int((ratio == 0).sum())
+    constructed["_DISTANCE"] = np.where(
+        ratio > 0, np.maximum(ratio, 1.0 / ratio.where(ratio > 0)), np.nan
+    )
+    wide = constructed[constructed["_DISTANCE"] > config.EXPOSURE_DIAGNOSTIC_FACTOR]
+    by_year = wide.groupby(config.YEAR_COL).size().sort_values(ascending=False)
+    log.warn(
+        "on the %s set, %d of the %d constructed unit-year-mode cells would move by more than a "
+        "factor of %g under the opposite assumption. The years that carry most of them: %s. "
+        "This fails nothing — it is the cost of having to assume something about one of two "
+        "unknowns, and it is the table that says where that cost falls. See D41",
+        dataset.lower(),
+        len(wide),
+        len(constructed),
+        config.EXPOSURE_DIAGNOSTIC_FACTOR,
+        "; ".join(f"{year} {int(count):,}" for year, count in by_year.head(6).items()),
+    )
+
+    # And the low-count cells, because the diagnostic divides by a casualty count and
+    # a small one carries its own noise into the ratio.
+    thin = int((constructed[config.AFFECTED_PARTIES_COL] < 10).sum())
+    log.info(
+        "%d of the %d constructed cells rest on fewer than ten casualties, where Poisson noise "
+        "alone is worth about a third of the ratio, and %d saw no casualty at all and therefore "
+        "imply an exposure of exactly zero — which is the method failing rather than a finding. "
+        "The diagnostic is read at the city and at the year before it is read at one unit",
+        thin,
+        len(constructed),
+        empty,
+    )

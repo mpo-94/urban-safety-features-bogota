@@ -159,6 +159,16 @@ def run_interpolation(log: RunLog) -> None:
     interpolation.step_volatility(measured, panel, log)
     interpolation.compare_with_2005(measured, table, panel, log)
 
+    # D40's third external check, and the only one of the three that has a series to
+    # be checked against: the study's own casualty count. It is a diagnostic and it
+    # can fail nothing, so a run with no casualty matrix to read says so and carries
+    # on rather than refusing to interpolate an exposure.
+    casualties = interpolation.read_casualties(log)
+    if casualties is not None:
+        diagnostic = interpolation.build_diagnostic(table, casualties, measured, log)
+        interpolation.export_diagnostic(diagnostic, log)
+        interpolation.report_diagnostic(diagnostic, log)
+
 
 def run_rho(log: RunLog) -> None:
     """The rho(t) diagnostic, which sits beside the pipeline rather than in it.

@@ -177,10 +177,24 @@ it read is in its log and in its exported dictionary.
 **Two comparisons come out of it and neither is a check that can pass.** The 2011
 delivery's own chapter comparing itself against the 2005 survey — the only evidence
 about the years before the study's first survey — says the held 2007–2010 block sits
-14 to 17 points away from what 2005 published, on a comparison whose 2011 control
-agrees to a tenth of a point. And the interpolated curve disagrees with the study's
-own casualty series in 2020, where pedestrian casualties halve and a straight line
-between 2019 and 2023 cannot see it. Both are in section 16 of the verification
+15 to 19 points away from what 2005 published on the two modes that turn over, on a
+comparison whose 2011 control agrees to eight tenths of a point. And the interpolated
+curve is compared against the study's own casualty count, which is the one annual
+series that exists.
+
+That second comparison is D41 and it is a table. A casualty count is roughly
+exposure times risk; the casualties are known for eighteen years and the exposure for
+four, so every constructed year has one equation and two unknowns and something must
+be assumed about one of the two factors. Interpolating the exposure and interpolating
+the risk are **the same underidentified system with the assumption placed on
+different factors**, and measured between surveys neither is better supported than
+the other. So the run exports the ratio between the two answers: it is one at every
+survey year, and away from one it is how much of the movement the panel is putting
+into the risk rather than into the exposure. **The two assumptions agree on 96 % of
+the ordinary constructed cells and disagree exactly in the held block and in
+2020–2022.** It is a diagnostic and it enters no model — D40 assumes the shape of the
+denominator, while building the exposure from an assumed risk would assume the shape
+of what the study estimates. Both comparisons are in section 16 of the verification
 report.
 
 **The pedestrian mode is measured twice and that half is built.** On the full

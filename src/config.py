@@ -3728,6 +3728,82 @@ INTERPOLATED_EXPOSURE_QUANTITIES: tuple[SurveyExposureQuantity, ...] = (
     ),
 )
 
+# -- the panel against the casualty series ----------------------------------
+# One equation and two unknowns. A casualty count is roughly exposure times risk,
+# the casualties are known for all eighteen years and the exposure for four, so in
+# every constructed year something has to be assumed about one of the two factors.
+# D40 assumes the exposure is smooth and lets the risk take whatever fluctuation is
+# left; assuming the risk is smooth and letting the exposure take it is the mirror
+# image of the same underidentified system, not a different kind of error.
+#
+# **Which of the two is actually smoother is an empirical question**, and measured
+# between adjacent surveys it is close to a tie once the recording change is taken
+# out: on the corrected casualty set the exposure moves more in 7 of the 12 city
+# steps and the risk in 5. So D40's assumption is not better supported than its
+# mirror; it is one of two defensible choices, and this table is what makes the cost
+# of that choice visible.
+#
+# It is a DIAGNOSTIC and it enters no model. The reason is not circularity — D40's
+# own construction is circular in the same sense — but which quantity each version
+# contaminates. D40 assumes the shape of the denominator, which is a nuisance
+# parameter. Building the exposure from an assumed risk trajectory assumes the shape
+# of the thing the study exists to estimate, and a model fitted on it would find
+# part of what was put in. Two further obstacles are specific to this study and are
+# recorded in D41: the matrix is two-sided, so a casualty of one type depends on the
+# exposure of its counterpart as well as its own; and inverting the observed set
+# would inject the recording change into the exposure, while inverting the corrected
+# one would leave the two casualty datasets without a common denominator, which is
+# what D31 exists to preserve.
+EXPOSURE_DIAGNOSTIC_FILENAME = f"{REFERENCE_PREFIX}__exposure_against_casualties"
+
+# The risk the interpolated panel implies: casualties of this type in this unit and
+# year over the exposure the panel carries. Its unit is arbitrary — casualties per
+# trip-per-weekday per year — and it is comparable across years of one unit and
+# mode, which is all the diagnostic asks of it.
+IMPLIED_RISK_COL = "IMPLIED_RISK"
+# The same quantity carried across the constructed years by the rule D40 applies to
+# the exposure: log-linear between survey years, held flat outside them. Identical
+# to the column above on a survey year, by construction.
+SMOOTH_RISK_COL = "SMOOTH_RISK"
+# The exposure that would follow from assuming the risk is smooth: casualties over
+# SMOOTH_RISK.
+IMPLIED_EXPOSURE_COL = "IMPLIED_TRIPS_PER_DAY_OF_TYPE_OVER_15MIN"
+# The diagnostic itself, and it reads two ways because they are the same number:
+# how far the implied exposure sits from the interpolated one, and how far the
+# implied risk departs from a smooth path. One is the other, because
+# (C / smooth risk) / E = (C / E) / smooth risk = implied risk / smooth risk.
+EXPOSURE_RATIO_COL = "IMPLIED_OVER_INTERPOLATED"
+
+# Above this factor a constructed year is reported by name: the panel is absorbing
+# more than this much of the movement into the risk rather than into the exposure.
+# It is a reporting threshold and nothing fails on it.
+EXPOSURE_DIAGNOSTIC_FACTOR = 1.5
+
+
+def exposure_diagnostic_columns() -> tuple[str, ...]:
+    """The diagnostic table's columns, in order.
+
+    No day type: a casualty count is annual and carries no kind of day, so the
+    weekday exposure is what it is paired against and the pairing is declared
+    rather than implied by a column that would look like a dimension.
+    """
+    return (
+        SCALE_COL,
+        AREA_CODE_COL,
+        AREA_NAME_COL,
+        YEAR_COL,
+        ACTOR_TYPE_COL,
+        DATASET_COL,
+        AFFECTED_PARTIES_COL,
+        TRIPS_PER_DAY_OF_TYPE_OVER_15MIN_COL,
+        IMPLIED_RISK_COL,
+        SMOOTH_RISK_COL,
+        IMPLIED_EXPOSURE_COL,
+        EXPOSURE_RATIO_COL,
+        EXPOSURE_PROVENANCE_COL,
+        YEARS_TO_NEAREST_SURVEY_COL,
+    )
+
 
 def interpolated_exposure_columns() -> tuple[str, ...]:
     """The interpolated exposure table's columns, in order.

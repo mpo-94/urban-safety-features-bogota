@@ -1,7 +1,7 @@
 # Interpolating the exposure over the years no survey covers
 
 **Both halves are built.** D39 landed on `run_20260909_214626` and D40 on
-`run_20260910_021628`, and this document is no longer a specification: it is what
+`run_20260910_031907`, and this document is no longer a specification: it is what
 was built, what it is checked against, and what building it changed. **Section 8 is
 the last of those** and it is the part a reader who knows the decisions should start
 from. Section 16 of [`verification-report.md`](verification-report.md) is the
@@ -246,8 +246,10 @@ with it.
 - **Whether the held block enters the models.** Four of eighteen years on the
   weekday with no behavioural variation, only demographic — and section 8 says the
   measurement now argues against them.
-- **Whether the constructed years 2020, 2021 and 2022 enter them either.** This was
-  not open before the stage was built and it is now: section 8 has the reason.
+- **Whether the constructed years 2020, 2021 and 2022 enter them either, and
+  whether they are patched before they do.** This was not open before the stage was
+  built and it is now: section 8 has the reason and D41 has the table that isolates
+  them.
 - **Whether 2005 is implemented.** The check in section 3 has been made and section
   8 has its answer; what is left is a decision about a session's work, not a
   measurement.
@@ -425,3 +427,15 @@ see a pandemic.
 held one their weakness has a date. No external series is needed to know it, which
 is worth saying because the anchored version of D40 — one measured annual series
 per mode — is exactly what would fix it.
+
+**That comparison is now a table rather than an observation, and it is D41.** The
+panel implies a risk for every unit, mode and year; carrying that implied risk
+across the constructed years by this document's own rule and dividing the casualties
+by it gives the exposure the opposite assumption would produce. The ratio between
+the two is exported as `reference__exposure_against_casualties` and it is a
+**diagnostic that enters no model**. What it found: outside the held block and the
+pandemic the two assumptions disagree on **4 % of the constructed cells**, and
+inside them on a fifth. The interpolation is not being rescued by luck in the
+ordinary years, and the two weak blocks are weak for reasons that show up
+independently of how they were found. Whether 2020–2022 are patched by the mirror
+assumption is open, and D41's last section is where that question lives.
