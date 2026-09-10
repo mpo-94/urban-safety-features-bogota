@@ -1037,6 +1037,18 @@ _ZONE_SHARE_COL = "_ZONE_AREA_SHARE"
 _LINE_SHARE_COL = "_LINE_LENGTH_SHARE"
 _COVERED_SHARE_COL = "_SHARE_INSIDE_THE_STUDY"
 _ALLOCATED_COL = "_ALLOCATED"
+_ALLOCATED_OVER_15MIN_COL = "_ALLOCATED_OVER_15MIN"
+_INTRAZONAL_OVER_15MIN_COL = "_INTRAZONAL_OVER_15MIN"
+# The two trip columns that go through the apportionment together, and the name
+# each one's allocation takes. Declared once because the two routes into a unit —
+# along a line and over the area of one zone — have to spread both of them, and a
+# quantity spread by one route and not the other would balance nowhere. The two
+# endpoint allocations pass their own single entry: they are alternatives to the
+# variable and D39 gives them no second definition.
+_APPORTIONED_QUANTITIES = {
+    surveys.TRIPS_COL: _ALLOCATED_COL,
+    surveys.TRIPS_OVER_15MIN_COL: _ALLOCATED_OVER_15MIN_COL,
+}
 _FRAGMENT_AREA_COL = "_FRAGMENT_AREA"
 
 
@@ -1053,8 +1065,10 @@ class SurveyApportionment:
     trips: surveys.SurveyTrips
     # One row per unit, actor type and day type, carrying the measured quantities.
     per_unit: pd.DataFrame
-    # Trips per day that fell outside every unit, per actor type and day type.
-    outside: pd.Series
+    # Trips per day that fell outside every unit, per actor type and day type,
+    # with one column per quantity apportioned — both pedestrian definitions,
+    # because each has to balance against its own total in the file.
+    outside: pd.DataFrame
     # The lines themselves, one per distinct zone pair, and the trips each carries
     # per actor type and day type. Kept rather than discarded because this
     # pipeline builds its own desire lines, so the figure that draws them is the
@@ -1273,28 +1287,58 @@ def _spread(
     shares: pd.DataFrame,
     on: list[str],
     share_column: str,
-    output_column: str,
-) -> tuple[pd.DataFrame, pd.Series]:
-    """Multiply a table of trips by a table of shares, and measure what is left over.
+    quantities: dict[str, str],
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Multiply tables of trips by a table of shares, and measure what is left over.
 
-    Returns the allocated rows and, per actor type and day type, the trips whose
-    shares did not add to one — the part of the study area's edge that is not the
-    study area. That remainder is measured rather than absorbed, which is what
-    lets the balance downstream be an equality instead of an inequality.
+    `quantities` maps each column of trips to the name its allocation gets. More
+    than one because walking is measured under two definitions and both have to
+    travel through the same shares: apportioning one of them and scaling the other
+    out of it would put the two definitions through different spatial operators,
+    which is precisely what D39 measured and refused.
+
+    Returns the allocated rows and, per actor type and day type and per quantity,
+    the trips whose shares did not add to one — the part of the study area's edge
+    that is not the study area. That remainder is measured rather than absorbed,
+    which is what lets the balance downstream be an equality instead of an
+    inequality.
     """
     allocated = pairs.merge(shares, on=on, how="inner")
-    allocated[output_column] = allocated[surveys.TRIPS_COL] * allocated[share_column]
+    for source, target in quantities.items():
+        allocated[target] = allocated[source] * allocated[share_column]
 
     covered = shares.groupby(on, as_index=False)[share_column].sum()
     covered = covered.rename(columns={share_column: _COVERED_SHARE_COL})
     with_cover = pairs.merge(covered, on=on, how="left")
     with_cover[_COVERED_SHARE_COL] = with_cover[_COVERED_SHARE_COL].fillna(0.0)
-    outside = (
-        with_cover[surveys.TRIPS_COL] * (1.0 - with_cover[_COVERED_SHARE_COL])
+    beyond = 1.0 - with_cover[_COVERED_SHARE_COL]
+    outside = pd.DataFrame(
+        {
+            target: with_cover[source] * beyond
+            for source, target in quantities.items()
+        }
     ).groupby(
         [with_cover[config.ACTOR_TYPE_COL], with_cover[config.DAY_TYPE_COL]]
     ).sum()
     return allocated, outside
+
+
+def _outside(
+    allocation: SurveyApportionment,
+    quantity: str,
+    actor: str,
+    day_type: str,
+) -> float:
+    """What one quantity of one actor type and day type left the study area with.
+
+    Zero where nothing of that combination fell outside, which is a real answer
+    and not a missing one: the table of remainders only carries the combinations
+    that had one.
+    """
+    outside = allocation.outside
+    if (actor, day_type) not in outside.index:
+        return 0.0
+    return float(outside.loc[(actor, day_type), quantity])
 
 
 def apportion_survey(
@@ -1334,14 +1378,14 @@ def apportion_survey(
         how="left",
     )
     along_line, outside_between = _spread(
-        between, length_shares, [_PAIR_ID_COL], _LINE_SHARE_COL, _ALLOCATED_COL
+        between, length_shares, [_PAIR_ID_COL], _LINE_SHARE_COL, _APPORTIONED_QUANTITIES
     )
 
     # -- intra-zonal: over the area of the one zone ------------------------
     within = pairs[intra_zonal].copy()
     within_shares = zone_shares.rename(columns={surveys.ZONE_CODE_COL: surveys.ZONE_ORIGIN_COL})
     in_zone, outside_within = _spread(
-        within, within_shares, [surveys.ZONE_ORIGIN_COL], _ZONE_SHARE_COL, _ALLOCATED_COL
+        within, within_shares, [surveys.ZONE_ORIGIN_COL], _ZONE_SHARE_COL, _APPORTIONED_QUANTITIES
     )
 
     # -- the two endpoint allocations --------------------------------------
@@ -1354,14 +1398,14 @@ def apportion_survey(
         zone_shares.rename(columns={surveys.ZONE_CODE_COL: surveys.ZONE_ORIGIN_COL}),
         [surveys.ZONE_ORIGIN_COL],
         _ZONE_SHARE_COL,
-        config.TRIPS_AT_ORIGIN_COL,
+        {surveys.TRIPS_COL: config.TRIPS_AT_ORIGIN_COL},
     )
     at_destination, _ = _spread(
         pairs,
         zone_shares.rename(columns={surveys.ZONE_CODE_COL: surveys.ZONE_DESTINATION_COL}),
         [surveys.ZONE_DESTINATION_COL],
         _ZONE_SHARE_COL,
-        config.TRIPS_AT_DESTINATION_COL,
+        {surveys.TRIPS_COL: config.TRIPS_AT_DESTINATION_COL},
     )
 
     key = [config.AREA_CODE_COL, config.ACTOR_TYPE_COL, config.DAY_TYPE_COL]
@@ -1369,12 +1413,16 @@ def apportion_survey(
         along_line.groupby(key, as_index=False).agg(
             **{
                 config.TRIPS_PER_AVERAGE_DAY_COL: (_ALLOCATED_COL, "sum"),
+                surveys.TRIPS_OVER_15MIN_COL: (_ALLOCATED_OVER_15MIN_COL, "sum"),
                 config.DESIRE_LINE_KM_COL: (predictors.FRAGMENT_LENGTH_COL, "sum"),
                 config.OD_PAIRS_TOUCHING_COL: (_PAIR_ID_COL, "nunique"),
             }
         ),
         in_zone.groupby(key, as_index=False).agg(
-            **{config.INTRAZONAL_TRIPS_COL: (_ALLOCATED_COL, "sum")}
+            **{
+                config.INTRAZONAL_TRIPS_COL: (_ALLOCATED_COL, "sum"),
+                _INTRAZONAL_OVER_15MIN_COL: (_ALLOCATED_OVER_15MIN_COL, "sum"),
+            }
         ),
         at_origin.groupby(key, as_index=False).agg(
             **{config.TRIPS_AT_ORIGIN_COL: (config.TRIPS_AT_ORIGIN_COL, "sum")}
@@ -1388,8 +1436,10 @@ def apportion_survey(
         per_unit = per_unit.merge(contribution, on=key, how="outer")
     for column in (
         config.TRIPS_PER_AVERAGE_DAY_COL,
+        surveys.TRIPS_OVER_15MIN_COL,
         config.DESIRE_LINE_KM_COL,
         config.INTRAZONAL_TRIPS_COL,
+        _INTRAZONAL_OVER_15MIN_COL,
         config.TRIPS_AT_ORIGIN_COL,
         config.TRIPS_AT_DESTINATION_COL,
     ):
@@ -1404,6 +1454,16 @@ def apportion_survey(
     per_unit[config.TRIPS_PER_AVERAGE_DAY_COL] = (
         per_unit[config.TRIPS_PER_AVERAGE_DAY_COL] + per_unit[config.INTRAZONAL_TRIPS_COL]
     )
+    # The narrower pedestrian definition arrives by the same two routes and is put
+    # back together the same way. It is a different measurement of the same
+    # travel, so it gets the same treatment and never a factor applied to the
+    # column above: the intra-zonal share of short walking is about twice the
+    # intra-zonal share of long walking, so the two definitions do not even arrive
+    # through the two routes in the same proportion. See D39.
+    per_unit[surveys.TRIPS_OVER_15MIN_COL] = (
+        per_unit[surveys.TRIPS_OVER_15MIN_COL] + per_unit[_INTRAZONAL_OVER_15MIN_COL]
+    )
+    per_unit = per_unit.drop(columns=_INTRAZONAL_OVER_15MIN_COL)
 
     outside = outside_between.add(outside_within, fill_value=0.0)
     covered_per_pair = length_shares.groupby(_PAIR_ID_COL)[_LINE_SHARE_COL].sum()
@@ -1423,8 +1483,9 @@ def apportion_survey(
             f"{float(pairs.loc[intra_zonal, surveys.TRIPS_COL].sum()):,.1f} trips per day are "
             f"intra-zonal, {100 * float(pairs.loc[intra_zonal, surveys.TRIPS_COL].sum()) / float(pairs[surveys.TRIPS_COL].sum()):.1f}% "
             "of the four measured modes, and are apportioned rather than discarded",
-            f"{float(outside.sum()):,.1f} trips per day fall outside the {len(units)} units, "
-            "which is the surveyed region beyond the study area and not a loss",
+            f"{float(outside[_ALLOCATED_COL].sum()):,.1f} trips per day fall outside the "
+            f"{len(units)} units, which is the surveyed region beyond the study area and not "
+            "a loss",
         ],
     )
 
@@ -1503,6 +1564,7 @@ def build_from_surveys(
 
     counted = [
         config.TRIPS_PER_AVERAGE_DAY_COL,
+        surveys.TRIPS_OVER_15MIN_COL,
         config.INTRAZONAL_TRIPS_COL,
         config.TRIPS_AT_ORIGIN_COL,
         config.TRIPS_AT_DESTINATION_COL,
@@ -1547,6 +1609,13 @@ def build_from_surveys(
 
     table[config.TRIPS_PER_DAY_OF_TYPE_COL] = (
         table[config.TRIPS_PER_AVERAGE_DAY_COL] / table[config.DAY_TYPE_UNIVERSE_SHARE_COL]
+    )
+    # The second pedestrian definition is exported on this basis alone. It exists
+    # to put four years in one series and nothing else, and the other basis is the
+    # one no two years can be compared on; the share stays in the table, so a
+    # reader who wants it can divide. See D39.
+    table[config.TRIPS_PER_DAY_OF_TYPE_OVER_15MIN_COL] = (
+        table[surveys.TRIPS_OVER_15MIN_COL] / table[config.DAY_TYPE_UNIVERSE_SHARE_COL]
     )
     area = table[config.AREA_UNIT_KM2_COL]
     table[config.TRIPS_PER_KM2_COL] = (
@@ -2007,7 +2076,7 @@ def verify_from_surveys(
                     & (year_rows[config.DAY_TYPE_COL] == day_type)
                 ][config.TRIPS_PER_AVERAGE_DAY_COL].sum()
             )
-            outside = float(allocation.outside.get((actor, day_type), 0.0))
+            outside = _outside(allocation, _ALLOCATED_COL, actor, day_type)
             ok = bool(np.isclose(allocated + outside, float(total), rtol=rtol))
             balanced = balanced and ok
             gap = abs(allocated + outside - float(total))
@@ -2020,13 +2089,42 @@ def verify_from_surveys(
             f"trips at {worst_name or 'none'}",
         ))
 
+        # And the same balance on the narrower pedestrian definition, against that
+        # definition's own total in the file. It is the check that a rescaled
+        # column would pass by construction and a reapportioned one has to earn:
+        # the second column reaches the units through the same two routes as the
+        # first, so what it leaves outside them is its own number and not a
+        # fraction of the first's.
+        day_shares = allocation.trips.universe_shares
+        narrow_name, narrow_gap = "", 0.0
+        narrow_balanced = True
+        for (actor, day_type), total in allocation.trips.totals_over_15min.items():
+            allocated = float(
+                year_rows[
+                    (year_rows[config.ACTOR_TYPE_COL] == actor)
+                    & (year_rows[config.DAY_TYPE_COL] == day_type)
+                ][config.TRIPS_PER_DAY_OF_TYPE_OVER_15MIN_COL].sum()
+            ) * float(day_shares.get(day_type, 1.0))
+            outside = _outside(allocation, _ALLOCATED_OVER_15MIN_COL, actor, day_type)
+            ok = bool(np.isclose(allocated + outside, float(total), rtol=rtol))
+            narrow_balanced = narrow_balanced and ok
+            gap = abs(allocated + outside - float(total))
+            if gap > narrow_gap:
+                narrow_gap, narrow_name = gap, f"{actor}/{day_type}"
+        checks.append((
+            f"{survey.year}: the fifteen-minute column balances against its own total in the file",
+            narrow_balanced,
+            f"{len(allocation.trips.totals_over_15min)} combination(s), largest gap "
+            f"{narrow_gap:.6f} trips at {narrow_name or 'none'}",
+        ))
+
         # The four modes of the file have to be the four modes of the table, or
         # something was lost between the two that the balance would not see
         # because it is checked per mode.
         measured_total = float(allocation.trips.totals.sum())
         table_total = float(
             year_rows[config.TRIPS_PER_AVERAGE_DAY_COL].sum()
-        ) + float(allocation.outside.sum())
+        ) + float(allocation.outside[_ALLOCATED_COL].sum())
         checks.append((
             f"{survey.year}: the four measured modes add to the file's own total for them",
             bool(np.isclose(table_total, measured_total, rtol=rtol)),
@@ -2081,6 +2179,40 @@ def verify_from_surveys(
 
     negatives = int((measured[config.TRIPS_PER_AVERAGE_DAY_COL] < 0).sum())
     checks.append(("no negative trip count", negatives == 0, f"{negatives} negative"))
+
+    # Only walking has two definitions, so on every other mode the two columns are
+    # one number written twice. If they ever differ there, the second column was
+    # not built by filtering walking — it was built by something that touched
+    # every mode, which is what a rescaling looks like from here.
+    others = measured[measured[config.ACTOR_TYPE_COL] != config.PEDESTRIAN]
+    checks.append((
+        "the fifteen-minute column equals the full one on the modes with one definition",
+        bool(np.allclose(
+            others[config.TRIPS_PER_DAY_OF_TYPE_COL].to_numpy(),
+            others[config.TRIPS_PER_DAY_OF_TYPE_OVER_15MIN_COL].to_numpy(),
+            rtol=1e-12,
+            equal_nan=True,
+        )),
+        f"{len(others)} row(s) of {config.BICYCLE}, {config.MOTORCYCLE} and {config.CAR}",
+    ))
+
+    # And on walking it is a part of the mode, so it can never be more than the
+    # whole of it. A per-unit check and not a per-city one, which is the point:
+    # the ratio between the two definitions runs from 0.68 to 1.45 across the
+    # thirty units, so a single factor applied to the city reproduces every city
+    # total and can still hand a unit more long walking than it has walking.
+    walking = measured[measured[config.ACTOR_TYPE_COL] == config.PEDESTRIAN]
+    over_the_whole = int((
+        walking[config.TRIPS_PER_DAY_OF_TYPE_OVER_15MIN_COL]
+        > walking[config.TRIPS_PER_DAY_OF_TYPE_COL] * (1 + 1e-9)
+    ).sum())
+    below_zero = int((walking[config.TRIPS_PER_DAY_OF_TYPE_OVER_15MIN_COL] < 0).sum())
+    checks.append((
+        "the fifteen-minute walking of a unit is a part of its walking, never more",
+        over_the_whole == 0 and below_zero == 0,
+        f"{over_the_whole} row(s) where the part exceeds the whole, {below_zero} negative, "
+        f"over {len(walking)} walking row(s)",
+    ))
 
     # The two trip columns are the same apportionment of one expansion read two
     # ways, so one has to be the other divided by the share the table carries. It
@@ -2328,6 +2460,96 @@ def report_from_surveys(
 
 
 # ---------------------------------------------------------------------------
+# The two pedestrian definitions
+# ---------------------------------------------------------------------------
+
+
+def report_pedestrian_definitions(
+    table: pd.DataFrame,
+    apportionments: dict[int, SurveyApportionment],
+    log: RunLog,
+    survey_list: tuple[config.MobilitySurvey, ...] | None = None,
+) -> None:
+    """What the two walking definitions say, at the city and at the unit.
+
+    Two tables, and the second is the one that matters. The first is the reason
+    D39 exists: the full column swings by half across the four years and changes
+    direction twice, and the fifteen-minute column does not, because the thing
+    that moves is the questionnaire and not the city. The second is the reason the
+    second column had to be apportioned again rather than scaled out of the first:
+    it says how differently the two definitions fall on the thirty units, which is
+    invisible from any city total.
+    """
+    survey_list = survey_list or config.MOBILITY_SURVEYS
+    years = [survey.year for survey in survey_list if survey.year in apportionments]
+
+    city = [
+        f"{'year':>6}  {'every walking trip':>18}  {'index':>5}  {'15 min or more':>14}  "
+        f"{'index':>5}  {'share':>6}",
+        f"{'-' * 6}  {'-' * 18}  {'-' * 5}  {'-' * 14}  {'-' * 5}  {'-' * 6}",
+    ]
+    baseline: tuple[float, float] | None = None
+    for year in years:
+        allocation = apportionments[year]
+        definitions = allocation.trips.pedestrian_definitions
+        if config.WEEKDAY_TYPE not in definitions.index:
+            continue
+        share = float(allocation.trips.universe_shares.get(config.WEEKDAY_TYPE, 1.0))
+        full = float(definitions.loc[config.WEEKDAY_TYPE, surveys.TRIPS_COL]) / share
+        narrow = float(
+            definitions.loc[config.WEEKDAY_TYPE, surveys.TRIPS_OVER_15MIN_COL]
+        ) / share
+        if baseline is None:
+            baseline = (full, narrow)
+        city.append(
+            f"{year:>6}  {full:>18,.0f}  {100 * full / baseline[0]:>5.0f}  {narrow:>14,.0f}  "
+            f"{100 * narrow / baseline[1]:>5.0f}  {narrow / full:>6.1%}"
+        )
+    log.table(
+        "the two pedestrian definitions, one weekday, the whole surveyed region, before the "
+        "removals — the series is read on the second (D39):",
+        "\n".join(city),
+    )
+
+    # The same two columns at the scale the study works at. Each unit's share of
+    # the city under one definition against its share under the other: a single
+    # scale factor would put every one of these at 1.000, and the spread is what
+    # says the two definitions do not fall on the city the same way. The rank
+    # correlation is beside it because the two are not in tension — the ranking
+    # barely moves and the levels move a great deal, which is exactly the shape
+    # that makes a rescaling look safe and be wrong.
+    spread = [
+        f"{'year':>6}  {'spearman':>8}  {'ratio of shares: min':>20}  {'median':>7}  "
+        f"{'max':>7}  {'widest unit':>28}",
+        f"{'-' * 6}  {'-' * 8}  {'-' * 20}  {'-' * 7}  {'-' * 7}  {'-' * 28}",
+    ]
+    for year in years:
+        rows = table[
+            (table[config.YEAR_COL] == year)
+            & (table[config.ACTOR_TYPE_COL] == config.PEDESTRIAN)
+            & (table[config.DAY_TYPE_COL] == config.WEEKDAY_TYPE)
+        ]
+        full = rows[config.TRIPS_PER_DAY_OF_TYPE_COL]
+        narrow = rows[config.TRIPS_PER_DAY_OF_TYPE_OVER_15MIN_COL]
+        if not float(full.sum()) or not float(narrow.sum()):
+            continue
+        ratio = (narrow / narrow.sum()) / (full / full.sum())
+        widest = rows.loc[(ratio - 1.0).abs().idxmax()]
+        spread.append(
+            f"{year:>6}  {full.corr(narrow, method='spearman'):>8.3f}  {ratio.min():>20.3f}  "
+            f"{ratio.median():>7.3f}  {ratio.max():>7.3f}  "
+            f"{widest[config.AREA_CODE_COL]} {widest[config.AREA_NAME_COL][:20]:<20} "
+            f"{ratio.loc[widest.name]:.2f}"
+        )
+    log.table(
+        "and how differently the two definitions fall on the thirty units — each unit's share "
+        "of the city under one against its share under the other, so a rescaled column would "
+        "read 1.000 everywhere:",
+        "\n".join(spread),
+    )
+
+
+# ---------------------------------------------------------------------------
 # One year against the years already measured
 # ---------------------------------------------------------------------------
 
@@ -2479,7 +2701,7 @@ def compare_years(
         aside.append(
             f"{year:>6}  {allocation.trips.file_total:>14,.0f}  {measured:>14,.0f}  "
             f"{impossible / (measured + impossible):>10.1%}  {intra / measured:>11.1%}  "
-            f"{float(allocation.outside.sum()) / measured:>8.1%}"
+            f"{float(allocation.outside[_ALLOCATED_COL].sum()) / measured:>8.1%}"
         )
     log.table("what each survey set aside, as a share of what it measured:", "\n".join(aside))
 

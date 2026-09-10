@@ -4207,8 +4207,10 @@ it.
 **Status:** Closed. Decided by my advisor on 2026-09-09, against the measurement
 below.
 
-**Built:** Not yet. It adds one measured column to the exposure table and changes
-nothing about how a survey is read.
+**Built:** Yes. `src/surveys.py` and `src/exposure.py`, route `exposure`. Run
+`run_20260909_214626`: 960 rows, 21 columns, 40 checks, none failed, and every
+one of the 960 rows identical to `run_20260908_101110` on every column it already
+had.
 
 ### The measurement that forced it
 
@@ -4300,6 +4302,92 @@ report publishes as its own second modal partition, the split the 2015 delivery
 publishes for both of its day types, the split 2023 builds into its two walking
 labels, and the definition the 2005 survey used for the whole mode. Choosing any
 other number would mean losing every one of those published controls.
+
+### What building it settled
+
+**One column, `TRIPS_PER_DAY_OF_TYPE_OVER_15MIN`, and only on the comparable
+basis.** Putting two years side by side is the only thing this definition exists
+for, and `TRIPS_PER_AVERAGE_DAY` is the basis on which no two years can be put
+side by side; the universe share stays in the table, so a reader who wants the
+other basis can divide. The table goes from twenty columns to twenty-one and the
+run from thirty-four checks to forty: one balance per year against the file's own
+fifteen-minute total, and two more that a rescaled column could not pass.
+
+**The second column travels through the apportionment beside the first rather
+than after it.** The narrower definition is a second number on the same
+origin-destination pair, written when the records are grouped, so both go through
+the same line-length shares and the same zone-area shares in one pass. That is
+what makes it a second apportionment and not a second reading of the survey: no
+file is opened twice, no geometry is built twice, and the two columns cannot
+diverge through anything but the trips behind them. The four city totals of the
+table above are reproduced to the trip.
+
+**And the per-unit measurement that justified it comes out stronger on the
+variable itself than it did at the origin zone.** The argument for reapportioning
+was measured on each unit's share of city walking counted at its origin zone: the
+ranking barely moved, Spearman 0.972 to 0.982, while the ratio between the two
+shares ran 0.68 to 1.45. On the apportioned variable — the column the models will
+actually read — the ranking is as stable, **Spearman 0.953 to 0.992**, and the
+ratio is wider still: **0.562 to 1.453 across the four years**. Suba holds 0.562
+in 2023 and Torca 1.453 in 2015, so a single per-year factor would have given
+Suba nearly twice the long walking it has. The check that catches that is per unit
+and per year, and it is in the run.
+
+**The duration stops being optional, which amends D38.** D38 allowed a year to
+declare no `duration_rule`: what it lost was the plausibility test, and the run
+said so on every execution rather than pretending to have made a check it had not.
+That is still true of the plausibility test. It is not true of this column, because
+there is no way to state the fifteen-minute definition without a duration and the
+pedestrian series is read on it. **A year that measures walking and declares no
+duration rule now stops the run**, naming the two ways out — declare the rule, or
+take the year out of `MOBILITY_SURVEYS` — because both are decisions for a person
+and the alternative is a null column that the interpolation would meet four stages
+later. All four declared years have a duration rule, so nothing moved.
+
+**A walking record with no duration would be counted in the full column and left
+out of the narrow one, and the run says so.** None of the four years has one; a
+year that did would understate its own fifteen-minute column by exactly those
+records, which is why it is a warning and not a silence.
+
+### What the column says once it is inside the thirty units, and it is not what the city says
+
+This is the finding the decision could not have had in advance, and it belongs
+beside D39 rather than inside it.
+
+The table that decided D39 is the **whole surveyed region**. Inside the thirty
+units — which is the only place the study's exposure exists — the two definitions
+look like this on one weekday, from the same run:
+
+| | Region, every walk | Region, 15 min+ | Index | Inside the units, every walk | Index | Inside the units, 15 min+ | Index |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| 2011 | 8,136,778 | 3,733,664 | 100 | 5,477,038 | 100 | 2,563,176 | 100 |
+| 2015 | 5,576,943 | 3,600,522 | 96 | 4,459,658 | 81 | 3,012,134 | 118 |
+| 2019 | 6,941,798 | 3,956,917 | 106 | 4,160,690 | 76 | 2,494,690 | 97 |
+| 2023 | 6,203,098 | 4,104,040 | 110 | 4,274,636 | 78 | 2,883,103 | 113 |
+
+**The fifteen-minute series is monotone over the region and is not monotone inside
+the units.** Its range over the region is 14 points; inside the units it is 21,
+and it changes direction at 2019. The full column is still worse — 24 points
+inside the units and a 46 % swing over the region — so the decision holds and the
+narrower column is still the one two years can be compared on. But the improvement
+the decision was taken on is smaller at the scale the models work at than it is at
+the scale it was measured on, and any document quoting the 100/96/106/110 index
+has to say which of the two it is quoting.
+
+**What accounts for the difference is the funnel, and it is a property of each
+delivery rather than of the definition.** The share of the region's own
+fifteen-minute walking that reaches the thirty units is 68.7 % in 2011, 83.7 % in
+2015, 63.0 % in 2019 and 70.3 % in 2023 — the same ordering, and very nearly the
+same numbers, as the full column's 67.3 / 80.0 / 59.9 / 68.9. 2015 keeps most of
+its walking because it is the best-geocoded delivery and the plausibility test
+removes 3.3 % of it; 2019 keeps least because that test removes 18.7 %. So the
+2015 and 2019 anchors of the pedestrian series carry a delivery effect that D39
+does not remove and cannot, and **the 2015 → 2019 step of the interpolated
+pedestrian series is where it lands**.
+
+That is a limitation of the series and not a defect of this column. It is recorded
+here so that D40's interpolation is read knowing it, and so that the report says it
+before a reader finds it.
 
 ---
 

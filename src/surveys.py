@@ -62,6 +62,14 @@ except ImportError:  # executed as a plain script from inside src/
 ZONE_ORIGIN_COL = "_ZONE_ORIGIN"
 ZONE_DESTINATION_COL = "_ZONE_DESTINATION"
 TRIPS_COL = "_TRIPS_PER_AVERAGE_DAY"
+# The same expansion under the narrower pedestrian definition: a walking record
+# shorter than the declared floor contributes zero here and its full weight to
+# the column above, and every record of the other three modes contributes the
+# same number to both. It travels beside the first from the moment the records
+# are grouped into zone pairs, so the apportionment runs over both at once and
+# the second column goes through the very same spatial operators as the first
+# rather than being scaled out of it. See D39.
+TRIPS_OVER_15MIN_COL = "_TRIPS_PER_AVERAGE_DAY_OVER_15MIN"
 ZONE_CODE_COL = "_ZONE"
 # Which declared source a row was read out of. Written by the reader because the
 # reader is the only thing that knows it: once the sources are concatenated, a row
@@ -81,7 +89,8 @@ class SurveyTrips:
     """
 
     survey: config.MobilitySurvey
-    # One row per actor type, day type and origin-destination pair.
+    # One row per actor type, day type and origin-destination pair, carrying the
+    # trips of the pair under both pedestrian definitions.
     pairs: pd.DataFrame
     # The zones those pairs are keyed on, in the study's metric CRS. Read here
     # rather than by the caller because the reader needs them itself: an
@@ -97,6 +106,16 @@ class SurveyTrips:
     # Trips per day per actor type and day type, straight from the file, before
     # any zone or unit has been looked at.
     totals: pd.Series
+    # The same, under the narrower pedestrian definition. It is what the balance
+    # of the second column is checked against, and it is a separate measurement
+    # of the file rather than a fraction of the first.
+    totals_over_15min: pd.Series
+    # What the two pedestrian definitions come to over the whole surveyed region,
+    # per day type, before any record is set aside for its zone or its geometry.
+    # Kept because it is the figure the four years are compared on and the one
+    # the survey's own publications state: the removals are the study's and the
+    # published splits are not made over them.
+    pedestrian_definitions: pd.DataFrame
     # Trips per day of the modes deliberately left outside the study, by the label
     # the file gives them, and of the records that carry no origin or destination
     # zone. Both are here so the run can check that the four measured modes plus
@@ -841,6 +860,7 @@ def implausible_records(
     zones: gpd.GeoDataFrame,
     survey: config.MobilitySurvey,
     log: RunLog,
+    duration: pd.Series | None,
 ) -> pd.Series:
     """Which records name two zones the mode could not have crossed in the time.
 
@@ -858,12 +878,17 @@ def implausible_records(
     their nearest points and do not touch. Something in the record is wrong, the
     file does not say what, and the line drawn from it is a line nobody travelled.
 
+    `duration` is the year's minutes per record, computed once by the caller and
+    aligned to `trips`, because the second thing that needs it — which walking
+    trips are in D39's narrower definition — needs it over a wider set of records
+    than this test does. Deriving it twice would mean two chances to derive it
+    differently.
+
     Returns a boolean mask over `trips`. A record with no duration cannot be
     judged and is kept, which the run reports: a check that quietly drops what it
     cannot evaluate is worse than one that says how much it could not see.
     """
     verdict = pd.Series(False, index=trips.index)
-    duration = trip_duration_minutes(trips, survey, log)
     if duration is None:
         log.warn(
             "%s: no duration rule is declared, so no origin-destination pair can be checked "
@@ -1029,6 +1054,27 @@ def read(survey: config.MobilitySurvey, log: RunLog) -> SurveyTrips:
     day_type, universe_shares = assign_day_type(frame, survey, log)
     frame[config.DAY_TYPE_COL] = day_type
 
+    # Derived once, over every record the file holds, because two different
+    # things need it: which origin-destination pairs the mode could not have
+    # covered, and which walking trips are in D39's narrower definition. The
+    # second needs it before any record has been set aside, so this is the only
+    # place both can read the same numbers.
+    duration = trip_duration_minutes(frame, survey, log)
+    if duration is None and config.PEDESTRIAN in survey.actor_types:
+        # D38 could let a year state no duration: what it lost was the
+        # plausibility test, and the run said so rather than pretending to have
+        # made it. D39 makes the duration load-bearing in a second way — the
+        # pedestrian series is read on the fifteen-minute column and there is no
+        # way to build that column without it — so a walking year with no
+        # duration rule now stops the run instead of exporting a null the
+        # interpolation would meet four stages later.
+        raise ValueError(
+            f"{survey.label} declares no duration_rule, so it cannot state the fifteen-minute "
+            "pedestrian definition D39 reads the series on. Declare one beside the rules in "
+            "config.py, or take the year out of MOBILITY_SURVEYS; both are decisions for a "
+            "person"
+        )
+
     file_total = float(weights.sum())
 
     # The reconstructed total against the one the survey publishes. This is the
@@ -1074,6 +1120,40 @@ def read(survey: config.MobilitySurvey, log: RunLog) -> SurveyTrips:
         .sum()
     )
     measured = weighted[weighted[config.ACTOR_TYPE_COL].notna()].copy()
+
+    # The two pedestrian definitions, one written into the table and one written
+    # into the file's own totals. A walk shorter than the floor keeps its whole
+    # weight in the first column and contributes nothing to the second; every
+    # record of the other three modes carries the same number in both, because no
+    # other mode has two definitions to choose between.
+    measured[TRIPS_OVER_15MIN_COL] = measured[TRIPS_COL]
+    if duration is not None:
+        walking = measured[config.ACTOR_TYPE_COL] == config.PEDESTRIAN
+        walk_minutes = duration.loc[measured.index]
+        short = walking & ~(walk_minutes >= config.PEDESTRIAN_LONG_WALK_MIN_MINUTES)
+        measured.loc[short, TRIPS_OVER_15MIN_COL] = 0.0
+        unjudged_walk = int((walking & walk_minutes.isna()).sum())
+        if unjudged_walk:
+            # A walking record with no duration cannot be placed on either side of
+            # the threshold, and dropping it out of the narrow column silently
+            # would make that column smaller for a reason nothing records. None of
+            # the four years has one; a year that did would need a decision.
+            log.warn(
+                "%s: %d walking record(s) yield no duration, so which of the two pedestrian "
+                "definitions they belong to cannot be decided; they are counted in the full "
+                "column and left out of the fifteen-minute one, which understates it. See D39",
+                survey.label,
+                unjudged_walk,
+            )
+        pedestrian_definitions = (
+            measured[walking]
+            .groupby(config.DAY_TYPE_COL)[[TRIPS_COL, TRIPS_OVER_15MIN_COL]]
+            .sum()
+        )
+    else:
+        pedestrian_definitions = measured.iloc[:0].groupby(config.DAY_TYPE_COL)[
+            [TRIPS_COL, TRIPS_OVER_15MIN_COL]
+        ].sum()
 
     for source_column, target in (
         (survey.origin_zone_column, ZONE_ORIGIN_COL),
@@ -1124,7 +1204,13 @@ def read(survey: config.MobilitySurvey, log: RunLog) -> SurveyTrips:
     zones = read_zoning(survey, log)
     _require_known_zones(measured, zones, survey)
 
-    impossible = implausible_records(measured, zones, survey, log)
+    impossible = implausible_records(
+        measured,
+        zones,
+        survey,
+        log,
+        duration=None if duration is None else duration.loc[measured.index],
+    )
     implausible_totals = measured.loc[impossible].groupby(config.ACTOR_TYPE_COL)[TRIPS_COL].sum()
     implausible_count = int(impossible.sum())
     if implausible_count:
@@ -1144,13 +1230,17 @@ def read(survey: config.MobilitySurvey, log: RunLog) -> SurveyTrips:
         )
         measured = measured[~impossible]
 
-    totals = measured.groupby([config.ACTOR_TYPE_COL, config.DAY_TYPE_COL])[TRIPS_COL].sum()
+    grouped = measured.groupby([config.ACTOR_TYPE_COL, config.DAY_TYPE_COL])[
+        [TRIPS_COL, TRIPS_OVER_15MIN_COL]
+    ].sum()
+    totals = grouped[TRIPS_COL]
+    totals_over_15min = grouped[TRIPS_OVER_15MIN_COL]
 
     pairs = (
         measured.groupby(
             [config.ACTOR_TYPE_COL, config.DAY_TYPE_COL, ZONE_ORIGIN_COL, ZONE_DESTINATION_COL],
             observed=True,
-        )[TRIPS_COL]
+        )[[TRIPS_COL, TRIPS_OVER_15MIN_COL]]
         .sum()
         .reset_index()
     )
@@ -1188,6 +1278,12 @@ def read(survey: config.MobilitySurvey, log: RunLog) -> SurveyTrips:
                 for day_type in config.DAY_TYPES
                 if day_type in universe_shares.index
             ),
+            "pedestrian, whole surveyed region, before the removals: " + "; ".join(
+                f"{day_type} {row[TRIPS_COL] / universe_shares.get(day_type, 1.0):,.0f} on every "
+                f"walking trip and {row[TRIPS_OVER_15MIN_COL] / universe_shares.get(day_type, 1.0):,.0f} "
+                f"of fifteen minutes or more ({100 * row[TRIPS_OVER_15MIN_COL] / row[TRIPS_COL]:.1f}%)"
+                for day_type, row in pedestrian_definitions.iterrows()
+            ),
         ],
     )
 
@@ -1201,6 +1297,8 @@ def read(survey: config.MobilitySurvey, log: RunLog) -> SurveyTrips:
         records_without_weight=without_weight,
         file_total=file_total,
         totals=totals,
+        totals_over_15min=totals_over_15min,
+        pedestrian_definitions=pedestrian_definitions,
         not_measured_totals=not_measured_totals,
         unzoned_total=unzoned_total,
         implausible_totals=implausible_totals,

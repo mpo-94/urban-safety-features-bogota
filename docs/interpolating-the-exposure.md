@@ -27,21 +27,26 @@ Read in this order, before touching anything:
    result is checked against.
 
 **The reference run is `run_20260908_101110`**: 960 rows, 34 checks, none failed.
-Everything already measured in this document comes from it.
+Everything already measured in this document comes from it, except the figures
+about the fifteen-minute column, which come from `run_20260909_214626` — the same
+table with that column added and every earlier row unchanged.
 
 **Two things get built and the first has to come first**, because the second reads
 what the first writes:
 
-- **D39's second pedestrian column, in the `exposure` route.** The measured table
-  gains `TRIPS_PER_DAY_OF_TYPE_OVER_15MIN`, produced by running the apportionment
-  again with the duration filter applied to the pedestrian records — **not** by
-  rescaling the existing column, for the reason section 2 gives with numbers. The
-  city totals it has to reproduce, one weekday, the whole surveyed region: **2011
-  3,733,664 | 2015 3,600,522 | 2019 3,956,917 | 2023 4,104,040**. The full column
-  must not move: 8,136,778 / 5,576,943 / 6,941,798 / 6,203,098. And the 720 rows of
-  2015, 2019 and 2023 must come out identical on every column they already have,
-  as they did for the two years before this one.
-- **D40's interpolation, in a route of its own.** Sections 1 to 4.
+- **D39's second pedestrian column, in the `exposure` route. Built** on
+  `run_20260909_214626`: 960 rows, 21 columns, 40 checks, none failed. The
+  measured table carries `TRIPS_PER_DAY_OF_TYPE_OVER_15MIN`, produced by running
+  the apportionment again with the duration filter applied to the pedestrian
+  records — **not** by rescaling the existing column, for the reason section 2
+  gives with numbers. The four city totals it had to reproduce came out to the
+  trip, **2011 3,733,664 | 2015 3,600,522 | 2019 3,956,917 | 2023 4,104,040**,
+  the full column did not move, and **all 960 rows are identical to
+  `run_20260908_101110` on every column they already had** rather than only the
+  720 that were required to be. What building it revealed is in section 7, and
+  section 3 of this document is where it matters: the monotone series is the
+  region's, and inside the thirty units the same column turns at 2019.
+- **D40's interpolation, in a route of its own.** Sections 1 to 4. **Not built.**
 
 ---
 
@@ -267,3 +272,39 @@ it and section 3 says why it would be worst there specifically: 41 of the 64 wid
 per-unit steps are on that segment, and the segment carries an instrument change in
 walking, an imputation without geography, and the smallest share of city totals
 reaching the units of any year.
+
+
+---
+
+## 7. What building D39 changed here
+
+The first half is built and it moved one thing in this document. Everything else
+in sections 1 to 6 stands as written.
+
+**The monotone pedestrian series is the region's, and the panel is not the
+region.** D39 was decided on the whole surveyed region, where the fifteen-minute
+column indexes 100 / 96 / 106 / 110 against the full column's 100 / 69 / 85 / 76.
+Inside the thirty units the same column indexes **100 / 118 / 97 / 113** — a range
+of 21 points instead of 14, turning at 2019 instead of rising. The full column
+inside the units indexes 100 / 81 / 76 / 78, so the narrower one is still the
+better of the two and the decision holds; what is no longer true is that it is
+smooth.
+
+**What accounts for it is the funnel and not the definition.** The share of the
+region's fifteen-minute walking that reaches the units is 68.7 % in 2011, 83.7 %
+in 2015, 63.0 % in 2019 and 70.3 % in 2023, tracking the full column's 67.3 /
+80.0 / 59.9 / 68.9 almost exactly. 2015 keeps most of its walking because the
+plausibility test removes 3.3 % of it and 2019 keeps least because that test
+removes 18.7 % of its own — a property of two deliveries, sitting on two adjacent
+anchors of the series.
+
+**So the 2015 → 2019 segment of the pedestrian series carries a step of its own**,
+in the same way section 3 already says the 2011 → 2015 segment does. Section 3's
+volatility table was measured on the full pedestrian column; it has to be
+recomputed on the column the series is actually read on, and the pedestrian row of
+it is the one that will move.
+
+**And the second column is one column, not two.** It is exported per day of type
+only, because that is the only basis two years can be compared on and comparing
+years is the whole reason the definition exists. `DAY_TYPE_UNIVERSE_SHARE` is in
+the table, so the other basis is one division away for anyone who wants it.

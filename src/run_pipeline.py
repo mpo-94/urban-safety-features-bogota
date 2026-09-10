@@ -225,6 +225,11 @@ def run_exposure(log: RunLog) -> None:
         raise RouteFailed("the exposure tables do not agree with the sources they were built from")
 
     exposure.report_from_surveys(table, apportionments, log)
+    # Before the cross-year comparison, because it is the same kind of statement
+    # about one mode: which of the two walking definitions the series is read on,
+    # what the choice costs, and how far the two fall apart at the scale of a
+    # unit. See D39.
+    exposure.report_pedestrian_definitions(table, apportionments, log)
     # Last, because it is the report that reads across the years rather than
     # inside one. With a single survey implemented it prints the baseline the next
     # one will be read against; with more, it is what catches a year whose

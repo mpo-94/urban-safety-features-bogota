@@ -2557,6 +2557,28 @@ class DurationFromTextClockColumns:
     round_to_minute: bool = False
 
 
+# -- the second pedestrian definition ----------------------------------------
+# Walking is the one mode the four surveys do not measure the same way, so it is
+# measured twice and the series is read on the narrower of the two. A trip on
+# foot lasting at least this many minutes is in the second definition; anything
+# shorter is in the first and not in the second. The other three modes have one
+# definition and carry the same number in both columns.
+#
+# The threshold is not ours, which is the whole reason it is fifteen. It is the
+# split the 2011 report publishes as its own second modal partition, the split
+# the 2015 delivery publishes for each of its two day types, the split 2023
+# builds into its two walking labels, and the definition the 2005 survey used for
+# the entire mode. Any other number would forfeit every one of those published
+# controls and would have to be argued from nothing.
+#
+# What forced it: the full column swings 46% across the four years and changes
+# direction twice, while this one moves 14% in all and rises monotonically after
+# 2015. The difference is the instrument and not the city — 2011's questionnaire
+# asks for the short walk outright and 2015's states no floor — and an
+# interpolation cannot be laid over a quantity whose definition changes between
+# two of its anchors. See D39.
+PEDESTRIAN_LONG_WALK_MIN_MINUTES = 15.0
+
 # -- records the geometry contradicts ---------------------------------------
 # The fastest each mode is allowed to have travelled, straight line, before the
 # record is treated as impossible rather than merely surprising. They are
@@ -3305,6 +3327,7 @@ class SurveyExposureQuantity:
 # between a weekday and a Saturday. See D38.
 TRIPS_PER_AVERAGE_DAY_COL = "TRIPS_PER_AVERAGE_DAY"
 TRIPS_PER_DAY_OF_TYPE_COL = "TRIPS_PER_DAY_OF_TYPE"
+TRIPS_PER_DAY_OF_TYPE_OVER_15MIN_COL = "TRIPS_PER_DAY_OF_TYPE_OVER_15MIN"
 DAY_TYPE_UNIVERSE_SHARE_COL = "DAY_TYPE_UNIVERSE_SHARE"
 INTRAZONAL_TRIPS_COL = "INTRAZONAL_TRIPS_PER_AVERAGE_DAY"
 TRIPS_AT_ORIGIN_COL = "TRIPS_PER_AVERAGE_DAY_AT_ORIGIN"
@@ -3340,6 +3363,22 @@ SURVEY_EXPOSURE_QUANTITIES: tuple[SurveyExposureQuantity, ...] = (
               "chart, a rate, an interpolation, a model — has to read this one; reading the "
               "other made every 2023 mode look 23% smaller than 2019 until it was caught. "
               "See D38",
+    ),
+    SurveyExposureQuantity(
+        name=TRIPS_PER_DAY_OF_TYPE_OVER_15MIN_COL,
+        unit="trips per day",
+        means="the same quantity on the narrower pedestrian definition: only the walking that "
+              "lasts fifteen minutes or more, apportioned again through the same two spatial "
+              "operators rather than rescaled from the column beside it. Identical to "
+              "TRIPS_PER_DAY_OF_TYPE for BICYCLE, MOTORCYCLE and CAR, which have one "
+              "definition each. THE PEDESTRIAN SERIES IS READ ON THIS COLUMN, because the full "
+              "one measures a category the four surveys disagree about: 2011 asks for the short "
+              "walk outright and 2015 states no floor, so the full column swings 46% across the "
+              "four years where this one moves 14%. The full column stays beside it because the "
+              "crash source cannot separate a short walk from a long one either, so it is the "
+              "one whose denominator matches the numerator's category. Exported only per day of "
+              "type, because putting two years side by side is the only thing this definition "
+              "exists for; divide by DAY_TYPE_UNIVERSE_SHARE for the other basis. See D39",
     ),
     SurveyExposureQuantity(
         name=DAY_TYPE_UNIVERSE_SHARE_COL,

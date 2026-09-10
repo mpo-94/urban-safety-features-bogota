@@ -2171,9 +2171,9 @@ cannot separate them: cycling did reorganise across the city in those four years
 and 2011's cycling rests on 3,526 zoned records spread over thirty units.
 
 **The pedestrian series is not interpolable on the full definition and is on the
-fifteen-minute one, which is what D39 decides.** Measured on the same reading the
-run makes, outside the pipeline on 2026-09-09, one weekday and the whole surveyed
-region:
+fifteen-minute one, which is what D39 decides.** It was measured outside the
+pipeline on 2026-09-09 and is now a column of the table; the subsection below is
+the built version. One weekday and the whole surveyed region:
 
 | | Every walking trip | Index | Fifteen minutes or more | Index |
 |---|---:|---:|---:|---:|
@@ -2183,8 +2183,8 @@ region:
 | 2023 | 6,203,098 | 76 | 4,104,040 | 110 |
 
 The full column swings 46 % and changes direction twice; the fifteen-minute column
-rises monotonically after 2015 and its whole range is 14 %. **The second column is
-not yet in the exposure table** — D39 adds it and D40 is what will read it.
+rises monotonically after 2015 and its whole range is 14 %. The second column is now in the exposure table as
+`TRIPS_PER_DAY_OF_TYPE_OVER_15MIN`, and D40 is what will read it.
 
 **And it has to be apportioned again rather than rescaled**, which was measured
 before it was asserted. Counted at the origin zone under both definitions, each
@@ -2563,3 +2563,114 @@ has two points rather than one, so "publish the weekday alone because it is the 
 day the series shares" is no longer forced. **Whether a Saturday measured well in
 2015 and badly in 2023 belongs in one series is a decision for my advisor.** D38 has
 both.
+
+
+### The second pedestrian definition, built
+
+Run `run_20260909_214626`, route `exposure`, command
+`python -m src.run_pipeline exposure`. **Forty checks, none failed.** The decision
+is D39; what follows is what building it produced and what it revealed.
+
+**The table gains one column and nothing else moves.** `analysis__exposure_by_unit`
+goes from twenty columns to twenty-one with
+`TRIPS_PER_DAY_OF_TYPE_OVER_15MIN` beside `TRIPS_PER_DAY_OF_TYPE`, and **all 960
+rows come out identical to `run_20260908_101110` on every column they already
+had** — not the 720 of 2015, 2019 and 2023 that the two previous years had to
+reproduce, but every row of every year, because nothing about how a survey is read
+changed.
+
+**The four city totals are reproduced to the trip**, one weekday, the whole
+surveyed region, before the study's own removals:
+
+| | Every walking trip | Index | Fifteen minutes or more | Index | Share |
+|---|---:|---:|---:|---:|---:|
+| 2011 | 8,136,778 | 100 | 3,733,664 | 100 | 45.9 % |
+| 2015 | 5,576,943 | 69 | 3,600,522 | 96 | 64.6 % |
+| 2019 | 6,941,798 | 85 | 3,956,917 | 106 | 57.0 % |
+| 2023 | 6,203,098 | 76 | 4,104,040 | 110 | 66.2 % |
+
+**The column is a second apportionment and not a rescaling, and three checks say
+so.** The narrower definition is a second number written on the same
+origin-destination pair when the records are grouped, so both columns pass through
+the same line-length shares and the same zone-area shares in a single pass — one
+reading of the survey, one geometry, two quantities. What the run then checks:
+
+| Check | Result |
+|---|---|
+| 2011: the fifteen-minute column balances against its own total in the file | OK, 8 combinations, largest gap 0.000000 |
+| 2015: the fifteen-minute column balances against its own total in the file | OK, 8 combinations, largest gap 0.000000 |
+| 2019: the fifteen-minute column balances against its own total in the file | OK, 4 combinations, largest gap 0.000000 |
+| 2023: the fifteen-minute column balances against its own total in the file | OK, 12 combinations, largest gap 0.000000 |
+| The fifteen-minute column equals the full one on the modes with one definition | OK, 720 rows of `BICYCLE`, `MOTORCYCLE` and `CAR` |
+| The fifteen-minute walking of a unit is a part of its walking, never more | OK, 0 rows where the part exceeds the whole, 0 negative, over 240 walking rows |
+
+The first four are the ones a rescaled column could not pass: what the narrow
+definition leaves outside the thirty units is its own number, measured against its
+own total in the file, and not a fraction of what the full definition leaves
+outside.
+
+**And the measurement that forced the reapportionment comes out wider on the
+variable than it did on the check that justified it.** D39 argued from each unit's
+share of city walking counted at its origin zone — ranking stable at Spearman
+0.972–0.982, ratio of shares 0.68 to 1.45. On the apportioned variable itself:
+
+| Year | Spearman of the two columns | Ratio of shares, min | Median | Max | Widest unit |
+|---|---:|---:|---:|---:|---|
+| 2011 | 0.953 | 0.811 Salitre | 0.994 | 1.272 | UPL14 Patio Bonito 1.27 |
+| 2015 | 0.992 | 0.794 Britalia | 0.995 | 1.453 | UPL07 Torca 1.45 |
+| 2019 | 0.981 | 0.864 Toberín | 0.984 | 1.154 | UPL09 Suba 1.15 |
+| 2023 | 0.983 | 0.562 Suba | 1.008 | 1.275 | UPL09 Suba 0.56 |
+
+**The ratio runs 0.562 to 1.453 across the four years and the ranking barely
+moves**, which is exactly the shape that makes a single scale factor look safe:
+every city total would have been reproduced and Suba would have been handed nearly
+twice the long walking it has in 2023. The run prints this table on every
+execution.
+
+### What the built column says inside the thirty units, and it is not what the region says
+
+The table D39 was decided on is the whole surveyed region. The study's exposure
+exists only inside the thirty units, and there the two definitions look like this
+on one weekday:
+
+| | Region, 15 min+ | Index | Inside the units, every walk | Index | Inside the units, 15 min+ | Index |
+|---|---:|---:|---:|---:|---:|---:|
+| 2011 | 3,733,664 | 100 | 5,477,038 | 100 | 2,563,176 | 100 |
+| 2015 | 3,600,522 | 96 | 4,459,658 | 81 | 3,012,134 | 118 |
+| 2019 | 3,956,917 | 106 | 4,160,690 | 76 | 2,494,690 | 97 |
+| 2023 | 4,104,040 | 110 | 4,274,636 | 78 | 2,883,103 | 113 |
+
+**The fifteen-minute series rises monotonically over the region and does not
+inside the units.** Over the region its whole range is 14 points; inside the units
+it is 21 and it turns at 2019. The decision still holds — the full column moves 24
+points inside the units on top of a 46 % swing over the region, and it is the one
+whose definition changes between two of its anchors — but **the improvement is
+smaller at the scale the models work at than at the scale the decision was measured
+at**, and a document quoting the 100/96/106/110 index has to say which of the two
+it is quoting.
+
+**What accounts for the difference is the funnel, and it is a property of each
+delivery.** The share of the region's fifteen-minute walking that reaches the
+thirty units is 68.7 % in 2011, 83.7 % in 2015, 63.0 % in 2019 and 70.3 % in 2023,
+against 67.3 / 80.0 / 59.9 / 68.9 for the full column — the same ordering and
+nearly the same numbers, so the narrower definition does not change how much of
+the city reaches the units. 2015 keeps most of its walking because it is the
+best-geocoded delivery and the plausibility test removes 3.3 % of it; 2019 keeps
+least because that test removes 18.7 % of its own. The 2015 and 2019 anchors of the
+pedestrian series therefore carry a delivery effect that D39 does not remove and
+cannot, and the 2015 → 2019 step of any interpolation is where it lands.
+
+**The Saturday carries the column too**, for the three years that have one:
+2011 3,886,651 walking trips a day inside the units of which 1,388,437 last
+fifteen minutes or more, 2015 3,041,250 and 2,328,659, and 2023 4,044,609 and
+2,593,436. 2011's are marked `CITY_LEVEL_ONLY` like the rest of its Saturday.
+
+**The duration stopped being an optional declaration, which amends D38.** A year
+that measures walking and declares no `duration_rule` now stops the run, because
+there is no way to state the fifteen-minute definition without one and the
+pedestrian series is read on it. D38's own statement still holds for the
+plausibility test — a year with no duration is unexamined rather than clean — but a
+year with no duration can no longer enter the series at all. All four declared
+years have a rule, so nothing moved; and a walking record whose duration cannot be
+derived would be counted in the full column, left out of the narrow one, and named
+in a warning. None of the four years has one.

@@ -166,12 +166,15 @@ that is annual. Outside the measured range the rate is held flat rather than
 extrapolated, because a slope fitted to two points and prolonged four years is an
 invention. Every constructed cell says it is one.
 
-The pedestrian mode needs a second measured column before any of that can run. On
-the full definition the series swings 46 % and changes direction twice; cut at
-fifteen minutes it moves 14 % and rises monotonically after 2015, and the
-difference is that 2011's questionnaire asks for the short walk outright and 2015's
-does not. Both are measured, both are exported, and anything putting two years side
-by side reads the second. See D39, D40 and
+**The pedestrian mode is measured twice and that half is built.** On the full
+definition the series swings 46 % over the surveyed region and changes direction
+twice; cut at fifteen minutes it moves 14 % and rises monotonically after 2015, and
+the difference is that 2011's questionnaire asks for the short walk outright and
+2015's does not. Both are measured, both are exported, and anything putting two
+years side by side reads `TRIPS_PER_DAY_OF_TYPE_OVER_15MIN`. The second column is a
+second apportionment and never a rescaling of the first: the two definitions do not
+fall on the thirty units the same way, and the ratio between each unit's share
+under one and its share under the other runs 0.56 to 1.45. See D39, D40 and
 `docs/interpolating-the-exposure.md`, whose section 6 is the list of ways that
 stage can pass every check and still be useless.
 
