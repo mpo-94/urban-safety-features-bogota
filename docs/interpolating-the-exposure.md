@@ -11,6 +11,40 @@ survey**, and the panel the models are fitted on needs all of them.
 
 ---
 
+## 0. Where to start
+
+Read in this order, before touching anything:
+
+1. `CLAUDE.md`.
+2. **This document**, all of it. Section 2 is the method, section 3 is what stops
+   it being wrong, and section 6 is the list of ways this stage can be built so it
+   passes every check and still be useless.
+3. **[D39 and D40](design-decisions.md)** — the decisions, and what they rejected.
+4. **[D36](design-decisions.md)** for the population panel this reads, and
+   **[D38](design-decisions.md)** for the table it reads.
+5. **[`mobility-surveys-inventory.md`](mobility-surveys-inventory.md)** §6b and §7.
+6. **[`verification-report.md`](verification-report.md)** §15 for the figures the
+   result is checked against.
+
+**The reference run is `run_20260908_101110`**: 960 rows, 34 checks, none failed.
+Everything already measured in this document comes from it.
+
+**Two things get built and the first has to come first**, because the second reads
+what the first writes:
+
+- **D39's second pedestrian column, in the `exposure` route.** The measured table
+  gains `TRIPS_PER_DAY_OF_TYPE_OVER_15MIN`, produced by running the apportionment
+  again with the duration filter applied to the pedestrian records — **not** by
+  rescaling the existing column, for the reason section 2 gives with numbers. The
+  city totals it has to reproduce, one weekday, the whole surveyed region: **2011
+  3,733,664 | 2015 3,600,522 | 2019 3,956,917 | 2023 4,104,040**. The full column
+  must not move: 8,136,778 / 5,576,943 / 6,941,798 / 6,203,098. And the 720 rows of
+  2015, 2019 and 2023 must come out identical on every column they already have,
+  as they did for the two years before this one.
+- **D40's interpolation, in a route of its own.** Sections 1 to 4.
+
+---
+
 ## 1. What the stage produces
 
 One row per unit, year, actor type and day type, over the **whole** window
@@ -180,7 +214,56 @@ with it.
   behavioural variation, only demographic.
 - **Whether 2005 is implemented.** Settled by the check in section 3.
 - **Whether the anchored version replaces this one.** D40 defers it and says why.
-- **What the Saturday series does across its twelve-year gap**, and whether a
+- **What the Saturday series does across its eight-year gap**, and whether a
   Sunday series exists at all.
 - **Which casualty set the window follows**, 2007–2024 or 2008–2024. The table is
   built over the wider one so that the choice stays a filter.
+
+---
+
+## 6. The ways this stage can pass every check and still be wrong
+
+Section 3 catches arithmetic. These are the ones it cannot, because each of them
+produces a table that closes, balances and reproduces every measured year.
+
+**Interpolating `TRIPS_PER_AVERAGE_DAY`.** It means a different quantity in 2023
+than in the other three years, so an interpolation over it is a curve through two
+different units of measurement. Every internal check passes. This is the first
+entry in section 7 of [`adding-a-survey-year.md`](adding-a-survey-year.md) and it
+applies here with more force than anywhere else in the pipeline, because an
+interpolation is the definition of putting two years side by side. **Read
+`TRIPS_PER_DAY_OF_TYPE`, or `TRIPS_PER_DAY_OF_TYPE_OVER_15MIN` for the pedestrian
+series.**
+
+**Rescaling the full pedestrian column into the fifteen-minute one.** Section 2
+has the measurement: the per-unit ratio between the two runs 0.68 to 1.45, and that
+understates it because short walks are about twice as intra-zonal as long ones and
+therefore go through a different spatial operator. A rescaled column would
+reproduce every city total in section 0 exactly and be wrong on individual units by
+up to a half. **The check that catches it is per unit and not per city.**
+
+**Interpolating the city and handing every unit the same curve.** It would be
+smooth, it would reproduce the city totals, and it would destroy the only thing the
+table is for. The study is thirty units; a panel whose within-unit variation is
+identical everywhere carries no spatial information between survey years.
+
+**Smoothing the per-unit trajectories quietly.** The opposite failure, and it is
+tempting because section 3's volatility table is uncomfortable: 64 of 360 steps
+move by more than a factor of two. Shrinking them toward the city trajectory is a
+legitimate method and it is **a decision for a person**, not something to apply
+because the output looked jumpy. Report the table, ask, and do what is decided.
+
+**Letting a constructed year look measured.** `EXPOSURE_PROVENANCE` and
+`YEARS_TO_NEAREST_SURVEY` are not decoration. Fourteen of the eighteen years are
+constructed, and a model fitted on all eighteen without knowing which is fourteen
+observations of an assumption.
+
+**Overwriting the measured table.** `analysis__exposure_by_unit` is the record of
+what the surveys say. The interpolated table sits beside it, as the corrected
+casualty set sits beside the observed one (D31).
+
+**Extrapolating a trend backwards from the 2011 → 2015 step.** D40 already forbids
+it and section 3 says why it would be worst there specifically: 41 of the 64 widest
+per-unit steps are on that segment, and the segment carries an instrument change in
+walking, an imputation without geography, and the smallest share of city totals
+reaching the units of any year.

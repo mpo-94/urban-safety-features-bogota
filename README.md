@@ -157,11 +157,23 @@ carrying the day type its file holds, and no day-type rule ever opens a file.
 `docs/implementing-2011.md` is that year's record.
 
 **Interpolating over the fourteen years no survey covers is the next stage and it
-is specified rather than built.** The rate is what gets interpolated — trips per
-inhabitant, log-linearly between adjacent surveys — and the level is recovered from
-the population panel, which is annual. Outside the measured range the rate is held
-flat rather than extrapolated. Every constructed cell says so. See D39, D40 and
-`docs/interpolating-the-exposure.md`.
+is specified rather than built.** It runs **per unit**, because the study is thirty
+units and a city curve handed identically to each of them would carry no spatial
+information between survey years. What is interpolated is the rate — that unit's
+trips over that unit's population — log-linearly between adjacent surveys, and the
+level comes back multiplied by that unit's population for that year, from a panel
+that is annual. Outside the measured range the rate is held flat rather than
+extrapolated, because a slope fitted to two points and prolonged four years is an
+invention. Every constructed cell says it is one.
+
+The pedestrian mode needs a second measured column before any of that can run. On
+the full definition the series swings 46 % and changes direction twice; cut at
+fifteen minutes it moves 14 % and rises monotonically after 2015, and the
+difference is that 2011's questionnaire asks for the short walk outright and 2015's
+does not. Both are measured, both are exported, and anything putting two years side
+by side reads the second. See D39, D40 and
+`docs/interpolating-the-exposure.md`, whose section 6 is the list of ways that
+stage can pass every check and still be useless.
 
 A year need not have a kind of day at all. 2019 surveyed one typical working day
 and nothing else, which its questionnaire, its glossary, its report and its

@@ -2186,6 +2186,37 @@ The full column swings 46 % and changes direction twice; the fifteen-minute colu
 rises monotonically after 2015 and its whole range is 14 %. **The second column is
 not yet in the exposure table** — D39 adds it and D40 is what will read it.
 
+**And it has to be apportioned again rather than rescaled**, which was measured
+before it was asserted. Counted at the origin zone under both definitions, each
+unit's share of city walking correlates at Spearman 0.972, 0.976, 0.972 and 0.982
+across the four years — the ranking barely moves — while the ratio between the two
+shares runs **0.68 to 1.45 across the thirty units**. A rescaled column would
+reproduce all four city totals exactly and be wrong by up to a half on an
+individual unit. The measurement understates the difference, because it counts at
+the origin and therefore cannot see the part where the two definitions diverge
+most: short walks are about twice as intra-zonal as long ones, 49.1 % against
+25.1 % in 2011 and 45.4 % against 19.0 % in 2015, and an intra-zonal trip is spread
+over a zone's units by area while an inter-zonal one is spread along a line.
+
+**How far a unit's rate moves between two adjacent surveys, which is the price of
+interpolating per unit.** Over the weekday and the four modes, the number of
+unit × mode × step combinations moving by more than a factor of two:
+
+| Step | `PEDESTRIAN` | `BICYCLE` | `MOTORCYCLE` | `CAR` |
+|---|---:|---:|---:|---:|
+| 2011 → 2015 | 4 | 16 | 22 | 3 |
+| 2015 → 2019 | 3 | 6 | 1 | 2 |
+| 2019 → 2023 | 4 | 1 | 1 | 1 |
+
+**64 of 360, and 41 of the 64 are on the 2011 → 2015 step** — the same segment that
+carries the instrument change in walking, the imputation without geography and the
+smallest share of city totals reaching the units. The widest single step is
+Chapinero's cycling rate at 8.85×, followed by Teusaquillo at 6.12× and Usaquén at
+5.48×, all three cycling and all three on that segment. Part of it is real:
+Chapinero's higher level is held by 2019 and 2023. D40 requires the interpolation to
+print this table on every run and leaves open whether the trajectories need
+shrinking toward the city's.
+
 **2011's walking is 46 % above 2015's and the gap is entirely below fifteen
 minutes.** It is not a reading — Tabla 43 of the 2015 delivery gives 8,136,778 for
 2011, to the trip. Split at fifteen minutes the two years agree within 4 % above it,
