@@ -2341,6 +2341,29 @@ class ZoneOutsideTheCity:
 
 
 @dataclass(frozen=True)
+class ColumnNotComparable:
+    """A column this year measures that cannot be put beside another year's.
+
+    Keyed by column and narrowed to the actor types it applies to, because a
+    column may be comparable for three modes and not for the fourth. 2005 is the
+    case and the reason is exact: it collected no walk under fifteen minutes, so
+    its `TRIPS_PER_DAY_OF_TYPE` holds long walking for the **pedestrian** and
+    holds exactly what every other year holds for the bicycle, the motorcycle and
+    the car — in those three the two columns are one number written twice, in
+    every year, by construction.
+
+    Declaring it for the column alone would have held the bicycle's full series
+    flat back to 2011 while its fifteen-minute series interpolated from 2005, and
+    the two would have parted company on three modes that have only one
+    definition. The check that says those two columns are equal on those three
+    modes is what caught it.
+    """
+
+    actor_types: tuple[str, ...]
+    because: str
+
+
+@dataclass(frozen=True)
 class PublishedTotalOverSubset:
     """The publication summed a part of the file, and this says which part.
 
@@ -2839,7 +2862,7 @@ class MobilitySurvey:
     # surveys say and 2005 did measure walking; what a null would have said is that
     # there is no figure, which is false. What is not true is that the figure is
     # comparable, and that is what this declares. See D39.
-    not_comparable_on: dict[str, str] = field(default_factory=dict)
+    not_comparable_on: dict[str, ColumnNotComparable] = field(default_factory=dict)
     # A second zone code for the ends the main zoning cannot reach, or None where
     # one column states the zone as it does for four of the five years.
     zone_outside_the_city: ZoneOutsideTheCity | None = None
@@ -3592,11 +3615,19 @@ SURVEY_2005 = MobilitySurvey(
         # Named rather than referenced because the column constants are declared
         # below the surveys, with the quantities they belong to.
         # `check_declared_columns` further down proves the name is a real one.
-        "TRIPS_PER_DAY_OF_TYPE": (
-            "2005 collected no walk under fifteen minutes, so this column holds long walking "
-            "for this year and all walking for the other four. Anchoring an interpolation on "
-            "it would read the difference of definition as growth: measured, 34% a year "
-            "through 2007-2010 where TRIPS_PER_DAY_OF_TYPE_OVER_15MIN reads 18%"
+        "TRIPS_PER_DAY_OF_TYPE": ColumnNotComparable(
+            # The pedestrian and no other. For the three motorised modes this
+            # column and the fifteen-minute one are one number written twice, in
+            # every year, so 2005 anchors both of them exactly as it anchors
+            # anything else.
+            actor_types=(PEDESTRIAN,),
+            because=(
+                "2005 collected no walk under fifteen minutes, so this column holds long "
+                "walking for this year and all walking for the other four. Anchoring an "
+                "interpolation on it would read the difference of definition as growth: "
+                "measured, 34% a year through 2007-2010 where "
+                "TRIPS_PER_DAY_OF_TYPE_OVER_15MIN reads 18%"
+            ),
         ),
     },
     # Torca. Its motorised travel and its cycling come back once the ring is in

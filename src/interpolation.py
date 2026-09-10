@@ -93,15 +93,38 @@ class MeasuredExposure:
     def survey_years(self) -> tuple[int, ...]:
         return tuple(sorted(self.table[config.YEAR_COL].unique()))
 
-    def anchors_of(self, day_type: str) -> tuple[int, ...]:
-        """The survey years that measured one kind of day.
+    def anchors_of(
+        self, day_type: str, level: str | None = None, actor: str | None = None
+    ) -> tuple[int, ...]:
+        """The survey years that measured one kind of day, on one column.
 
         Read from the table rather than from the survey declarations, because the
         table is what this stage interpolates and a day type declared but absent
         from it would be a series with no anchors at all.
+
+        **A year may measure a column and still not anchor it.** 2005 collected no
+        walk under fifteen minutes, so its `TRIPS_PER_DAY_OF_TYPE` holds long
+        walking where every other year's holds all walking; interpolating across
+        that boundary would spread the difference of definition as growth, at 34 %
+        a year through 2007-2010 against the 18 % the comparable column reads. The
+        value is in the table because the measured table is a record. What keeps it
+        out of the interpolation is `not_comparable_on`, declared per year and per
+        column, and asked for here.
+
+        `level` of None returns every year present, which is what the grid and the
+        provenance are built from.
         """
         rows = self.table[self.table[config.DAY_TYPE_COL] == day_type]
-        return tuple(sorted(rows[config.YEAR_COL].unique()))
+        years = sorted(rows[config.YEAR_COL].unique())
+        if level is None:
+            return tuple(years)
+        excluded = {
+            survey.year
+            for survey in config.MOBILITY_SURVEYS
+            if level in survey.not_comparable_on
+            and (actor is None or actor in survey.not_comparable_on[level].actor_types)
+        }
+        return tuple(year for year in years if year not in excluded)
 
 
 # ---------------------------------------------------------------------------
@@ -287,8 +310,19 @@ def build(
     window = window or config.STUDY_YEARS
     table = measured.table
 
+    # Every year of the window, and every year that anchors it. 2005 is the first
+    # anchor to sit outside the window and the rate at an anchor is formed with
+    # that anchor's own population, so a panel built over the window alone would
+    # fail at the moment of forming the rate rather than at the moment of building
+    # the panel — far from where the cause is. See `config.population_years`.
+    anchor_years = {
+        year
+        for day_type in config.DAY_TYPES
+        if day_type in set(table[config.DAY_TYPE_COL])
+        for year in measured.anchors_of(day_type)
+    }
     populations = {
-        year: population.for_year(panel, year) for year in window
+        year: population.for_year(panel, year) for year in sorted(set(window) | anchor_years)
     }
     support_by_year = {
         (row[config.AREA_CODE_COL], row[config.ACTOR_TYPE_COL], row[config.DAY_TYPE_COL], row[config.YEAR_COL]):
@@ -298,6 +332,20 @@ def build(
 
     day_types = [day for day in config.DAY_TYPES if day in set(table[config.DAY_TYPE_COL])]
     anchors_by_day = {day: measured.anchors_of(day) for day in day_types}
+    # One set of anchors per level, because a year may measure a column without
+    # being comparable on it. The provenance and the distance to the nearest survey
+    # follow the column the series is read on, which is D39's: a row says how its
+    # pedestrian series was built, and the other column of that row carries a note
+    # in the dictionary rather than a second provenance column nobody would read.
+    anchors_by_level = {
+        day: {
+            (level, actor): measured.anchors_of(day, level, actor)
+            for level in _SERIES
+            for actor in sorted(table[config.ACTOR_TYPE_COL].unique())
+        }
+        for day in day_types
+    }
+    series_level = config.TRIPS_PER_DAY_OF_TYPE_OVER_15MIN_COL
 
     single_anchor = [day for day, years in anchors_by_day.items() if len(years) == 1]
     if single_anchor and not config.INTERPOLATION_HOLDS_SINGLE_ANCHOR_DAY_TYPES:
@@ -338,7 +386,11 @@ def build(
                         )
                     for level in _SERIES:
                         levels[level][year] = float(cell[level])
-                        rates[level][year] = float(cell[level]) / residents
+                        # A year that measures the column but is not comparable on
+                        # it contributes its value to the table and not to the
+                        # curve.
+                        if year in anchors_by_level[day_type][(level, actor)]:
+                            rates[level][year] = float(cell[level]) / residents
 
                 filled = {
                     level: fill_series(rates[level], window) for level in _SERIES
@@ -348,7 +400,7 @@ def build(
                         1 for value in filled[level].values() if value.linear_because_of_a_zero
                     )
 
-                shape = filled[config.TRIPS_PER_DAY_OF_TYPE_COL]
+                shape = filled[series_level]
                 for year in window:
                     residents = float(populations[year][area_code])
                     at = shape[year]
@@ -663,7 +715,11 @@ def verify(
         config.TRIPS_PER_DAY_OF_TYPE_OVER_15MIN_COL,
         config.SAMPLE_SUPPORT_COL,
     ]
-    left = measured.table.set_index(key)[shared].sort_index()
+    # Only the measured years the window contains. 2005 is measured and is not in
+    # the panel, because the casualty series starts in 2007 and the window follows
+    # it; an anchor outside the window shapes the curve and has no row of its own.
+    inside = measured.table[measured.table[config.YEAR_COL].isin(list(window))]
+    left = inside.set_index(key)[shared].sort_index()
     right = table[table[config.EXPOSURE_PROVENANCE_COL] == config.MEASURED_EXPOSURE]
     right = right.set_index(key)[shared].sort_index()
     same_rows = list(left.index) == list(right.index)
@@ -717,7 +773,11 @@ def verify(
     per_series_ok = True
     detail = []
     for day_type in sorted(table[config.DAY_TYPE_COL].unique()):
-        anchors = measured.anchors_of(day_type)
+        # The anchors the window contains, which is what can carry a MEASURED row.
+        anchors = [
+            year for year in measured.anchors_of(day_type) if year in set(window)
+        ]
+        outside = len(measured.anchors_of(day_type)) - len(anchors)
         block = table[table[config.DAY_TYPE_COL] == day_type]
         counted = block[block[config.EXPOSURE_PROVENANCE_COL] == config.MEASURED_EXPOSURE]
         by_series = counted.groupby(_SERIES_KEY).size()
@@ -725,7 +785,10 @@ def verify(
             _SERIES_KEY
         ).ngroups
         per_series_ok = per_series_ok and ok
-        detail.append(f"{day_type} {len(anchors)} per series")
+        detail.append(
+            f"{day_type} {len(anchors)} per series"
+            + (f" and {outside} outside the window" if outside else "")
+        )
     checks.append((
         "each series has exactly as many measured years as surveys measured that day type",
         per_series_ok,
@@ -1009,230 +1072,153 @@ def compare_with_2005(
     log: RunLog,
     reference: config.PublishedYear | None = None,
 ) -> pd.DataFrame:
-    """The held block against the only survey older than the study's first one.
+    """This study's reading of 2005 against what 2005 published.
 
-    This is the test D40 defers the 2005 survey on, and it is a measurement rather
-    than an argument: the interpolation is built on four years, the held rate
-    produces a 2007-2010 block, and that block is compared against the figures the
-    2011 delivery publishes for 2005. If it lands far from them, 2005 is worth
-    implementing and the reason for implementing it is a number.
+    **This function used to test an assumption and now controls a measurement**,
+    and the change is what implementing the year did to it. While 2005 was not
+    read, D40 held the rate flat before 2011 and this compared that held block
+    against the figures the 2011 delivery publishes for 2005; the block landed 15
+    to 19 points away, which is the number that decided the year was worth
+    implementing. There is no held weekday block any more — 2007 to 2010 are
+    interpolated between 2005 and 2011 — so testing it would be testing 2005
+    against itself.
 
-    **It is made on the whole surveyed region and not on the thirty units**, which
-    is not a convenience. Every figure the deliveries publish is stated on that
-    territory, and the share of a mode that reaches the units differs by mode and
-    by year — 53 % of 2011's cycling against 75 % of its car travel — so comparing
-    a per-unit composition against a published one would measure the funnel and
-    call it a change in the city. What makes the region comparison transfer to the
-    panel is that the held block carries the anchor year's composition by
-    construction, and the run checks how far that is from true.
+    What is worth doing instead is what every other year gets: **read the year,
+    then check the reading against what the year published.** The control is the
+    same shape as before — how the four modes divide between themselves, over the
+    whole surveyed region, which is the only footprint this study and a
+    publication share — and it is made twice, once on the year whose reading is
+    already trusted and once on the year just added.
 
-    The control is what makes any of it safe: the same source publishes 2011, this
-    study read 2011, and if the two disagree about 2011 then nothing can be
-    concluded about 2005.
+    Both are made **before this study's removals**, because a publication does not
+    make them: the transfer legs and the walks under the floor are in the
+    published totals and are named separately in the balance.
     """
     reference = reference or config.PUBLISHED_2005
-    series_column = config.TRIPS_PER_DAY_OF_TYPE_OVER_15MIN_COL
     modes = [actor for actor in config.ROAD_USER_TYPES if actor in reference.mode_shares]
-    control_year = reference.control_year
+    region = measured.city_totals
+    # On the fifteen-minute column and not the full one, because that is the
+    # partition the source publishes on: the chapter states that everything in it
+    # counts trips "incluyendo los viajes a pie mayores o iguales a quince (15)
+    # minutos". Comparing 2011's full walking against a fifteen-minute pie puts the
+    # control eighteen points out and blames the reading for the difference.
+    level = config.TRIPS_PER_DAY_OF_TYPE_OVER_15MIN_COL
 
     log.info(
-        "comparing the held block against %s. Source: %s. Both years count %s",
+        "checking this study's reading of %d and %d against %s. Source: %s. Both count %s",
+        reference.year,
+        reference.control_year,
         reference.label,
         reference.source,
         reference.definition,
     )
 
-    # -- the control -------------------------------------------------------
-    region = measured.city_totals
-    anchor = region[
-        (region[config.YEAR_COL] == control_year)
-        & (region[config.DAY_TYPE_COL] == config.WEEKDAY_TYPE)
-        & (region[config.ACTOR_TYPE_COL].isin(modes))
-    ]
-    if len(anchor) != len(modes):
-        raise ValueError(
-            f"the exported region totals do not cover the four modes of {control_year} on a "
-            f"{config.WEEKDAY_TYPE}, so the comparison has no control to rest on"
-        )
-    ours = anchor.set_index(config.ACTOR_TYPE_COL)[series_column].reindex(modes)
-    ours_share = ours / ours.sum()
+    def composition(year: int) -> pd.Series:
+        rows = region[
+            (region[config.YEAR_COL] == year)
+            & (region[config.DAY_TYPE_COL] == config.WEEKDAY_TYPE)
+            & (region[config.ACTOR_TYPE_COL].isin(modes))
+        ]
+        if len(rows) != len(modes):
+            raise ValueError(
+                f"the exported region totals do not cover the {len(modes)} modes of {year} on a "
+                f"{config.WEEKDAY_TYPE}, so there is nothing to control against"
+            )
+        ours = rows.set_index(config.ACTOR_TYPE_COL)[level].reindex(modes)
+        return ours / ours.sum()
 
-    published_control = pd.Series(reference.control_mode_shares).reindex(modes)
-    published_control = published_control / published_control.sum()
-    control_gap = float((ours_share - published_control).abs().max()) * 100
-
-    lines = [
-        f"{'mode':>11}  {'published ' + str(control_year):>15}  {'this study':>11}  {'gap':>7}",
-        f"{'-' * 11}  {'-' * 15}  {'-' * 11}  {'-' * 7}",
-    ]
-    for mode in modes:
-        lines.append(
-            f"{mode:>11}  {published_control[mode]:>15.1%}  {ours_share[mode]:>11.1%}  "
-            f"{(ours_share[mode] - published_control[mode]) * 100:>+6.1f}"
-        )
-    log.table(
-        f"the control: how the {len(modes)} modes of this study divide between themselves in "
-        f"{control_year}, as the source publishes it and as this study measures it — both over "
-        "the whole surveyed region, which is the only footprint the two share:",
-        "\n".join(lines),
-    )
-    if control_gap > 2.0:
-        log.warn(
-            "the study and the source disagree about %d by up to %.1f points, so nothing can be "
-            "concluded from the %d column below: the comparison rests on the two readings "
-            "agreeing about the year they share",
-            control_year,
-            control_gap,
-            reference.year,
-        )
-    else:
-        log.info(
-            "the two readings of %d agree to %.1f point(s) at worst, so the %d column below is "
-            "being compared against something",
-            control_year,
-            control_gap,
-            reference.year,
-        )
-
-    # -- does the held block carry the anchor's composition? ---------------
-    # It has to, or the region comparison says nothing about the panel. It is not
-    # exactly the anchor's, because the thirty units grow at different rates and a
-    # composition of levels moves with them; the run measures how far.
-    first_year = int(table[config.YEAR_COL].min())
-    weekday = table[
-        (table[config.DAY_TYPE_COL] == config.WEEKDAY_TYPE)
-        & (table[config.ACTOR_TYPE_COL].isin(modes))
-    ]
-    inside = weekday.pivot_table(
-        index=config.YEAR_COL, columns=config.ACTOR_TYPE_COL, values=series_column, aggfunc="sum"
-    )[modes]
-    inside = inside.div(inside.sum(axis=1), axis=0)
-    drift = float((inside.loc[first_year] - inside.loc[control_year]).abs().max()) * 100
-    log.info(
-        "inside the thirty units the held block's composition at %d differs from the anchor's "
-        "at %d by %.2f point(s) at most, which is the different pace at which the units grow "
-        "and nothing else — holding a rate flat holds the composition with it, so the region "
-        "comparison below transfers to the panel",
-        first_year,
-        control_year,
-        drift,
-    )
-
-    # -- the test ----------------------------------------------------------
-    published_old = pd.Series(reference.mode_shares).reindex(modes)
-    published_old = published_old / published_old.sum()
-
-    lines = [
-        f"{'mode':>11}  {'published ' + str(reference.year):>15}  "
-        f"{'held block':>11}  {'gap':>7}",
-        f"{'-' * 11}  {'-' * 15}  {'-' * 11}  {'-' * 7}",
-    ]
-    for mode in modes:
-        lines.append(
-            f"{mode:>11}  {published_old[mode]:>15.1%}  {ours_share[mode]:>11.1%}  "
-            f"{(ours_share[mode] - published_old[mode]) * 100:>+6.1f}"
-        )
-    log.table(
-        f"and the test: the same composition in {reference.year} as published, against what the "
-        f"held block carries. The held block cannot differ from {control_year} at all, because "
-        "holding the rate flat holds the composition with it:",
-        "\n".join(lines),
-    )
-
-    # -- growth, which is what the held rate actually asserts ---------------
-    span = control_year - reference.year
-    residents = panel.groupby(config.YEAR_COL)[config.POPULATION_COL].sum()
-    demographic = float(residents[control_year] / residents[first_year]) ** (
-        span / (control_year - first_year)
-    )
-
-    rounding = reference.share_rounding
+    published = {
+        reference.control_year: pd.Series(reference.control_mode_shares).reindex(modes),
+        reference.year: pd.Series(reference.mode_shares).reindex(modes),
+    }
     rows = []
-    for mode in modes:
-        old_share = reference.mode_shares[mode]
-        new_share = reference.control_mode_shares[mode]
-        old_level = old_share * reference.total_trips_per_weekday
-        new_level = new_share * reference.control_total_trips_per_weekday
-        rows.append(
-            {
-                "MODE": mode,
-                f"PUBLISHED_{reference.year}": old_level,
-                f"PUBLISHED_{control_year}": new_level,
-                "PUBLISHED_GROWTH": new_level / old_level,
-                # The shares are labels on a pie chart, in whole per cent. Half a
-                # point of rounding is nothing at 46 % and half the value at 1 %, so
-                # the factor is a band and quoting its midpoint alone would claim a
-                # precision the source does not have.
-                "GROWTH_LOW": (
-                    (new_share - rounding) * reference.control_total_trips_per_weekday
-                ) / ((old_share + rounding) * reference.total_trips_per_weekday),
-                "GROWTH_HIGH": (
-                    (new_share + rounding) * reference.control_total_trips_per_weekday
-                ) / ((old_share - rounding) * reference.total_trips_per_weekday),
-                "HELD_GROWTH": demographic,
-            }
-        )
-    growth = pd.DataFrame(rows)
-    growth["CONTRADICTED"] = growth["GROWTH_LOW"] > growth["HELD_GROWTH"]
+    for year, shares in published.items():
+        shares = shares / shares.sum()
+        ours = composition(year)
+        for mode in modes:
+            rows.append(
+                {
+                    config.YEAR_COL: year,
+                    "MODE": mode,
+                    "PUBLISHED": float(shares[mode]),
+                    "THIS_STUDY": float(ours[mode]),
+                    "GAP_POINTS": 100 * float(ours[mode] - shares[mode]),
+                }
+            )
+    control = pd.DataFrame(rows)
 
     lines = [
-        f"{'mode':>11}  {str(reference.year):>12}  {str(control_year):>12}  "
-        f"{'published':>10}  {'band':>16}  {'held':>7}  ",
-        f"{'-' * 11}  {'-' * 12}  {'-' * 12}  {'-' * 10}  {'-' * 16}  {'-' * 7}  ",
+        f"{'year':>6}  {'mode':>11}  {'published':>10}  {'this study':>11}  {'gap':>7}",
+        f"{'-' * 6}  {'-' * 11}  {'-' * 10}  {'-' * 11}  {'-' * 7}",
     ]
-    for _, row in growth.iterrows():
+    for _, row in control.iterrows():
         lines.append(
-            f"{row['MODE']:>11}  {row[f'PUBLISHED_{reference.year}']:>12,.0f}  "
-            f"{row[f'PUBLISHED_{control_year}']:>12,.0f}  {row['PUBLISHED_GROWTH']:>10.2f}x  "
-            f"{row['GROWTH_LOW']:>7.2f}x-{row['GROWTH_HIGH']:<7.2f}  {row['HELD_GROWTH']:>6.2f}x  "
-            + ("contradicts the held rate" if row["CONTRADICTED"] else "consistent with it")
+            f"{row[config.YEAR_COL]:>6}  {row['MODE']:>11}  {row['PUBLISHED']:>10.1%}  "
+            f"{row['THIS_STUDY']:>11.1%}  {row['GAP_POINTS']:>+6.1f}"
         )
     log.table(
-        f"what the level did between {reference.year} and {control_year}, as published, against "
-        f"what the held rate implies it did over the same span — which is the population and "
-        "nothing else, because a held rate moves only with its denominator. The band is what "
-        "the shares' rounding allows:",
+        "how the four modes divide between themselves, as the source publishes it and as this "
+        "study reads it, over the whole surveyed region and before this study's removals:",
         "\n".join(lines),
     )
 
-    contradicted = list(growth.loc[growth["CONTRADICTED"], "MODE"])
+    worst = control.groupby(config.YEAR_COL)["GAP_POINTS"].apply(lambda g: g.abs().max())
     log.info(
-        "%d of the %d modes contradict the held rate even at the most forgiving end of their "
-        "rounding: %s. The others are %s",
-        len(contradicted),
-        len(modes),
-        ", ".join(contradicted) or "none",
-        ", ".join(sorted(set(modes) - set(contradicted))) or "none",
+        "worst gap by year: %s",
+        "; ".join(f"{year} {gap:.1f} point(s)" for year, gap in worst.items()),
     )
-
-    # -- the rate itself, which is the quantity being held ------------------
-    index = config.PUBLISHED_2005_TRIPS_PER_PERSON
-    if index:
-        moves = [after / before for before, after in index.values()]
+    loose = worst[worst > 2.0]
+    if len(loose):
         log.warn(
-            "the same chapter publishes trips per person for %d and %d, by socioeconomic "
-            "stratum: %s. Every one of them rises, by %.0f%% to %.0f%% over %d years, %.0f%% on "
-            "the median. THE HELD BLOCK ASSERTS THAT THIS QUANTITY DID NOT MOVE AT ALL, because "
-            "holding a rate flat is holding trips per person flat. That is the assumption the "
-            "%d-%d block rests on and it is the one the source contradicts most directly. See "
-            "D40",
-            reference.year,
-            control_year,
-            "; ".join(
-                f"{name} {before:.2f}->{after:.2f}" for name, (before, after) in index.items()
-            ),
-            100 * (min(moves) - 1),
-            100 * (max(moves) - 1),
-            span,
-            100 * (float(np.median(moves)) - 1),
-            first_year,
-            min(config.STUDY_YEARS) + 3,
+            "this study's reading of %s sits more than two points from the published "
+            "composition: %s. Both years are read by one piece of code from two deliveries, so a "
+            "gap that differs between them is a property of the delivery or of the publication "
+            "rather than of the reading. For 2005 the category that was never pinned is the "
+            "private vehicle, whose published share is a whole per cent read off a pie chart and "
+            "whose composition — whether the delivery's \"bus privado / de compania\" belongs in "
+            "it — the source never states. See section 11 of docs/implementing-2005.md",
+            ", ".join(str(year) for year in loose.index),
+            "; ".join(f"{year} at {gap:.1f}" for year, gap in loose.items()),
         )
+
+    # And the growth between them, which the composition cannot show: a mode may
+    # hold its share while the whole grew by half.
+    span = reference.control_year - reference.year
+    lines = [
+        f"{'mode':>11}  {'published':>10}  {'this study':>11}  {'per year, published':>19}",
+        f"{'-' * 11}  {'-' * 10}  {'-' * 11}  {'-' * 19}",
+    ]
+    for mode in modes:
+        old_level = reference.mode_shares[mode] * reference.total_trips_per_weekday
+        new_level = reference.control_mode_shares[mode] * reference.control_total_trips_per_weekday
+        ours_old = float(
+            region[
+                (region[config.YEAR_COL] == reference.year)
+                & (region[config.DAY_TYPE_COL] == config.WEEKDAY_TYPE)
+                & (region[config.ACTOR_TYPE_COL] == mode)
+            ][level].iloc[0]
+        )
+        ours_new = float(
+            region[
+                (region[config.YEAR_COL] == reference.control_year)
+                & (region[config.DAY_TYPE_COL] == config.WEEKDAY_TYPE)
+                & (region[config.ACTOR_TYPE_COL] == mode)
+            ][level].iloc[0]
+        )
+        lines.append(
+            f"{mode:>11}  {new_level / old_level:>9.2f}x  {ours_new / ours_old:>10.2f}x  "
+            f"{(new_level / old_level) ** (1 / span) - 1:>+18.1%}"
+        )
+    log.table(
+        f"and what each mode did between {reference.year} and {reference.control_year}, as "
+        "published and as this study reads it:",
+        "\n".join(lines),
+    )
 
     for caveat in reference.caveats:
         log.info("caveat on the %d comparison: %s", reference.year, caveat)
 
-    return growth
+    return control
 
 
 # ---------------------------------------------------------------------------
