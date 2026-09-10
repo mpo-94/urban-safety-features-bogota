@@ -1,20 +1,24 @@
 # Interpolating the exposure over the years no survey covers
 
-**Both halves are built.** D39 landed on `run_20260909_214626` and D40 on
-`run_20260910_031907`, and this document is no longer a specification: it is what
-was built, what it is checked against, and what building it changed. **Section 8 is
-the last of those** and it is the part a reader who knows the decisions should start
-from. Section 16 of [`verification-report.md`](verification-report.md) is the
-measured record of the run.
+**Both halves are built, and the year the stage was waiting on is in.** D39 landed
+on `run_20260909_214626`, D40 on `run_20260910_031907`, and 2005 — the fifth anchor —
+on `run_20260910_154603`. This document is no longer a specification: it is what was
+built, what it is checked against, and what building it changed. **Sections 8 and 9
+are the last of those**: section 8 is the measurement that decided 2005 was worth
+implementing and section 9 is what implementing it did. A reader who knows the
+decisions should start from those two. Section 16 of
+[`verification-report.md`](verification-report.md) is the measured record of the run.
 
 **Read [D39 and D40](design-decisions.md) first.** They are the decisions; this is
 what was built and what it is checked against. It is the counterpart of
 [`adding-a-survey-year.md`](adding-a-survey-year.md) for the stage that comes after
-the four years are read.
+the surveys are read.
 
-The exposure is measured in 2011, 2015, 2019 and 2023. The casualty series runs
+The exposure is measured in 2005, 2011, 2015, 2019 and 2023. The casualty series runs
 2007–2024 observed and 2008–2024 corrected. **Fourteen of the eighteen years have no
-survey**, and the panel the models are fitted on needs all of them.
+survey**, and the panel the models are fitted on needs all of them. 2005 lies outside
+that window: it is an anchor with no row of its own, and what it buys is that
+2007–2010 are interpolated rather than held.
 
 ---
 
@@ -37,7 +41,12 @@ Read in this order, before touching anything:
 Everything already measured in this document comes from it, except the figures
 about the fifteen-minute column, which come from **`run_20260909_214626`** — 960
 rows, 40 checks, none failed: the same table with that column added and every
-earlier row unchanged to the last decimal. D40 is built on the second.
+earlier row unchanged to the last decimal. D40 was built on the second.
+
+**The current run is `run_20260910_154319`**: 1,080 rows, 47 checks, none failed, the
+same table with 2005 added and all 960 earlier rows unchanged to the last decimal.
+Every figure below still holds on it unless section 9 says otherwise, and section 9
+is what changed.
 
 **Two things get built and the first has to come first**, because the second reads
 what the first writes:
@@ -243,16 +252,16 @@ with it.
   is the point of the whole exercise, so the answer must not be to interpolate the
   city and hand every unit the same curve — but a rate that moves 8.85× on a step
   that is partly an artefact is not a trajectory either.
-- **Whether the held block enters the models.** Four of eighteen years on the
-  weekday with no behavioural variation, only demographic — and section 8 says the
-  measurement now argues against them.
+- ~~**Whether the held block enters the models.**~~ **Closed by implementing 2005**,
+  which is what section 8's measurement asked for: 2007 to 2010 are interpolated
+  between two measured years and there is no weekday held block to decide about. What
+  is still held is the Saturday's two ends, the whole Sunday and 2024. See section 9.
 - **Whether the constructed years 2020, 2021 and 2022 enter them either, and
   whether they are patched before they do.** This was not open before the stage was
   built and it is now: section 8 has the reason and D41 has the table that isolates
   them.
-- **Whether 2005 is implemented.** The check in section 3 has been made and section
-  8 has its answer; what is left is a decision about a session's work, not a
-  measurement.
+- ~~**Whether 2005 is implemented.**~~ **It is, on 2026-09-10.** Section 9 is what
+  that did to this stage and `docs/implementing-2005.md` is the year's own record.
 - **Whether the anchored version replaces this one.** D40 defers it and says why.
   It needs one external annual series per mode and none of them is on disk.
 - **What the Saturday series does across its eight-year gap**, and **what a Sunday
@@ -439,3 +448,68 @@ inside them on a fifth. The interpolation is not being rescued by luck in the
 ordinary years, and the two weak blocks are weak for reasons that show up
 independently of how they were found. Whether 2020–2022 are patched by the mirror
 assumption is open, and D41's last section is where that question lives.
+
+---
+
+## 9. 2005 was implemented, and this is the stage with five anchors
+
+Run `run_20260910_154603`, on the exposure table of `run_20260910_154319`. **6,480
+rows, 17 checks, none failed**, and section 8's whole first half is now history
+rather than a pending decision.
+
+**The weekday held block is gone.** 2007 to 2010 are interpolated between 2005 and
+2011, and the panel's provenance moves from 960 measured, 2,280 interpolated and
+3,240 held to **960 / 2,760 / 2,760**. What is still held is the Saturday's two ends,
+the Sunday, and 2024 — every one of them for the reason this document gives, that a
+slope fitted to two points and prolonged is an invention.
+
+**The years it replaced were overstated, as section 8 said they would be.** Inside
+the thirty units, on the column the series is read on: 2007's pedestrian falls from
+2,480,903 to 1,455,173, its motorcycle from 264,143 to 100,527, its bicycle from
+311,698 to 232,190, and its car moves from 1,333,887 to 1,341,162. **The car barely
+moves and that was predicted too** — its published growth over those six years is
+1.19× against a demographic 1.06×, which is the one mode the held rate nearly
+fitted, and the one the section called inconclusive on its own.
+
+**Three things this document has to carry from here on.**
+
+**The anchors are read per column and per actor type.** 2005 measures walking and its
+walking is long walking, so its `TRIPS_PER_DAY_OF_TYPE` is declared not comparable —
+for the pedestrian, and only for the pedestrian, because in the other three modes the
+two pedestrian columns are one number written twice. Declared for the column alone it
+held the bicycle's full series flat while its narrow series interpolated; the check
+that says those two columns are equal on the single-definition modes caught it in the
+same run.
+
+**An anchor need not be a row.** 2005 lies outside the 2007–2024 window: it shapes the
+curve and has no cell of its own. Two places assumed the two sets were the same and
+both were fixed — the population panel, which now covers the survey years as well as
+the window, and the check that counts measured years per series, which now counts the
+anchors the window contains and reports how many sit outside.
+
+**The new segment is the widest of the four.** 126 of the 480 unit × mode × step
+combinations move by more than a factor of two between adjacent surveys and **59 of
+them are on 2005 → 2011**, against 47 on 2011 → 2015. The motorcycle passes it in all
+thirty units, with Porvenir at 23.60× and Lucero at 22.40×, which log-linearly is
++69 % and +68 % in every constructed year of the segment. Six years is a longer step
+than four and the motorcycle really did multiply in that period — but section 3's
+question, whether the per-unit trajectories need shrinking toward the city's, is now
+asked of a wider table than the one that raised it.
+
+**What the comparison in section 8 became.** It compared the held block against what
+2005 published; there is no held weekday block, so testing it would test 2005 against
+itself. It is now a control on the reading, made on both years, and this study lands
+**2.9 points from the published composition for 2005 against 0.8 for 2011**, the run
+warning on the first. The residue is the private vehicle, whose published share is a
+whole per cent read off a pie chart.
+
+**And one thing that did not change, which is worth more than the ones that did.**
+D41's diagnostic is almost exactly as far from agreement in 2008–2010 as it was when
+the block was held: 88 of that block's 359 countable cells against 92 before, with
+2009 improving from 52 to 33 and 2008 worsening from 29 to 37. The ordinary
+constructed cells are untouched at 4 %, and the pandemic block at 18 %. **Anchoring
+the block on a measurement fixed its level, not its agreement with the casualty
+series** — and those are the years the recording practice was changing, which ρ
+measures and which the diagnostic's second column already carries. A disagreement
+there is not by itself evidence against the panel, which is the whole reason D41 is a
+diagnostic and not a constructor.

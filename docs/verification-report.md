@@ -1282,19 +1282,22 @@ says which years are which.
 
 ## 15. Travel exposure from the mobility survey
 
-Run `run_20260909_214626`, route `exposure`, command
-`python -m src.run_pipeline exposure`. **Forty checks, none failed.** It
-reproduces `run_20260908_101110` — the run every figure in this section was
-measured on — to the last decimal over all 960 rows, and adds D39's second
-pedestrian column; the two subsections before *What is open* are what that added.
-This is the study's exposure: how much travel of each of four road user types passes through
+Run `run_20260910_154319`, route `exposure`, command
+`python -m src.run_pipeline exposure`. **Forty-seven checks, none failed.** Every
+figure in this section was measured on `run_20260908_101110` or on
+`run_20260909_214626` and none of them has moved since: each later run reproduces
+the earlier one to the last decimal on every row it already had. **The fifth
+survey landed on this one** — 2005, 120 rows, taking the table from 960 to 1,080 —
+and the four years before it came out identical over all 960 of their rows and
+every column. `docs/implementing-2005.md` is that year's record and the last
+subsection here is its summary. This is the study's exposure: how much travel of each of four road user types passes through
 each unit, per survey year and per kind of day, built from the household mobility
 survey rather than received as finished desire lines. The decision is D38, which
 supersedes D35 for the variable and part of D36 for the denominator.
 
-**All four years are measured: 2011, 2015, 2019 and 2023.** The table is 960 rows —
-240 for 2011 and 2015 over two day types each, 120 for 2019 over one and 360 for
-2023 over three.
+**All five years are measured: 2005, 2011, 2015, 2019 and 2023.** The table is
+1,080 rows — 120 for 2005 over one day type, 240 for 2011 and 2015 over two each,
+120 for 2019 over one and 360 for 2023 over three.
 
 **2011 is the one year that could not be a declaration alone**, and it is the case
 §6b of the inventory exists to catch. Its two day types live in two Access databases,
@@ -2707,10 +2710,67 @@ that measures walking and declares no `duration_rule` now stops the run, because
 there is no way to state the fifteen-minute definition without one and the
 pedestrian series is read on it. D38's own statement still holds for the
 plausibility test — a year with no duration is unexamined rather than clean — but a
-year with no duration can no longer enter the series at all. All four declared
+year with no duration can no longer enter the series at all. All five declared
 years have a rule, so nothing moved; and a walking record whose duration cannot be
 derived would be counted in the full column, left out of the narrow one, and named
-in a warning. None of the four years has one.
+in a warning. None of the five years has one.
+
+### 2005, the fifth year and the one that most tested the contract
+
+Its whole record is [`implementing-2005.md`](implementing-2005.md); what belongs
+here is what the run shows.
+
+**It asked for five structural changes where 2011 asked for one**, and §6b's rule
+is what kept them visible: a zoning built at run time rather than read from a
+delivery, a zone code composed from two columns in two code systems, a published
+total that declares which part of the file it covers, a unit marked below
+resolution where before only a whole day type could be, and a column declared
+measured but not comparable. All five are declarations the other four years leave
+empty, and **the four years came out identical to the last decimal**, which is what
+says the shape held.
+
+**The expansion factor is settled by an exact reproduction.** `FACTRED_FI` — the
+count-adjusted factor, not the survey's own `FACTFINAL` — summed over the
+households surveyed in Bogotá gives **9,689,027.1** against the 9,689,027 that
+paragraph 4.26 of the 2011 delivery's Tomo II states. One part in 10⁸, and the
+figure the 2011 Tomo III rounds to "aproximadamente 9.700.000". The universe is
+narrower than the whole file, which is why the check now asks which part of the
+file a publication summed.
+
+What it produced, inside the thirty units on its one weekday:
+
+| Mode | Trips per day | Of which intra-zonal | Line km | Share of the region reaching the units |
+|---|---:|---:|---:|---:|
+| `PEDESTRIAN` | 1,112,646 | 550,722 | 3,941 | 76.9 % |
+| `CAR` | 1,334,158 | 110,408 | 30,223 | 90.0 % |
+| `BICYCLE` | 203,566 | 45,554 | 6,421 | 72.3 % |
+| `MOTORCYCLE` | 64,146 | 3,855 | 3,927 | 87.3 % |
+
+The pedestrian's last column is measured on the fifteen-minute definition, which for
+2005 is the only one the survey has: against the region's every-walking total, which
+carries the short walks this study removes, it is 73.3 %. The other three modes have
+one definition and one figure.
+
+**Two removals are new**, both named in the balance rather than filtered before
+counting: 671 records and 71,143 trips a day of legs ending at a transfer point,
+which 2005 counts as trips and D38 already decided are not exposure, and 663
+records and 71,368 trips of walks under the fifteen-minute floor the survey itself
+declares.
+
+**Three cross-year warnings fire between 2005 and 2011 and all three are what the
+published figures say happened** over six years that contain TransMilenio's phases
+II and III: cycling and the motorcycle per inhabitant, and the car's share of the
+four modes. The pedestrian is **not** compared on `TRIPS_PER_DAY_OF_TYPE`, because
+2005 declares that column not comparable and the run says so instead of reporting a
+difference of definition as a 362 % rise.
+
+**And a check caught a defect in a declaration made the same day.**
+`not_comparable_on` was first keyed by column alone, which excluded 2005 from that
+column's anchors for every mode rather than for the pedestrian — so the bicycle's
+full series held flat from 2011 while its fifteen-minute series interpolated from
+2005, and two columns that are one number written twice parted company on three
+modes. *The fifteen-minute column equals the full one on the modes with one
+definition* is the check that found it, in the run that introduced it.
 
 ### What is open
 
@@ -2737,8 +2797,12 @@ both.
 
 ## 16. Exposure in the years no survey covers
 
-Run `run_20260910_031907`, route `interpolation`, command
-`python -m src.run_pipeline interpolation`. **Seventeen checks, none failed.** The
+Run `run_20260910_154603`, route `interpolation`, command
+`python -m src.run_pipeline interpolation`. **Seventeen checks, none failed.**
+
+**2005 joined the series on 2026-09-10 and the weekday held block is gone.** What
+follows was written when the panel rested on four anchors; the figures that moved
+are marked, and the subsection *What 2005 changed* at the end is the difference. The
 decision is D40 and the specification is
 [`interpolating-the-exposure.md`](interpolating-the-exposure.md).
 
@@ -2943,9 +3007,14 @@ separate a real change from sampling noise. Whether the per-unit trajectories ne
 shrinking toward the city's is a decision for a person, asked with this table in
 hand rather than answered by smoothing quietly.
 
-### The test D40 defers the 2005 survey on
+### The test D40 deferred the 2005 survey on, and what it decided
 
-This is the check that matters, because everything above can pass on an
+**This is the measurement that put 2005 in the study.** It was made while the year
+was unread and it is left as it was written; *What 2005 changed*, below, is what
+implementing it did. The test does not exist any more — there is no held weekday
+block to compare — and what stands in its place is a control on the reading.
+
+This is the check that mattered, because everything above can pass on an
 interpolation of the wrong thing. The interpolation holds the rate flat before
 2011, so the 2007–2010 block asserts that trips per person did not move between
 2007 and 2011. **The only evidence about that period is the 2005 survey**, which is
@@ -3146,16 +3215,92 @@ are patched by the mirror assumption is open and it is D41's last section; what 
 table provides is the ground for taking that decision on named years rather than as
 a method.
 
+### What 2005 changed
+
+**The weekday held block no longer exists.** 2007 to 2010 are interpolated between
+2005 and 2011 where they were held flat from 2011, and the panel's provenance moves
+from 960 measured, 2,280 interpolated and 3,240 held to **960 / 2,760 / 2,760**. The
+held block that remains is the Saturday's two ends, the Sunday, and 2024.
+
+**The years it replaced were overstated**, as the comparison against the published
+2005 figures said they would be. Inside the thirty units, on the column the series
+is read on:
+
+| 2007 | Held from 2011 | Interpolated from 2005 |
+|---|---:|---:|
+| `PEDESTRIAN` | 2,480,903 | **1,455,173** |
+| `MOTORCYCLE` | 264,143 | **100,527** |
+| `BICYCLE` | 311,698 | **232,190** |
+| `CAR` | 1,333,887 | 1,341,162 |
+
+The car barely moves, which is the one mode whose published growth over those six
+years — 1.19× against a demographic 1.06× — the held rate nearly fitted.
+
+**The new segment is the widest of the four.** On the volatility table, now over 480
+combinations rather than 360:
+
+| Step | `PEDESTRIAN` | `BICYCLE` | `MOTORCYCLE` | `CAR` |
+|---|---:|---:|---:|---:|
+| **2005 → 2011** | **19** | **8** | **30** | **2** |
+| 2011 → 2015 | 6 | 16 | 22 | 3 |
+| 2015 → 2019 | 4 | 6 | 1 | 2 |
+| 2019 → 2023 | 4 | 1 | 1 | 1 |
+
+59 of 480 on the first step against 47 on the second, and the motorcycle passes a
+factor of two in **all thirty units**. Six years is a longer step than four and the
+motorcycle really did multiply in that period, but the block that was an
+extrapolation is now an interpolation and it is the least steady of the four.
+
+**What it did not do is reconcile those years with the casualty series.** D41's
+diagnostic — the ratio between the exposure the panel carries and the exposure a
+smooth risk would imply — is almost exactly as far from one in 2008–2010 as it was
+when the block was held: **88 of that block's 359 countable cells** move by more than
+a factor of 1.5 under the opposite assumption, against 92 before, on the ρ-corrected
+set. (The 360th is Torca's bicycle in 2009, which saw no casualty at all and so
+implies an exposure of exactly zero — the same unit the exposure route marks below
+its zoning's resolution.) The
+years inside it moved against each other — 2009 improves from 52 cells to 33 and 2008
+worsens from 29 to 37 — and the block as a whole did not. The ordinary constructed
+cells are untouched at 36 of 840, and the pandemic block at 64.
+
+That is worth stating plainly because the opposite would have been easy to assume.
+Anchoring the block on a measurement fixed its **level**, which is what it was
+implemented to do and what the funnel and the composition confirm; it did not make
+the panel and the casualty count agree about the **shape** of 2008 to 2010. Those are
+also the years the recording practice was changing, which ρ measures and which the
+diagnostic's second column already carries, so a disagreement there is not by itself
+evidence against the panel. It is the reason the diagnostic is a diagnostic.
+
+**And the 2005 comparison became a control.** It compared the held block against
+what 2005 published and the block landed 15 to 19 points away, which is the number
+that decided the year was worth implementing. There is no held weekday block now,
+so it does what every other year gets instead — read the year, then check the
+reading — on the fifteen-minute partition the source publishes on:
+
+| Year | | `PEDESTRIAN` | `BICYCLE` | `MOTORCYCLE` | `CAR` | Worst |
+|---|---|---:|---:|---:|---:|---:|
+| 2011 | published | 56.0 % | 10.0 % | 6.0 % | 28.0 % | |
+| | this study | 56.8 % | 9.3 % | 6.3 % | 27.7 % | **0.8** |
+| 2005 | published | 41.2 % | 8.8 % | 2.9 % | 47.1 % | |
+| | this study | 44.0 % | 8.6 % | 2.2 % | 45.2 % | **2.9** |
+
+**2005 is read less closely than 2011 and the run warns about it**, above a
+two-point threshold. The residue is the private vehicle, whose published share is a
+whole per cent read off a pie chart and whose composition the source never states —
+and fitting a category boundary to close a gap is not something this project does.
+
 ### What is open
 
 - **Whether the per-unit trajectories need shrinking toward the city's.** The table
   above is what the question is asked with. The answer must not be to interpolate
   the city and hand every unit the same curve, because the unit is what the study
   is about.
-- **Whether 2005 is implemented.** The measurement is above.
-- **Whether the held block enters the models**, and whether 2020–2022 do.
-  `YEARS_TO_NEAREST_SURVEY` and `EXPOSURE_PROVENANCE` are in the table so that both
-  can be tested rather than assumed.
+- ~~**Whether 2005 is implemented.**~~ **It is, on 2026-09-10**, and the measurement
+  above is why. *What 2005 changed* is what it did.
+- **Whether the held block enters the models**, and whether 2020–2022 do. On the
+  weekday there is no held block left; what is held is the Saturday's two ends, the
+  whole Sunday and 2024. `YEARS_TO_NEAREST_SURVEY` and `EXPOSURE_PROVENANCE` are in
+  the table so that both can be tested rather than assumed.
 - **What the Sunday series is for**, given that it rests on one anchor.
 - **Whether the anchored version replaces this one.** D40 defers it and says why;
   it needs one external annual series per mode, each obtained, checked against the

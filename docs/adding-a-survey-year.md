@@ -3,9 +3,28 @@
 The study's exposure is built from the household mobility survey: the desire
 lines are constructed here rather than received, one per pair of zones, and each
 gives every unit it crosses the share of its trips matching the share of its
-length inside that unit. **All four years are implemented.**
+length inside that unit. **All five years are implemented.**
 
-**2011 was the last and the only one that did not fit.** Its two day types live in
+**2005 was the last, and it is the year this procedure was most nearly bent by.**
+It asked for five structural changes where 2011, until then the difficult one,
+asked for one — a zoning built at run time rather than read from a delivery, a zone
+code composed from two columns in two code systems, a published total that declares
+which part of the file it covers, a unit marked as below resolution, and a column
+declared measured but not comparable. All five are declarations the other four
+leave empty, all five were reported rather than absorbed, and **the four years
+already implemented came out identical to the last decimal over all 960 of their
+rows and every column.** [`implementing-2005.md`](implementing-2005.md) is that
+year's record; its section 13 is what building it cost.
+
+Two of them are worth carrying into whatever comes next. **A zoning need not
+arrive.** 2005's is assembled from the UPZ of Bogotá and seventeen municipalities
+dissolved out of the 2015 delivery, at run time, written to no disk — the
+alternative was 18.1 % of the year's trips falling outside every zone. And **a
+column can be measured and still not comparable**: 2005's walking is long walking,
+which is a true figure about a different thing, so it is exported and declared
+rather than nulled. A null would have said there is no figure, which is false.
+
+**2011 was the fourth and the first that did not fit.** Its two day types live in
 two Access databases, so which kind of day a record belongs to is a property of the
 file it came out of and no field of `MobilitySurvey` could say that. That was
 reported rather than absorbed, the advisor took the decision, and the change was
@@ -38,19 +57,20 @@ a `0` at one end.
 bend: the measurement, the four actor types, the table, the figures and the
 balance are the same code, and 2023's numbers are unchanged to the last decimal.
 Two things were added, both declarations rather than logic, and both are the same
-registry mechanism the day type already used — a `duration_rule`, because three of
-the four surveys state the duration three different ways, and a list of zone codes
+registry mechanism the day type already used — a `duration_rule`, because the
+surveys state the duration three different ways, and a list of zone codes
 that name no place. What 2019 cost in reading was almost all inspection, and it is
 the part this document exists to make cheaper.
 
 This is the order to do one in. It is a procedure and not a note because the same
-work happens three more times, and because the trap is always the same one: each
+work happened four more times after it was written, and because the trap is always
+the same one: each
 survey was commissioned by a different city administration and names and
 catalogues its data its own way, so nothing about a year's files can be inherited
 from the year before — while everything downstream of them has to come out
 identical.
 
-**What comes after the four years is the interpolation**, and it has a document of
+**What comes after the five years is the interpolation**, and it has a document of
 its own: [`interpolating-the-exposure.md`](interpolating-the-exposure.md), with D39
 and D40 behind it. This one ends where the surveys end.
 
@@ -121,10 +141,13 @@ every trip made only at weekends. A year with one day type declares
 then **absent** from the table, never zero.
 
 **How the year states the trip duration**, and **verify it against something else
-before trusting it**. Three of the four surveys state it three ways, so it is a
-`duration_rule` and not a column name: 2023 gives `duracion_min` in minutes, 2019
-gives a departure and an arrival as fractions of a day, 2015 gives them as
-`HH:MM:SS` text. 2023's agrees with its own fifteen-minute walking split, 3 to 14
+before trusting it**. The five surveys state it three ways, so it is a
+`duration_rule` and not a column name: 2023 gives `duracion_min` in minutes and
+2005 gives `TIEMPO_VIA` in minutes, 2019 and 2011 give a departure and an arrival
+as fractions of a day, 2015 gives them as `HH:MM:SS` text. **A year that measures
+walking must state it**, because D39's second pedestrian column cannot be built
+without it, and the run raises rather than silently building one column where two
+are declared. 2023's agrees with its own fifteen-minute walking split, 3 to 14
 minutes on one side and 15 to 439 on the other. 2019's derivation reproduces the
 delivery's own `Aux_Duración` file on all but one record and lands 0.10 % from the
 published fifteen-minute split. **A year that measures walking and declares no
@@ -624,26 +647,55 @@ over all seven reference days" — which is true of 2023 and false of 2019.
 be conditioned on `weight_expands_to`, not written once for the year in front of
 you.
 
-### A note on the fifth year, which is 2005 and is not implemented
+### Excluding a year from a column's anchors, and doing it one level too coarse
 
-This document says "four years" throughout because four are declared. Bogotá ran a
-fifth mobility survey in **2005**, and if it is ever added this procedure holds for
-it with two things known in advance:
+2005 declares that its `TRIPS_PER_DAY_OF_TYPE` cannot be compared across years,
+because it holds long walking where the other four hold all walking. Declared **for
+the column**, that excluded the year from that column's anchors for every mode —
+and for the bicycle, the motorcycle and the car the two pedestrian columns are one
+number written twice, in every year, by construction. So the bicycle's full series
+held flat from 2011 while its fifteen-minute series interpolated from 2005, and two
+columns that must be equal parted company on three modes.
 
-- **Its pedestrian mode exists only under D39's definition.** 2005 counted walking
-  of more than fifteen minutes and nothing shorter — the 2011 report states it and
-  publishes its own fifteen-minute partition to be comparable with it. Read against
-  the full pedestrian column it would look like a collapse in walking that never
-  happened.
-- **What it buys is one segment.** The casualty series starts in 2007 and the first
-  declared survey is 2011, so 2005 is the only thing that turns that backward
-  extrapolation into an interpolation. D40 defers the decision to a measurement: the
-  held-rate block for 2007–2010 is compared against the 2005 figures the 2011 report
-  publishes, and 2005 is implemented only if that comparison says it is worth a
-  session.
+**What caught it:** the check that says the two columns are equal on the modes with
+one definition, in the same run that introduced the declaration. Without it the
+panel would have carried two contradictory bicycle series and nothing would have
+said so.
 
-Nothing of 2005 is under `data/`. Implementing it starts at section 1 of this
-document, like every other year.
+**What to do:** a statement about what a year measures is nearly always a statement
+about a year, a column *and* an actor type. `ColumnNotComparable` names the actor
+types; a declaration keyed one level coarser than the fact it describes is silently
+wrong wherever the fact does not reach.
+
+### Assuming every anchor lies inside the study window
+
+The window follows the casualty series and starts in 2007. 2005 is measured, is an
+anchor, and has no row in the panel — the first survey year of which that is true.
+Two places assumed the two sets were the same: the population panel, which was
+built over the window alone and so had no 2005 population to form the rate at the
+anchor with, and the check that counts measured years per series, which counted
+anchors and compared against rows.
+
+**What caught it:** the population one failed at the moment of forming the rate,
+which is a long way from the line that built the panel — the kind of distance that
+costs an hour. The check failed honestly, 5 against 4.
+
+**What to do:** `config.population_years()` covers the window and the survey years,
+and the check counts the anchors the window contains and reports how many sit
+outside it. When a year enters as an anchor, ask what is keyed by year and whether
+it means "in the panel" or "measured".
+
+### Reading a code out of a database and a delimited file, one column over
+
+2005's mode column arrives from Access as `13.0` where the four delimited years
+deliver `13`, so a declaration written against the delimited spelling accounted for
+sixteen values it had in fact named. This is the trap 2011 hit with **zone** codes,
+met again one column over, and the fix was the one 2011 had already installed:
+`zone_code_text` spells both sides, and now spells the mode label too.
+
+**What to do:** anything compared against a declared key goes through the one
+function that spells keys. Two of the five years read through a driver that decides
+for itself whether a number is an integer.
 
 ### And the one from the inventory pass, still the best example
 

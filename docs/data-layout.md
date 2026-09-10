@@ -74,8 +74,8 @@ data/
 │   └── bog_loc_urbanarea/bog_loc_urbanarea.shp                localities, the legacy footprint
 ├── incoming/
 │   ├── afectados_2024.csv                the updated 2024 extract, already integrated
-│   └── encuestas_movilidad/              the four mobility survey publications, 2026-09-05,
-│       └── <year>/                       1.8 GB, 546 files; 2023, 2019 and 2015 declared and read
+│   └── encuestas_movilidad/              the five mobility survey publications, 2026-09-05,
+│       └── <year>/                       1.8 GB, 546 files; all five years declared and read
 ├── integrated/                           written by `integrate`, read by everything else
 │   ├── fatalities__2024_updated_extract.parquet
 │   └── injuries__2024_updated_extract.parquet
@@ -297,17 +297,19 @@ Two things about the delivery belong here rather than there:
   says so.
 - **2011 is two Access databases** where the others are one CSV, and the second one
   is not a duplicate: the weekday and the Saturday are separate samples of separate
-  households in separate files. That is the one place the fourth year did not fit
-  the shape, and it is why `MobilitySurvey.trips` is a tuple of sources. See
-  `docs/implementing-2011.md`.
+  households in separate files. That is where the fourth year did not fit the
+  shape, and it is why `MobilitySurvey.trips` is a tuple of sources. See
+  `docs/implementing-2011.md`. **2005 is a third Access database**, and the one
+  place a driver's spelling of a number mattered: it delivers a mode code as `13.0`
+  where the delimited years deliver `13`.
 - **`pyodbc` reads them** through the 64-bit Access ODBC driver installed on this
   machine, with the environment's 64-bit Python; a 32-bit driver would not have
   worked. **It is now in `requirements.txt`**, added in the commit that first read
   2011, as this document said it would be. The driver itself is not a Python package
-  and cannot be: a machine without it can run the other three years and will stop
-  with an ODBC error on 2011.
-- **A fifth survey exists and is not here.** Bogotá ran a mobility survey in
-  **2005**, and **it is now under `data/`** at
+  and cannot be: a machine without it can run the three delimited years and will
+  stop with an ODBC error on 2011 and on 2005.
+- **The fifth survey is 2005, and it is declared, read and implemented**, as of
+  2026-09-10. It is under `data/` at
   `SURVEYS_DIR / "2005" / "Encuesta  de Movilidad 2005"` — note the two spaces in
   that folder name, which is how it arrived. Four files, which is everything the
   Alcaldía publishes: `Encuesta.mdb` (the microdata, Access, 57 MB),
@@ -319,22 +321,27 @@ Two things about the delivery belong here rather than there:
   **The three Office files are legacy binary formats and were converted by hand into
   `convertidos/` beside them**, as `.docx`, `.pptx` and `.pdf`. The originals stay
   untouched: that folder is the record of what was delivered and the conversions are
-  ours. Nothing of 2005 is declared or implemented —
-  [`implementing-2005.md`](implementing-2005.md) is the inspection pass and says what
-  is settled and what is not.
+  ours. [`implementing-2005.md`](implementing-2005.md) is that year's record: sections
+  1 to 12 are the inspection pass that preceded the implementation and section 13 is
+  what building it cost.
+
+  **Two things it reads live outside its own folder**, which is the exception to how
+  every other year is filed. Its zoning is not delivered with it: the pipeline builds
+  one at run time from `geo/bog_upz/bog_upz.shp` and from the seventeen ring
+  municipalities dissolved out of the **2015** delivery's zoning, written to no disk.
+  And the figures its reading is controlled against are in the **2011** delivery's
+  Tomo III, below.
 
   What was already under `data/` before that, and still matters, is the chapter that
   publishes 2005's figures second-hand: **chapter 5 of
   `2011/Encuesta de Movilidad 2011/120927_InformeFinal_TomoIII.pdf`**, titled
   *"Comparación de indicadores de las encuestas de movilidad 2005-2011"*. Those
   figures are declared in `config.PUBLISHED_2005` and the `interpolation` route
-  compares the held block against them on every execution, so that document is a
-  source the pipeline quotes and not only background reading. It is named in this document because
-  "delivered and not declared" and "never delivered" are different facts and a
-  folder cannot tell them apart — the same reason `UndeclaredLayer` exists. If it
-  is ever obtained it goes under `SURVEYS_DIR / "2005"` beside the other four. D40
-  says what would decide that and `adding-a-survey-year.md` says what is known
-  about it in advance.
+  compares this study's reading against them on every execution — 2005 and 2011 both,
+  the second being the control on the control — so that document is a source the
+  pipeline quotes and not only background reading. Paragraph 4.26 of Tomo II is the
+  other one: it states the 9,689,027 daily trips that settled which of 2005's two
+  expansion factors is the count-adjusted one.
 - **The eight Emme matrices of `Matrices Finales/` are out of scope and are not a
   control**, which is worth stating because they look like one. The year's matrix
   training deck describes them as built from the intercept surveys and the traffic

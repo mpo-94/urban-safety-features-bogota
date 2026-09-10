@@ -1,8 +1,16 @@
-# The 2005 survey: the inspection pass
+# The 2005 survey
 
-**Nothing is implemented and nothing is declared.** This is the record of stage 0 of
-[`adding-a-survey-year.md`](adding-a-survey-year.md) — inspect before declaring
-anything — made on 2026-09-10, and of the go/no-go it was run to answer.
+**Built on 2026-09-10.** `run_20260910_154319` for the exposure and
+`run_20260910_154603` for the interpolation: the exposure table is 1,080 rows and
+47 checks, the panel 6,480 rows and 17 checks, none failed, and **the four years
+already implemented come out identical to the last decimal over all 960 of their
+rows and every column.**
+
+Sections 1 to 12 are the inspection pass that preceded it — stage 0 of
+[`adding-a-survey-year.md`](adding-a-survey-year.md), inspect before declaring
+anything — and they are left as they were written, because what a year had to
+establish for itself is the record. **Section 13 is what building it cost and what
+it changed.**
 
 D40 deferred the 2005 survey on a measurement and
 [§16 of the verification report](verification-report.md) made it: the held 2007–2010
@@ -680,3 +688,195 @@ three unflagged would hide a property of the unit behind a property of the mode.
 **What that needs, and it does not exist yet.** `day_types_below_unit_resolution`
 marks a whole day type of a year, which is what 2011's Saturday needed. Torca needs
 a *unit* of a year marked, which is a different key and a second field beside it.
+
+
+---
+
+## 13. What building it cost, and what it changed
+
+### Five structural changes, and each is a declaration four years leave empty
+
+§6b's rule is that a year which cannot be made to fit without changing the shape is
+reported rather than absorbed. 2005 asked for five. 2011, the year that until now
+had been the difficult one, asked for one.
+
+**A zoning built rather than delivered.** `ZoningFromUpzAndRing` assembles the UPZ
+of Bogotá with one polygon for each of the seventeen municipalities of the ring,
+the second dissolved out of the 2015 delivery at run time and written to no disk.
+§12 measures what it recovers.
+
+**A zone code composed of two systems.** Four years state each end of a trip in one
+column; 2005 states it as a UPZ inside Bogotá and, in another column on another
+zoning, as the municipality's own zone number outside it. `ZoneOutsideTheCity`
+composes them, refuses a record that carries both — the two zonings disagreeing
+about where something is would be a question for a person — and prefixes each half
+so that a UPZ numbered 9 and a municipality numbered 609 cannot collide. Today's
+codes would not collide anyway; a code system that *happens* not to overlap another
+is not one that *cannot*, and the prefix is what makes it cannot. It places **2,518
+origins and 2,468 destinations** the main zoning cannot reach.
+
+**A published total that covers a subset.** `PublishedTotalOverSubset` says which
+part of the file the publication summed, so the check is made on the sum the
+publication actually made. For 2005 it reproduces 9,689,027 at 9,689,027.1.
+
+**A unit marked below resolution**, where before only a whole day type could be.
+Torca's four rows carry `CITY_LEVEL_ONLY`.
+
+**And a column declared not comparable**, which is the one that had to be narrowed
+after it was written — see below.
+
+### Three smaller things fell out of it
+
+**The mode label is now spelled by the same function that spells a zone code.**
+Access delivers `13.0` where a delimited file delivers `13`, so the declaration
+accounted for neither. It is the trap 2011 hit with zone codes, met again one
+column over, and the fix is the one 2011 already installed: one function spelling
+both sides. The four delimited years are unchanged by it.
+
+**The population panel covers the survey years as well as the study window.** 2005
+is the first anchor outside 2007–2024 and the rate at an anchor is formed with that
+anchor's own population, so a panel built over the window alone failed at the
+moment of forming the rate rather than at the moment of building the panel — far
+from where the cause was.
+
+**`zone_codes_meaning_no_zone` gains a third cause.** It held codes that are a
+sentinel for a missing answer and codes that are a capture error; UPZ 89 is
+neither. The 2005 records number their UPZ as their era did and the layer this
+study has is a later vintage, carrying 111 codes over a range of 1 to 117 and
+missing 4, 5, 6, 7, 8 and 89. It is a real place with no polygon here, which is a
+third cause of the same consequence, and it is 0.14 % of the year.
+
+### The declaration that had to be narrowed, and the check that caught it
+
+`not_comparable_on` was written keyed by column: 2005 declares that its
+`TRIPS_PER_DAY_OF_TYPE` cannot be compared or interpolated across, because it holds
+long walking where every other year's holds all walking.
+
+**Declared for the column alone it excluded 2005 from that column's anchors for
+every mode, not only the pedestrian.** For the bicycle, the motorcycle and the car
+the two columns are one number written twice, in every year, by construction — so
+the bicycle's full series held flat from 2011 while its fifteen-minute series
+interpolated from 2005, and two columns that must be equal parted company on three
+modes.
+
+**The check that says they are equal on those three modes is what caught it**, and
+it caught it in the same run it was introduced. `ColumnNotComparable` now names the
+actor types the declaration applies to, which for 2005 is the pedestrian and
+nothing else.
+
+### What 2005 produced
+
+**120 rows**: 30 units × 4 modes × one day type, the survey having no Saturday and
+no Sunday to distinguish. Inside the thirty units, on one weekday:
+
+| Mode | Trips per day | Of which intra-zonal | Line km | Share of the region reaching the units |
+|---|---:|---:|---:|---:|
+| `PEDESTRIAN` | 1,112,646 | 550,722 | 3,941 | 76.9 % |
+| `CAR` | 1,334,158 | 110,408 | 30,223 | 90.0 % |
+| `BICYCLE` | 203,566 | 45,554 | 6,421 | 72.3 % |
+| `MOTORCYCLE` | 64,146 | 3,855 | 3,927 | 87.3 % |
+
+The pedestrian's last column is measured on the fifteen-minute definition, which for
+2005 is the only one the survey has: against the region's every-walking total, which
+carries the short walks this study removes, it is 73.3 %. The other three modes have
+one definition and one figure.
+
+The funnel is the highest of the five years on the two motorised modes — 90.0 % and
+87.3 % against 75.4 % and 65.5 % for 2011 — which is what a zoning of 128 zones
+does: fewer trips leave a zone at all, and those that do leave it travel between
+larger places. It is the mirror of the same fact that makes 2005's pedestrian
+figure the most intra-zonal of the five at 49 %.
+
+**Two removals are new**, both named in the balance rather than filtered before
+counting, so the file's own total still closes over them: **671 records and 71,143
+trips a day** of legs ending at a transfer point, and **663 records and 71,368
+trips** of walks under the floor the survey itself declares.
+
+### What it did to the panel
+
+**The weekday held block is gone.** 2007 to 2010 were held flat from 2011 and are
+now interpolated between 2005 and 2011, which is what implementing the year was
+for. The panel's provenance moves from 960 measured, 2,280 interpolated and 3,240
+held to **960, 2,760 and 2,760**.
+
+And the years it replaced were overstated, exactly as the comparison against the
+published 2005 figures said they would be. On the column the series is read on,
+inside the thirty units:
+
+| | Held from 2011 | Interpolated from 2005 |
+|---|---:|---:|
+| 2007 `PEDESTRIAN` | 2,480,903 | **1,455,173** |
+| 2007 `MOTORCYCLE` | 264,143 | **100,527** |
+| 2007 `BICYCLE` | 311,698 | **232,190** |
+| 2007 `CAR` | 1,333,887 | **1,341,162** |
+
+The car barely moves, which is what the 2005 comparison already said: its published
+growth over those six years was 1.19× against a demographic 1.06×, and it was the
+one mode the held rate nearly fitted.
+
+**And the new segment is the widest of the four.** On the volatility table, 59 of
+the 480 unit × mode × step combinations move by more than a factor of two on
+2005 → 2011, against 47 on 2011 → 2015. Six years is a longer step than four, and
+the motorcycle passes that factor in **all thirty units**. That is a property of the
+panel a reader has to know: the block that was an extrapolation is now an
+interpolation, and it is the least steady of the four segments.
+
+**What it did not do is reconcile those years with the casualty series.** D41's
+diagnostic — the ratio between the exposure the panel carries and the exposure a
+smooth risk would imply — is almost exactly as far from one in 2008–2010 as it was
+when the block was held: **88 of that block's 359 countable cells** move by more than
+a factor of 1.5 under the opposite assumption, against 92 before, on the ρ-corrected
+set. (The 360th is Torca's bicycle in 2009, which saw no casualty at all and so
+implies an exposure of exactly zero — the same unit the exposure route marks below
+its zoning's resolution.) The
+years inside it moved against each other — 2009 improves from 52 cells to 33 and 2008
+worsens from 29 to 37 — and the block as a whole did not. The ordinary constructed
+cells are untouched at 36 of 840, and the pandemic block at 64.
+
+That is worth stating plainly because the opposite would have been easy to assume.
+Anchoring the block on a measurement fixed its **level**, which is what it was
+implemented to do and what the funnel and the composition confirm; it did not make
+the panel and the casualty count agree about the **shape** of 2008 to 2010. Those are
+also the years the recording practice was changing, which ρ measures and which the
+diagnostic's second column already carries, so a disagreement there is not by itself
+evidence against the panel. It is the reason the diagnostic is a diagnostic.
+
+### The control, and what it does not close
+
+`compare_with_2005` stopped being a test and became a control. While 2005 was
+unread it compared the held block against the published figures and the block
+landed 15 to 19 points away, which is the number that decided the year was worth
+implementing. There is no held weekday block now, so testing it would test 2005
+against itself.
+
+What it does instead is what every other year gets — read the year, then check the
+reading against what the year published — on the fifteen-minute partition the
+source publishes on:
+
+| Year | | `PEDESTRIAN` | `BICYCLE` | `MOTORCYCLE` | `CAR` | Worst gap |
+|---|---|---:|---:|---:|---:|---:|
+| 2011 | published | 56.0 % | 10.0 % | 6.0 % | 28.0 % | |
+| | this study | 56.8 % | 9.3 % | 6.3 % | 27.7 % | **0.8** |
+| 2005 | published | 41.2 % | 8.8 % | 2.9 % | 47.1 % | |
+| | this study | 44.0 % | 8.6 % | 2.2 % | 45.2 % | **2.9** |
+
+**2005 is read less closely than 2011 and the run says so**, warning above two
+points. The residue is where §6 left it: the private vehicle, whose published share
+is a whole per cent read off a pie chart and whose composition — whether the
+delivery's *bus privado / de compañía* belongs in it — the source never states.
+Nothing found since has settled it, and fitting a category boundary to close a gap
+is not something this project does.
+
+As growth between the two years, ours against the published:
+
+| Mode | Published | This study |
+|---|---:|---:|
+| `PEDESTRIAN` | 2.72× | 2.58× |
+| `BICYCLE` | 2.27× | 2.17× |
+| `CAR` | 1.19× | 1.23× |
+| `MOTORCYCLE` | 4.08× | 5.60× |
+
+Three of the four agree within five per cent. The motorcycle does not, and it is the
+mode whose published 2005 share is 1 % — half a point of rounding is half the
+value, which is why `share_rounding` reports that row as a band from 2.27× to 9.53×
+rather than as a number.

@@ -142,20 +142,30 @@ therefore a column value and not part of a column name.
 Adding a survey year is one `MobilitySurvey` in `src/config.py`. Three things a
 year may also need are rules — for how its trips are stored, for how it says which
 kind of day a trip was made on, and for how it states the trip duration — because
-no two of the four surveys say any of them the same way. Each was commissioned by a
+no two of the five surveys say any of them the same way. Each was commissioned by a
 different city administration and catalogues its data its own way, so nothing about
 a year's files can be inherited from the year before while everything downstream of
-them has to come out identical. **All four years are built**: 2023, 2019, 2015 and
-2011. Adding each one left every year before it identical to the last decimal.
-`docs/adding-a-survey-year.md` is the procedure, and §6b of
+them has to come out identical. **All five years are built**: 2023, 2019, 2015,
+2011 and 2005. Adding each one left every year before it identical to the last
+decimal. `docs/adding-a-survey-year.md` is the procedure, and §6b of
 `docs/mobility-surveys-inventory.md` is the contract it has to satisfy.
 
-The fourth year is the one that did not fit, and it is reported rather than
-absorbed. 2011's weekday and Saturday are separate samples of separate households in
-two Access databases, so which kind of day a record belongs to is a property of the
-file it came out of. `MobilitySurvey.trips` is therefore a tuple of sources, each
-carrying the day type its file holds, and no day-type rule ever opens a file.
-`docs/implementing-2011.md` is that year's record.
+Two years did not fit, and both were reported rather than absorbed. 2011's weekday
+and Saturday are separate samples of separate households in two Access databases, so
+which kind of day a record belongs to is a property of the file it came out of;
+`MobilitySurvey.trips` is therefore a tuple of sources, each carrying the day type
+its file holds, and no day-type rule ever opens a file.
+
+**2005 is the one that asked for most**, five changes against 2011's one: a zoning
+built at run time out of Bogotá's UPZ and seventeen municipalities dissolved from
+another year's delivery, a zone code composed from two columns in two code systems,
+a published total that declares which part of the file it covers, a unit marked as
+below the resolution its zoning can support, and a column declared measured but not
+comparable — its walking is long walking, which is a true figure about a different
+thing, so it is exported with the declaration rather than nulled. The four years
+already built came out identical to the last decimal over all 960 of their rows.
+`docs/implementing-2011.md` and `docs/implementing-2005.md` are those two years'
+records.
 
 **The fourteen years no survey covers are filled by the `interpolation` route, and
 that is built.** It runs **per unit**, because the study is thirty units and a city
@@ -174,15 +184,24 @@ and **it reads no survey and changes nothing**: the measured table is the record
 what the surveys say and the panel is a construction that sits beside it. Which run
 it read is in its log and in its exported dictionary.
 
-**Two comparisons come out of it and neither is a check that can pass.** The 2011
-delivery's own chapter comparing itself against the 2005 survey — the only evidence
-about the years before the study's first survey — says the held 2007–2010 block sits
-15 to 19 points away from what 2005 published on the two modes that turn over, on a
-comparison whose 2011 control agrees to eight tenths of a point. And the interpolated
-curve is compared against the study's own casualty count, which is the one annual
-series that exists.
+**That backward block was measured, and then it was read.** The 2011 delivery's
+own chapter comparing itself against the 2005 survey said the held 2007–2010 rate
+sat 15 to 19 points away from what 2005 published on the two modes that turn over,
+which is what decided the survey was worth a session. It is implemented, so **2007
+to 2010 are now interpolated between 2005 and 2011 and the weekday held block is
+gone**: the panel's provenance moves from 960 measured, 2,280 interpolated and 3,240
+held to 960, 2,760 and 2,760, 2007's pedestrian falls from 2,480,903 to 1,455,173 and
+its motorcycle from 264,143 to 100,527, while the car barely moves — the one mode the
+held rate nearly fitted. That comparison is now a control on the reading instead, and
+this study's 2005 lands 2.9 points from the published composition against 0.8 for
+2011. **The new segment is also the widest**: 59 of 480 unit × mode × step
+combinations move by more than a factor of two on 2005 → 2011 against 47 on
+2011 → 2015.
 
-That second comparison is D41 and it is a table. A casualty count is roughly
+**And the interpolated curve is compared against the study's own casualty count**,
+which is the one annual series that exists.
+
+That comparison is D41 and it is a table. A casualty count is roughly
 exposure times risk; the casualties are known for eighteen years and the exposure for
 four, so every constructed year has one equation and two unknowns and something must
 be assumed about one of the two factors. Interpolating the exposure and interpolating

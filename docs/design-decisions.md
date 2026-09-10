@@ -64,9 +64,9 @@ carried, so the second is larger for the same underlying records.
 | D35 | The desire lines enter as exposure, apportioned by share of length | Methodological | Closed on the rule; the year and the selection are **open** | Yes |
 | D36 | The population enters as a panel, one number per unit and per year | Methodological | Closed on the shape; which years are measured and which modelled is **open** | Yes |
 | D37 | `data/` is filed by the role the data plays, and every root is declared | Implementation | Closed on the roots; where the exposure layers finally live is **open** | Yes |
-| D38 | Exposure is built from the survey, per unit, year, mode and day type | Methodological | Closed for all four years; which day type the models take is **open** | Yes |
+| D38 | Exposure is built from the survey, per unit, year, mode and day type | Methodological | Closed for all five years; which day type the models take is **open** | Yes |
 | D39 | The pedestrian mode is measured twice, and the series is read on the fifteen-minute one | Methodological | Closed | Yes |
-| D40 | Exposure between survey years is interpolated as a rate, not as a level | Methodological | Closed on the method; whether 2005 joins the series is **open, and the measurement has been made** | Yes |
+| D40 | Exposure between survey years is interpolated as a rate, not as a level | Methodological | Closed on the method; 2005 joined the series on 2026-09-10 and the weekday held block is gone | Yes |
 | D41 | The panel is compared against the casualty series, and that comparison is a diagnostic and never a constructor | Methodological | Closed on the diagnostic; whether the pandemic years are patched by the mirror assumption is **open** | Yes |
 
 Methodological decisions: D1-D7, D9, D10, D11, D15, D17, D18, D19, D21, D22, D32, D35,
@@ -2991,9 +2991,19 @@ supportable at all — a question 2019 made sharper, 2015 made answerable and 20
 has now given a third point.
 
 **Built:** Yes. `src/surveys.py` and the second half of `src/exposure.py`, route
-`exposure`. Run `run_20260908_101110`, and unchanged to the last decimal on
-`run_20260909_214626`, which added D39's second pedestrian column and nothing
-else.
+`exposure`. Run `run_20260910_154319`: **five years, 1,080 rows, 47 checks, none
+failed.** Each year has been added without moving the ones before it, which is the
+test this decision is held to: 2005 landed on that run and the other four came out
+identical to the last decimal over all 960 of their rows and every column.
+
+**Amended by 2005**, which asked for five changes where 2011 asked for one and is
+the year this decision's contract was most nearly bent by. All five are
+declarations that the other four leave empty: a zoning built at run time rather
+than read from a delivery, a zone code composed from two columns in two code
+systems, a published total that declares which part of the file it covers, a unit
+marked as below resolution where before only a whole day type could be, and a
+column declared measured but not comparable. `docs/implementing-2005.md` is the
+record and its section 13 is what building it cost.
 
 **Amended by 2019**, in four places, each marked below: the day type is not a
 dimension every year carries; the duration is a declared rule and not a column
@@ -4219,6 +4229,25 @@ below.
 one of the 960 rows identical to `run_20260908_101110` on every column it already
 had.
 
+**Amended by 2005, which is the year this decision was written for without knowing
+it.** 2005 collected walking of more than fifteen minutes and nothing shorter, so
+D39's second column is the only one it can supply — and the consequence runs the
+other way too: its `TRIPS_PER_DAY_OF_TYPE` holds long walking where every other
+year's holds all walking. **The value is exported and not nulled**, because the
+measured table is the record of what the surveys say and 2005 did measure walking;
+what a null would have said is that there is no figure, which is false. What is not
+true is that the figure is comparable, and that is declared instead, per column and
+per actor type, in `not_comparable_on`. Measured, anchoring an interpolation on it
+would spread the difference of definition as a 34 % annual rise through 2007–2010
+where the comparable column reads 18 %.
+
+This is also where the full column's own justification stops applying. D39 keeps
+that column partly because the crash source cannot separate a short walk from a
+long one, so it is the one whose denominator matches the numerator's category. For
+2005 that is no longer true: its denominator excludes short walks while the
+numerator counts their casualties. **Any pedestrian rate quoted for 2005 carries
+that sentence.**
+
 ### The measurement that forced it
 
 D38 decided that every walking trip is in, whatever its length, and gave two
@@ -4349,10 +4378,12 @@ pedestrian series is read on it. **A year that measures walking and declares no
 duration rule now stops the run**, naming the two ways out — declare the rule, or
 take the year out of `MOBILITY_SURVEYS` — because both are decisions for a person
 and the alternative is a null column that the interpolation would meet four stages
-later. All four declared years have a duration rule, so nothing moved.
+later. All five declared years have a duration rule, so nothing moved — and 2005,
+which arrived after this was written, is the year it would have caught: its whole
+pedestrian column is the fifteen-minute one.
 
 **A walking record with no duration would be counted in the full column and left
-out of the narrow one, and the run says so.** None of the four years has one; a
+out of the narrow one, and the run says so.** None of the five years has one; a
 year that did would understate its own fifteen-minute column by exactly those
 records, which is why it is a warning and not a silence.
 
@@ -4408,8 +4439,30 @@ the 2005 survey joins the series is open, and the measurement that decides it ha
 now been made** — see the last section.
 
 **Built:** Yes. `src/interpolation.py`, route `interpolation`. Run
-`run_20260910_021628`: 6,480 rows, 17 checks, none failed, on the exposure table of
-`run_20260910_021307`. `docs/interpolating-the-exposure.md` was the specification
+`run_20260910_154603`: 6,480 rows, 17 checks, none failed, on the exposure table of
+`run_20260910_154319`.
+
+**Amended by 2005, and the amendment is the one this decision asked for.** The
+survey was implemented on 2026-09-10 and is now the fifth anchor, so **the weekday
+held block no longer exists**: 2007 to 2010 are interpolated between 2005 and 2011
+where they were held flat from 2011. The panel's provenance moves from 960
+measured, 2,280 interpolated and 3,240 held to **960, 2,760 and 2,760**. The years
+it replaced were overstated much as the comparison predicted — 2007's pedestrian
+falls from 2,480,903 to 1,455,173 and its motorcycle from 264,143 to 100,527, while
+the car barely moves, which is the one mode the held rate nearly fitted.
+
+Three consequences are worth carrying:
+
+- **Anchors are read per column and per actor type**, because a year may measure a
+  column and not be comparable on it. See D39's amendment.
+- **Two places assumed every anchor lies inside the window** and 2005 is the first
+  that does not. The population panel now covers the survey years as well as
+  2007–2024, and the check that counts measured years per series counts the anchors
+  the window contains and reports how many sit outside it.
+- **The new segment is the widest of the four.** 59 of the 480 unit × mode × step
+  combinations move by more than a factor of two on 2005 → 2011 against 47 on
+  2011 → 2015, and the motorcycle passes it in all thirty units. The block that was
+  an extrapolation is now an interpolation and it is the least steady of the four. `docs/interpolating-the-exposure.md` was the specification
 and is now the record.
 
 ### What has to be filled, and what is already annual
@@ -4650,6 +4703,15 @@ decision, and it is a full implementation pass, a fifth zoning and six years
 containing TransMilenio's phases II and III. What D40 promised was a number rather
 than an impression, and the number is above.
 
+**And the decision was taken: 2005 was implemented on 2026-09-10**, so this section
+is the measurement that decided it rather than a pending question. What it bought is
+what it promised — 2007 to 2010 are interpolated between two measured years and the
+weekday held block no longer exists — and the years it replaced were overstated much
+as the gaps above predicted. D40's amendment at the head of this decision is the
+outcome, [`implementing-2005.md`](implementing-2005.md) is the year's record, and the
+test above became a control on the reading: this study lands 2.9 points from the
+published 2005 composition against 0.8 for 2011.
+
 **One thing the same exercise found that this decision did not ask for.** The
 interpolated curve was compared against the one annual series the study already has,
 its own casualty count, and the disagreement is 2020: pedestrian casualties halve
@@ -4671,10 +4733,13 @@ says both sets exist and the models are to be run against both — but the
 interpolation has to produce whichever window is asked for, so it is built over the
 full 2007–2024 and the choice stays a filter.
 
-**Whether the held block belongs in the models at all.** Four of eighteen years with
-no within-unit behavioural variation, only demographic, is a block a panel estimator
-will treat as information. `YEARS_TO_NEAREST_SURVEY` is in the table so that this
-can be tested rather than assumed.
+**Whether the held block belongs in the models at all.** ~~Four of eighteen years~~
+**on the weekday, none, since 2005 was implemented**: 2007 to 2010 are interpolated
+and the held block is now the Saturday's two ends, the whole Sunday and 2024. The
+question stays open for those, and for the same reason — a block with no within-unit
+behavioural variation, only demographic, is a block a panel estimator will treat as
+information. `YEARS_TO_NEAREST_SURVEY` is in the table so that this can be tested
+rather than assumed.
 
 **Whether the 2011→2015 segment should be interpolated at all for the pedestrian
 mode.** D39 removes the definitional part of that segment's problem. It does not
@@ -4689,7 +4754,7 @@ the delivery, and the interpolation runs straight through it.
 **A route of its own that reads a file rather than a survey.** `interpolation` reads
 the exposure table another run exported and the population panel, and writes one more
 table beside them. It could have rebuilt the measured table in memory instead, and
-that was refused for two reasons: it would mean reading four surveys again to produce
+that was refused for two reasons: it would mean reading five surveys again to produce
 a table this stage is forbidden to change, and it would make the interpolation look
 like a second measurement of the same thing. What it costs is that the run has to say
 which run it read, and it does — in the log, in the record funnel and in the exported

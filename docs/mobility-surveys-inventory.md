@@ -11,10 +11,13 @@ which days each survey covers. No geometry was built, nothing was declared in
 `config.py`, and no result here has been through a pipeline check. Every figure
 was computed from the delivered file in the session of 2026-09-05.
 
-**All four years have since been built and none of this is a structural note any
-more.** They are declared in `config.SURVEY_2011`, `SURVEY_2015`, `SURVEY_2019` and
-`SURVEY_2023`, read by `src/surveys.py`, measured by `src/exposure.py` and checked
-on run `run_20260908_101110`; the decisions are D38. What each pass resolved is
+**All five years have since been built and none of this is a structural note any
+more.** They are declared in `config.SURVEY_2005`, `SURVEY_2011`, `SURVEY_2015`,
+`SURVEY_2019` and `SURVEY_2023`, read by `src/surveys.py`, measured by
+`src/exposure.py` and checked on run `run_20260910_154319`; the decisions are D38.
+2005 was never inventoried in this pass — it was not on disk in 2026-09-05 — so every
+figure below is about the four years this document measured, and
+[`implementing-2005.md`](implementing-2005.md) is the fifth year's equivalent. What each pass resolved is
 marked below where it lands. Several things this document listed as unresolved have
 been answered and four of its statements turned out to be wrong, which is said in
 full in section 5.
@@ -874,11 +877,23 @@ because they are the reason this pass exists.
 
 ---
 
-## 6b. The contract the four years were implemented under
+## 6b. The contract the five years were implemented under
 
-**All four are done.** The contract stays as written, because it is what a fifth
-survey would be held to and because it is the record of what each year had to
-establish for itself.
+**All five are done**, 2005 last, on 2026-09-10. The contract stays as written,
+because it is the record of what each year had to establish for itself — and
+because the fifth year is the one that tested it hardest.
+
+**2005 asked for five changes where 2011 asked for one**, and this section's rule
+is what made that visible rather than absorbed: a year that cannot be made to fit
+without changing the shape is stopped on and reported. It was, five times, and each
+change is a declaration the other four leave empty — a zoning built at run time, a
+zone code composed from two columns in two code systems, a published total that
+declares which part of the file it covers, a unit marked below resolution, and a
+column declared measured but not comparable. What did not change is everything the
+next section lists as fixed: the measurement, the four actor types, the shape of
+the table, the figures, where they are written, and the balance. **The four years
+already implemented came out identical to the last decimal**, which is the test
+that says so. `docs/implementing-2005.md` is that year's record.
 
 **Read this before opening a survey folder**, and
 [`adding-a-survey-year.md`](adding-a-survey-year.md) for the order to work in.
