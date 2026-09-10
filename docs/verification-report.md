@@ -1282,9 +1282,12 @@ says which years are which.
 
 ## 15. Travel exposure from the mobility survey
 
-Run `run_20260908_101110`, route `exposure`, command
-`python -m src.run_pipeline exposure`. **Every check passed.** This is the
-study's exposure: how much travel of each of four road user types passes through
+Run `run_20260909_214626`, route `exposure`, command
+`python -m src.run_pipeline exposure`. **Forty checks, none failed.** It
+reproduces `run_20260908_101110` — the run every figure in this section was
+measured on — to the last decimal over all 960 rows, and adds D39's second
+pedestrian column; the two subsections before *What is open* are what that added.
+This is the study's exposure: how much travel of each of four road user types passes through
 each unit, per survey year and per kind of day, built from the household mobility
 survey rather than received as finished desire lines. The decision is D38, which
 supersedes D35 for the variable and part of D36 for the denominator.
@@ -2057,33 +2060,46 @@ because 2015 barely had one. Fewer removals, not longer walks.
 
 ### The checks
 
+**Forty of them, on `run_20260909_214626`, none failed.** In the order the run
+prints them: three about the table itself, seven for each of the four years, and
+nine about arithmetic across the whole of it.
+
 | Check | Result |
 |---|---|
-| The table carries exactly the declared columns, in the declared order | OK, 19 of 19 |
+| The table carries exactly the declared columns, in the declared order | OK, 21 of 21 |
 | Every row names a unit of the study | OK, 30 of 30 |
 | No combination of unit, year, actor type and day type appears twice | OK, 0 duplicated |
-| 2015: the grid of unit, actor type and day type is complete | OK, 240 rows of 240 |
-| 2019: the grid of unit, actor type and day type is complete | OK, 120 rows of 120 |
-| 2023: the grid of unit, actor type and day type is complete | OK, 360 rows of 360 |
-| 2015: apportioned plus outside equals the file, per actor type and day | OK, 8 combinations, largest gap 0.000000 |
-| 2019: apportioned plus outside equals the file, per actor type and day | OK, 4 combinations, largest gap 0.000000 |
-| 2023: apportioned plus outside equals the file, per actor type and day | OK, 12 combinations, largest gap 0.000000 |
-| 2015: the four measured modes add to the file's own total for them | OK, 16,670,116.39 |
-| 2019: the four measured modes add to the file's own total for them | OK, 9,262,670.29 |
-| 2023: the four measured modes add to the file's own total for them | OK, 9,221,240.50 |
-| 2015: every trip the file weights is measured or named as set aside | OK, 32,982,284.3 |
-| 2019: every trip the file weights is measured or named as set aside | OK, 18,996,285.6 |
-| 2023: every trip the file weights is measured or named as set aside | OK, 16,390,907.8 |
-| 2015: nothing is apportioned more than once over | OK, largest share 1.000000015 |
-| 2019: nothing is apportioned more than once over | OK, largest share 1.000000059 |
-| 2023: nothing is apportioned more than once over | OK, largest share 1.000000128 |
-| 2011: the grid of unit, actor type and day type is complete | OK, 240 of 240 |
+| 2011: the grid of unit, actor type and day type is complete | OK, 240 rows of 240 |
 | 2011: apportioned plus outside equals the file, per actor type and day | OK, 8 combinations, largest gap 0.000000 |
+| 2011: the fifteen-minute column balances against its own total in the file | OK, 8 combinations, largest gap 0.000000 |
 | 2011: the four measured modes add to the file's own total for them | OK, 15,898,463.68 |
 | 2011: every trip the file weights is measured or named as set aside | OK, 31,633,388.8 |
 | 2011: nothing is apportioned more than once over | OK, largest share 1.000000007 |
-| The intra-zonal trips are a part of the variable, never more | OK, 0 rows in any year |
-| No negative trip count | OK |
+| 2011: the intra-zonal trips are a part of the variable, never more | OK, 0 rows |
+| 2015: the grid of unit, actor type and day type is complete | OK, 240 rows of 240 |
+| 2015: apportioned plus outside equals the file, per actor type and day | OK, 8 combinations, largest gap 0.000000 |
+| 2015: the fifteen-minute column balances against its own total in the file | OK, 8 combinations, largest gap 0.000000 |
+| 2015: the four measured modes add to the file's own total for them | OK, 16,670,116.39 |
+| 2015: every trip the file weights is measured or named as set aside | OK, 32,982,284.3 |
+| 2015: nothing is apportioned more than once over | OK, largest share 1.000000015 |
+| 2015: the intra-zonal trips are a part of the variable, never more | OK, 0 rows |
+| 2019: the grid of unit, actor type and day type is complete | OK, 120 rows of 120 |
+| 2019: apportioned plus outside equals the file, per actor type and day | OK, 4 combinations, largest gap 0.000000 |
+| 2019: the fifteen-minute column balances against its own total in the file | OK, 4 combinations, largest gap 0.000000 |
+| 2019: the four measured modes add to the file's own total for them | OK, 9,262,670.29 |
+| 2019: every trip the file weights is measured or named as set aside | OK, 18,996,285.6 |
+| 2019: nothing is apportioned more than once over | OK, largest share 1.000000059 |
+| 2019: the intra-zonal trips are a part of the variable, never more | OK, 0 rows |
+| 2023: the grid of unit, actor type and day type is complete | OK, 360 rows of 360 |
+| 2023: apportioned plus outside equals the file, per actor type and day | OK, 12 combinations, largest gap 0.000000 |
+| 2023: the fifteen-minute column balances against its own total in the file | OK, 12 combinations, largest gap 0.000000 |
+| 2023: the four measured modes add to the file's own total for them | OK, 9,221,240.50 |
+| 2023: every trip the file weights is measured or named as set aside | OK, 16,390,907.8 |
+| 2023: nothing is apportioned more than once over | OK, largest share 1.000000128 |
+| 2023: the intra-zonal trips are a part of the variable, never more | OK, 0 rows |
+| No negative trip count | OK, 0 negative |
+| The fifteen-minute column equals the full one on the modes with one definition | OK, 720 rows of `BICYCLE`, `MOTORCYCLE` and `CAR` |
+| The fifteen-minute walking of a unit is a part of its walking, never more | OK, 0 rows where the part exceeds the whole, 0 negative, over 240 walking rows |
 | Trips per day of type is trips per average day over the universe share | OK to 1e-12 over 960 rows |
 | The universe shares of a year are what its expansion implies | OK, 1.000000000000 in all four |
 | The per-km² column is the variable over the area of its own unit | OK to 1e-12 |
@@ -2137,23 +2153,48 @@ confirmed by the 2015 delivery's own reading of the 2011 file: Tabla 43 of its T
 IV gives the same three city-level changes at −13.9 points, +38.50 % and +102.82 %,
 and calls the motorcycle the largest change in the survey. The difference between
 those and the figures above is the funnel — **2011 delivers a smaller share of its
-own city totals to the thirty units than any other year**, and by a mode-dependent
-amount:
+own city totals to the thirty units than 2015 does, on every one of the four
+modes**:
 
 | Share of the survey's own weekday total inside the units | 2011 | 2015 | 2019 | 2023 |
 |---|---:|---:|---:|---:|
-| `PEDESTRIAN` | 67.3 % | 80.0 % | 59.9 % | 70.1 % |
-| `BICYCLE` | 53.1 % | 74.8 % | 65.2 % | 69.3 % |
-| `MOTORCYCLE` | 65.5 % | 85.8 % | 74.3 % | 79.1 % |
-| `CAR` | 75.4 % | 89.1 % | 79.7 % | 83.4 % |
+| `PEDESTRIAN` | 67.3 % | 80.0 % | 59.9 % | 68.9 % |
+| `BICYCLE` | 53.1 % | 74.8 % | 65.2 % | 71.7 % |
+| `MOTORCYCLE` | 65.5 % | 85.8 % | 74.3 % | 83.2 % |
+| `CAR` | 75.4 % | 89.1 % | 79.7 % | 84.1 % |
 
-Two facts about 2011 explain the whole column: the sixth of its records the
-consultant imputed carries no geography, and it reports shorter trips than any other
-year in every mode, which makes the plausibility test reject more of them. **This is
-a property of the table a reader has to know**, because a mode's level inside the
-units is depressed relative to its own city total by a year-specific and
+Numerator and denominator are both `TRIPS_PER_DAY_OF_TYPE` — the trips of one
+weekday of that mode inside the units, over the trips of one weekday of that mode
+in the whole surveyed region before the study's removals. The 2023 column had to be
+recomputed to say that, and the last paragraph below says why.
+
+**2011 is the lowest of the four years on three modes and 2019 is the lowest on
+walking**, and the two have different reasons. 2011's are the two facts this
+section keeps returning to: the sixth of its records the consultant imputed carries
+no geography, and it reports shorter trips than any other year in every mode, which
+makes the plausibility test reject more of them. 2019's is that same test alone —
+it removes 18.7 % of that year's walking against 3.3 % of 2015's — which is why
+2019 sits below 2011 on walking and above it on everything else.
+
+**This is a property of the table a reader has to know**, because a mode's level
+inside the units is depressed relative to its own city total by a year-specific and
 mode-specific amount, which is why the cross-year check warns where the published
-city-level comparison does not.
+city-level comparison does not. It is also why the 2011 → 2015 argument above is
+made against 2015 rather than against the field: what that step has to survive is
+the gap between those two columns, and it is 13 to 22 points wide on every mode.
+
+**The 2023 column was wrong until 2026-09-09 and it was wrong in the way D38 warns
+about.** It read 70.1 / 69.3 / 79.1 / 83.4 — a `TRIPS_PER_DAY_OF_TYPE` numerator
+over a denominator that was the whole file's total for the mode on
+`TRIPS_PER_AVERAGE_DAY`: the wrong basis, and all three of that year's day types
+where the numerator is one. The other three years were divided by their own weekday
+total, and their two bases coincide anyway because their factors already expand to
+one day of the record's own kind, so **only 2023 could carry the defect** — which is
+also why it survived three years of the table being reread. It moved each of its
+four figures by one to four points. It is the mistake D38 records about
+`TRIPS_PER_AVERAGE_DAY` and the one `compare_years` made until the second year
+exposed it, this time in a table computed by hand rather than by the run. The
+corrected figures are above.
 
 **The bicycle ranking is a finding about the city and not about the reading, and
 three tests say so.** The two years share a zoning — 2011 borrows 2015's — so the
@@ -2210,7 +2251,8 @@ unit × mode × step combinations moving by more than a factor of two:
 
 **64 of 360, and 41 of the 64 are on the 2011 → 2015 step** — the same segment that
 carries the instrument change in walking, the imputation without geography and the
-smallest share of city totals reaching the units. The widest single step is
+smaller share of its city totals reaching the units than 2015 delivers on every
+mode. The widest single step is
 Chapinero's cycling rate at 8.85×, followed by Teusaquillo at 6.12× and Usaquén at
 5.48×, all three cycling and all three on that segment. Part of it is real:
 Chapinero's higher level is held by 2019 and 2023. D40 requires the interpolation to
@@ -2544,27 +2586,6 @@ which is why the choice had to be made on an argument.
 The kilometres inside a unit are a share of a chord nobody rode. Any document
 quoting this variable says so.
 
-### What is open
-
-**Which day type the models take**, and **whether a day-type comparison is
-supportable at all.** Rescaled to the universe, the 2023 region makes 1.778 trips
-per person on a weekday, 1.802 on a Saturday and 1.749 on a Sunday. Bogotá does not
-travel as much on a Sunday as on a Tuesday. The run warns about it on every
-execution.
-
-**2015 answers the second half of that and reopens the first.** Its Saturday needs
-no rescaling — the factor already expands to one whole day of each kind — and it
-shows the pattern anyone would expect: car up 50 % against its own weekday, walking
-down 32 %, cycling down 17 %, and Tomo IV says the same of the whole region in
-words. So the flat 2023 week is a property of that delivery rather than of the
-city's travel, which is what this paragraph said would have to be established
-before any document compared the two days. But 2015 also means a Saturday series
-has two points rather than one, so "publish the weekday alone because it is the only
-day the series shares" is no longer forced. **Whether a Saturday measured well in
-2015 and badly in 2023 belongs in one series is a decision for my advisor.** D38 has
-both.
-
-
 ### The second pedestrian definition, built
 
 Run `run_20260909_214626`, route `exposure`, command
@@ -2674,3 +2695,23 @@ year with no duration can no longer enter the series at all. All four declared
 years have a rule, so nothing moved; and a walking record whose duration cannot be
 derived would be counted in the full column, left out of the narrow one, and named
 in a warning. None of the four years has one.
+
+### What is open
+
+**Which day type the models take**, and **whether a day-type comparison is
+supportable at all.** Rescaled to the universe, the 2023 region makes 1.778 trips
+per person on a weekday, 1.802 on a Saturday and 1.749 on a Sunday. Bogotá does not
+travel as much on a Sunday as on a Tuesday. The run warns about it on every
+execution.
+
+**2015 answers the second half of that and reopens the first.** Its Saturday needs
+no rescaling — the factor already expands to one whole day of each kind — and it
+shows the pattern anyone would expect: car up 50 % against its own weekday, walking
+down 32 %, cycling down 17 %, and Tomo IV says the same of the whole region in
+words. So the flat 2023 week is a property of that delivery rather than of the
+city's travel, which is what this paragraph said would have to be established
+before any document compared the two days. But 2015 also means a Saturday series
+has two points rather than one, so "publish the weekday alone because it is the only
+day the series shares" is no longer forced. **Whether a Saturday measured well in
+2015 and badly in 2023 belongs in one series is a decision for my advisor.** D38 has
+both.

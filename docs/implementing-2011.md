@@ -279,22 +279,32 @@ The baseline is in the inventory's §6b and is not repeated here. What belongs h
 is the year's own funnel and the warnings, because a warning nobody chased is worse
 than no warning.
 
-**2011 delivers a smaller share of its city totals to the thirty units than any
-other year**, and the share differs by mode:
+**2011 delivers a smaller share of its city totals to the thirty units than 2015
+does, on every one of the four modes**, and the gap differs by mode:
 
 | Share of the survey's own weekday total inside the units | 2011 | 2015 | 2019 | 2023 |
 |---|---:|---:|---:|---:|
-| `PEDESTRIAN` | 67.3 % | 80.0 % | 59.9 % | 70.1 % |
-| `BICYCLE` | 53.1 % | 74.8 % | 65.2 % | 69.3 % |
-| `MOTORCYCLE` | 65.5 % | 85.8 % | 74.3 % | 79.1 % |
-| `CAR` | 75.4 % | 89.1 % | 79.7 % | 83.4 % |
+| `PEDESTRIAN` | 67.3 % | 80.0 % | 59.9 % | 68.9 % |
+| `BICYCLE` | 53.1 % | 74.8 % | 65.2 % | 71.7 % |
+| `MOTORCYCLE` | 65.5 % | 85.8 % | 74.3 % | 83.2 % |
+| `CAR` | 75.4 % | 89.1 % | 79.7 % | 84.1 % |
 
-The gap against 2015 is the two facts above: the imputed trips that carry no
-geography, and the shorter durations that fail the plausibility test more often. It
-matters for reading the table, because a mode's level inside the units is depressed
-relative to its own city total by a year-specific and mode-specific amount — which
-is why the cross-year comparison warns where the published city-level comparison
-does not.
+Both sides of the ratio are `TRIPS_PER_DAY_OF_TYPE`. (The 2023 column read 70.1 /
+69.3 / 79.1 / 83.4 until 2026-09-09, when it turned out to divide a
+`TRIPS_PER_DAY_OF_TYPE` numerator by a `TRIPS_PER_AVERAGE_DAY` denominator covering
+all three of that year's day types — a defect only 2023 could have, because it is
+the only year whose two bases differ. Section 15 of the verification report records
+it.)
+
+**Across the four years 2011 is the lowest on three modes and 2019 is the lowest on
+walking.** The gap against 2015 is the two facts above: the imputed trips that
+carry no geography, and the shorter durations that fail the plausibility test more
+often. 2019's walking figure has a single cause instead — that same test removes
+18.7 % of it against 3.3 % of 2015's — so it sits below 2011 on walking and above
+it on the other three. It matters for reading the table, because a mode's level
+inside the units is depressed relative to its own city total by a year-specific and
+mode-specific amount — which is why the cross-year comparison warns where the
+published city-level comparison does not.
 
 **Four warnings fired between 2011 and 2015 and all four survived investigation.**
 

@@ -28,8 +28,9 @@ Read in this order, before touching anything:
 
 **The reference run is `run_20260908_101110`**: 960 rows, 34 checks, none failed.
 Everything already measured in this document comes from it, except the figures
-about the fifteen-minute column, which come from `run_20260909_214626` — the same
-table with that column added and every earlier row unchanged.
+about the fifteen-minute column, which come from **`run_20260909_214626`** — 960
+rows, 40 checks, none failed: the same table with that column added and every
+earlier row unchanged to the last decimal. D40 is built on the second.
 
 **Two things get built and the first has to come first**, because the second reads
 what the first writes:
@@ -161,7 +162,8 @@ factor of two**, and they are not spread evenly:
 
 **Forty-one of the sixty-four are on the 2011 → 2015 step**, which is the segment
 already known to carry an instrument change in walking, an imputation without
-geography, and the smallest share of city totals reaching the units of any year.
+geography, and a smaller share of its city totals reaching the units than 2015
+delivers on every one of the four modes.
 The widest single step is Chapinero's cycling rate at **8.85×**, and log-linear
 interpolation will spread that as a 72 % rise every year through 2012, 2013 and
 2014.
@@ -270,8 +272,8 @@ casualty set sits beside the observed one (D31).
 **Extrapolating a trend backwards from the 2011 → 2015 step.** D40 already forbids
 it and section 3 says why it would be worst there specifically: 41 of the 64 widest
 per-unit steps are on that segment, and the segment carries an instrument change in
-walking, an imputation without geography, and the smallest share of city totals
-reaching the units of any year.
+walking, an imputation without geography, and a smaller share of its city totals
+reaching the units than 2015 delivers on every one of the four modes.
 
 
 ---

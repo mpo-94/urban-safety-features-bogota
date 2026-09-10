@@ -2662,6 +2662,12 @@ class MobilitySurvey:
     # an origin-destination pair checkable — without it there is no way to say a
     # pair is too far apart for the mode, and the run says so rather than passing
     # a check it could not make. None means the year reports no duration at all.
+    #
+    # It is also what splits walking into D39's two definitions, and that is the
+    # stricter of the two obligations: a year that measures PEDESTRIAN and leaves
+    # this None stops the run, because the series is read on the fifteen-minute
+    # column and there is no way to build it without a duration. None is therefore
+    # only open to a year that measures no walking at all.
     duration_rule: (
         DurationFromMinutesColumn | DurationFromClockColumns | DurationFromTextClockColumns | None
     )

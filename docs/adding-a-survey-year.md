@@ -127,9 +127,21 @@ gives a departure and an arrival as fractions of a day, 2015 gives them as
 `HH:MM:SS` text. 2023's agrees with its own fifteen-minute walking split, 3 to 14
 minutes on one side and 15 to 439 on the other. 2019's derivation reproduces the
 delivery's own `Aux_Duración` file on all but one record and lands 0.10 % from the
-published fifteen-minute split. A year with no duration cannot have its
-origin-destination pairs checked for plausibility, and the run says so rather than
-implying the year is clean.
+published fifteen-minute split. **A year that measures walking and declares no
+duration rule stops the run**, because D39 reads the pedestrian series on the
+walking of fifteen minutes or more and there is no way to state that without a
+duration; the two ways out are to write the rule or to take the year out of
+`MOBILITY_SURVEYS`, and both are decisions for a person. Even for a year that
+measures no walking, no duration means its origin-destination pairs cannot be
+checked for plausibility, and the run says so rather than implying the year is
+clean.
+
+**The duration decides two things and not one.** It rejects the records whose two
+zones the mode could not have crossed in the time, and it splits walking into the
+two definitions D39 exports. The pipeline derives it once per year, over every
+record the file holds, and hands the same numbers to both — so a duration rule that
+is wrong is wrong in two places at once, which is why it is verified against a
+published figure before it is trusted.
 
 **If the duration is derived, round it to the minute.** `(0.302083333333333 −
 0.291666666666667) × 1440` is 14.999999999, and without rounding a tenth of 2019's
@@ -171,7 +183,7 @@ SURVEY_2015 = MobilitySurvey(
     origin_zone_column="ZAT_ORIGEN",
     destination_zone_column="ZAT_DESTINO",
     mode_column="ID_MEDIO_PREDOMINANTE",
-    duration_rule=...,                  # or None, and the run will say so
+    duration_rule=...,                  # required if the year measures walking (D39)
     mode_map={...},                     # every label that becomes an actor type
     modes_not_measured=(...),           # every label deliberately left out
     day_type_rule=...,                  # the year's own way of saying it
@@ -365,6 +377,32 @@ dictionary says which column is comparable, in capitals.
 **And expect the same class of defect elsewhere.** The rule generalises: any
 quantity computed *across* years from a column whose meaning `weight_expands_to`
 controls is suspect, and no check written inside one year can see it.
+
+### The same defect again, in a table typed by hand rather than computed
+
+The prediction above came true on 2026-09-09, in the verification report and not in
+the code. Its funnel table — how much of each survey's own weekday total reaches
+the thirty units — divided a `TRIPS_PER_DAY_OF_TYPE` numerator by a
+`TRIPS_PER_AVERAGE_DAY` denominator for 2023, and by the whole file's total over
+all three of that year's day types where the numerator is one. The four figures
+read 70.1 / 69.3 / 79.1 / 83.4 and should have read 68.9 / 71.7 / 83.2 / 84.1.
+
+**Why it survived:** the other three years are right, because their factors expand
+to one day of the record's own kind and their denominators were their own weekday
+totals. Three correct columns beside one wrong one look like four correct columns,
+and the wrong one was wrong by one to four points — small enough to read as
+rounding and large enough to change which year is the lowest on a mode.
+
+**What caught it:** recomputing the table from the exported parquet for an
+unrelated reason, and finding that three columns reproduced exactly and one did
+not.
+
+**What to do:** a figure typed into a document is under the same rule as a figure
+computed by the run. If a table has one column per year, compute all of them the
+same way in one place and paste the result — do not assemble a year's column from
+whatever number was at hand, because the number at hand is usually the one the file
+holds and that is `TRIPS_PER_AVERAGE_DAY`. Every ratio across years needs both of
+its sides named, and the corrected table now says which column both sides are.
 
 ### Writing a check that only one shape of year can pass
 

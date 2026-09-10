@@ -2990,7 +2990,9 @@ supportable at all — a question 2019 made sharper, 2015 made answerable and 20
 has now given a third point.
 
 **Built:** Yes. `src/surveys.py` and the second half of `src/exposure.py`, route
-`exposure`. Run `run_20260908_101110`.
+`exposure`. Run `run_20260908_101110`, and unchanged to the last decimal on
+`run_20260909_214626`, which added D39's second pedestrian column and nothing
+else.
 
 **Amended by 2019**, in four places, each marked below: the day type is not a
 dimension every year carries; the duration is a declared rule and not a column
@@ -3208,7 +3210,11 @@ records with no expansion factor, and the file's total still closes.
 configuration and the duration is a field of the survey. A year that reports no
 duration cannot be checked, and the run says so on every execution rather than
 passing a check it did not make — that year is not known to be free of these
-records, it is unexamined.
+records, it is unexamined. *Amended by D39: a year that measures walking and
+reports no duration now stops the run outright, because the pedestrian series is
+read on the fifteen-minute definition and there is no way to state it without a
+duration. What is written above still holds for a year that measures no walking,
+and for the plausibility test itself.*
 
 **Amended by 2019 — the duration is a declared rule, not a column name.** The
 field was `duration_minutes_column`, on the assumption that every survey has a
@@ -4542,7 +4548,7 @@ can be tested rather than assumed.
 **Whether the 2011→2015 segment should be interpolated at all for the pedestrian
 mode.** D39 removes the definitional part of that segment's problem. It does not
 remove the rest: 2011 also delivers a smaller share of its city totals to the units
-than any other year, because the sixth of its records that were imputed carry no
-geography and because its shorter reported durations fail the plausibility test more
-often. That is a level difference between two adjacent anchors that is a property of
+than 2015 does on every one of the four modes — 67.3 % of its walking against
+80.0 % — because the sixth of its records that were imputed carry no geography and
+because its shorter reported durations fail the plausibility test more often. That is a level difference between two adjacent anchors that is a property of
 the delivery, and the interpolation will run straight through it.

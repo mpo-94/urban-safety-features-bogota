@@ -938,6 +938,14 @@ inferred and why the cross-year comparison below exists.
 | How the year says which kind of day a trip was made on | `day_type_rule` | the household's interview date, shifted back one day | it does not: **one kind of day, and no other** | a flag the delivery wrote on the record, `DIA_HABIL`/`DIA_NOHABIL`, which the interview date proves is a **Saturday** and agrees with on all 147,251 records | **the database the record came out of**, because the two samples are different households in different files; its dictionary contradicts itself about `DIA` and travel behaviour settles it |
 | How the year states the trip duration | `duration_rule` | `duracion_min`, in minutes, verified against the fifteen-minute walking split before it was trusted | derived from two clock columns held as fractions of a day, verified against the delivered `Aux_Duración` file and against IND_104 | derived from two `HH:MM:SS` columns, reproducing the delivered `DIFERENCIA_HORAS` on every record and both published fifteen-minute splits — and **not rounded**, because its clock is exact | `Min_Inicio` and `Min_Fin` as whole minutes from midnight, verified against `HR_INI`/`MIN_INI` and `P18HF_D`/`P18MF_D` on every record and against Tomo I's published fifteen-minute modal split |
 
+**The duration is required of any year that measures walking**, which is D39's
+doing and not D38's. It states the trip duration for the plausibility test, and it
+also decides which walking trips are in the fifteen-minute definition the
+pedestrian series is read on; a year that leaves `duration_rule` at `None` and maps
+anything to `PEDESTRIAN` stops the run. `None` stays open only to a year that
+measures no walking at all, and such a year is still unexamined rather than clean
+for the plausibility test.
+
 Plus the mode map and the modes deliberately not measured, which between them
 must account for **every** label the file carries: one in neither stops the run.
 And, where a delivery uses a code to mean "no zone", `zone_codes_meaning_no_zone`,
@@ -1001,9 +1009,11 @@ pedestrian share moves −13.7 points, cycling per inhabitant +92 %, motorcycle
 the same three city-level changes from its own reading of the 2011 file — −13.9
 points, +38.50 % and +102.82 % — and the difference between those and the figures
 above is the funnel: **2011 delivers a smaller share of its city totals to the
-thirty units than any other year**, 53.1 % of its cycling against 2015's 74.8 %,
-because the imputed sixth of its records carries no geography and its shorter
-reported durations fail the plausibility test more often. The cycling ranking is a
+thirty units than 2015 does, on every one of the four modes**, 53.1 % of its
+cycling against 2015's 74.8 %, because the imputed sixth of its records carries no
+geography and its shorter reported durations fail the plausibility test more often.
+Across the four years it is the lowest on three modes and 2019 is the lowest on
+walking, where that same test removes 18.7 % of the mode. The cycling ranking is a
 finding about the city and not about the reading — the two years share a zoning, the
 allocation rules agree with each other at 0.944 inside 2011, and the raw files with
 no pipeline at all give Spearman 0.485. See
@@ -1220,14 +1230,27 @@ Tomo III's two expansion procedures. And the one artefact that looked like the
 year's best control — the eight Emme matrices — turned out not to be a reading of
 the household survey at all, which only the matrix training deck says.
 
-**The interpolation is specified and it is the next stage.** D39 and D40 are the
+**The interpolation is half built and half specified.** D39 and D40 are the
 decisions and [`interpolating-the-exposure.md`](interpolating-the-exposure.md) is
-what to build: interpolate the **rate** log-linearly between adjacent surveys, hold
-it flat outside the measured range, recover the level from the annual population
-panel, and mark every cell with its provenance. The one thing this section can add
-is why the four years turned out to be a friendly shape for it — **2011, 2015, 2019
-and 2023 are evenly spaced, four years apart** — and why the pedestrian mode needed
-D39 before any of it could run.
+what to build. **D39 is done**, on `run_20260909_214626`: the exposure table
+carries `TRIPS_PER_DAY_OF_TYPE_OVER_15MIN` beside `TRIPS_PER_DAY_OF_TYPE`, built by
+apportioning the walking of fifteen minutes or more again through the same two
+spatial operators rather than scaling the column beside it, and every one of the
+960 rows came out identical on every column it already had. **D40 is not**:
+interpolate the **rate** log-linearly between adjacent surveys, hold it flat
+outside the measured range, recover the level from the annual population panel, and
+mark every cell with its provenance. The one thing this section can add is why the
+four years turned out to be a friendly shape for it — **2011, 2015, 2019 and 2023
+are evenly spaced, four years apart** — and why the pedestrian mode needed D39
+before any of it could run.
+
+**And what D39 revealed is a caveat D40 inherits.** The fifteen-minute series is
+monotone over the whole surveyed region and is not monotone inside the thirty
+units, where it indexes 100 / 118 / 97 / 113 and turns at 2019. The cause is the
+funnel rather than the definition — the plausibility test removes 3.3 % of 2015's
+walking and 18.7 % of 2019's, on two adjacent anchors — so the 2015 → 2019 segment
+of the pedestrian series carries a step of the delivery, in the same way the
+2011 → 2015 segment does.
 
 **Interpolation will meet the ρ correction.** The four measured years sit in very
 different places in the history of casualty recording: 2011 and 2015 before the
