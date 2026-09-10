@@ -3475,6 +3475,265 @@ def survey_exposure_columns() -> tuple[str, ...]:
 
 
 # ---------------------------------------------------------------------------
+# Exposure between survey years
+# ---------------------------------------------------------------------------
+# The surveys sit at 2011, 2015, 2019 and 2023 and the casualty series runs
+# 2007-2024, so fourteen of the eighteen years have no survey and the panel the
+# models are fitted on needs all of them. D40 fills them by interpolating the
+# RATE — that unit's trips over that unit's population — and recovering the level
+# from the annual population panel, because the level is the product of two
+# things known with very different confidence: how many people live in a unit,
+# which the census panel gives every year, and how much each of them travels,
+# which four surveys give four times.
+#
+# The interpolated table sits BESIDE the measured one and never replaces it, for
+# the same reason the corrected casualty set sits beside the observed one (D31).
+# A reader who wants to know what the surveys said reads
+# `analysis__exposure_by_unit`; a model that needs eighteen years reads this one
+# and carries the provenance column with it.
+#
+# See D40 and docs/interpolating-the-exposure.md, whose section 6 is the list of
+# ways this stage can pass every check and still be useless.
+
+# Which run's exported exposure table the interpolation reads. None means the most
+# recent run that exported one, which is what a session normally wants; a run id
+# pins it, which is what reproducing a figure quoted in a document wants. Either
+# way the run says which one it read, because a constructed table whose input
+# cannot be identified is traceable to nothing.
+INTERPOLATION_SOURCE_RUN: str | None = None
+
+EXPOSURE_PROVENANCE_COL = "EXPOSURE_PROVENANCE"
+MEASURED_EXPOSURE = "MEASURED"          # a survey year: the value is the survey's
+INTERPOLATED_EXPOSURE = "INTERPOLATED"  # between two surveys
+HELD_EXPOSURE = "HELD"                  # before the first survey or after the last
+EXPOSURE_PROVENANCES = (MEASURED_EXPOSURE, INTERPOLATED_EXPOSURE, HELD_EXPOSURE)
+
+# How far the row is from the nearest year that measured it. Zero on a survey year
+# and nowhere else. It is in the table so a model can weight by it or drop the held
+# block without re-running anything, and so that fourteen constructed years cannot
+# be read as fourteen observations.
+YEARS_TO_NEAREST_SURVEY_COL = "YEARS_TO_NEAREST_SURVEY"
+
+# The rate the interpolation actually runs on, and its second pedestrian
+# definition. Named for the column they divide rather than TRIPS_PER_INHABITANT,
+# because the measured table already carries a per-inhabitant column computed on
+# TRIPS_PER_AVERAGE_DAY and the two tables are joined to each other. Two columns
+# with one name and two meanings is the failure D38 records about
+# TRIPS_PER_AVERAGE_DAY, and a name is the cheapest place to prevent it.
+INTERPOLATED_RATE_COL = "TRIPS_PER_DAY_OF_TYPE_PER_INHABITANT"
+INTERPOLATED_RATE_OVER_15MIN_COL = "TRIPS_PER_DAY_OF_TYPE_OVER_15MIN_PER_INHABITANT"
+
+# A rate of exactly zero at either end of a segment makes the logarithm undefined,
+# so that segment is interpolated linearly instead and the run says how many cells
+# took that branch. 2011's Saturday has seven such cells, which is what a sample of
+# 4,035 records spread over thirty units and four modes looks like; they are
+# observations and not gaps, so the segment is filled rather than left out.
+#
+# There is no epsilon here on purpose. Nudging a zero to 1e-9 to keep the logarithm
+# defined would turn "nobody cycled here on a Saturday" into a rate that rises by
+# orders of magnitude across the segment, which is arithmetic inventing a trend out
+# of an observed zero.
+
+# What happens to a day type only one survey measured. 2023 is the only year with a
+# Sunday, so a Sunday series has one anchor and no trajectory at all: every year of
+# it is 2023's rate moved by that unit's population.
+#
+# Held rather than dropped, because a table that holds it filters down to one that
+# does not and the reverse is impossible — the same argument D36 made for the
+# population panel over the snapshot. What makes it safe rather than misleading is
+# that the rows say what they are: HELD on seventeen of the eighteen years, resting
+# on a single anchor, and the run warns about it by name on every execution.
+INTERPOLATION_HOLDS_SINGLE_ANCHOR_DAY_TYPES = True
+
+# -- how far a unit's rate moves between two adjacent surveys ----------------
+# The interpolation is per unit, so each series inherits its own unit's sampling
+# noise, and the thirty units are not equally well sampled. This is the price of
+# per-unit interpolation and the run reports it on every execution: how many
+# unit x mode x step combinations move by more than this factor between adjacent
+# surveys, and the widest steps by name.
+#
+# It reports and does not fail. A rate that really did multiply by nine in four
+# years is possible — Chapinero's cycling is one, and 2019 and 2023 hold the higher
+# level — so the run cannot tell a real change from sampling noise. What is not
+# acceptable is producing three constructed years on top of a step like that
+# without saying so. Whether the trajectories need shrinking toward the city's is a
+# question for a person, asked with this table in hand.
+EXPOSURE_STEP_FACTOR = 2.0
+EXPOSURE_WIDEST_STEPS_REPORTED = 10
+
+
+@dataclass(frozen=True)
+class PublishedYear:
+    """Figures a survey published that this study never read the records of.
+
+    The 2005 survey is not on disk and not implemented. What is on disk is the 2011
+    delivery's own comparison against it, and that is enough to test the one
+    assumption the interpolation makes outside its measured range: that the rate was
+    flat before 2011. Declared here rather than typed into a report, so the
+    comparison is made by the run against numbers that carry their source.
+    """
+
+    year: int
+    label: str
+    source: str
+    # What the figures count, in one line. The 2005/2011 comparison is made on trips
+    # including walking of fifteen minutes or more and excluding shorter ones, which
+    # is exactly D39's second pedestrian column — and that is why the comparison is
+    # possible at all.
+    definition: str
+    total_trips_per_weekday: float
+    # Share of that total, per actor type of this study. Only the modes the source
+    # actually pins are here: a mode it does not state is absent rather than
+    # guessed, and the run reports it as not comparable.
+    mode_shares: dict[str, float]
+    # What the same source publishes for the survey the study did read, so the
+    # comparison has a control: if our reading of 2011 does not reproduce the 2011
+    # column of that table, the 2005 column cannot be compared against anything.
+    control_year: int
+    control_total_trips_per_weekday: float
+    control_mode_shares: dict[str, float]
+    caveats: tuple[str, ...] = ()
+
+
+# Chapter 5 of Tomo III of the 2011 delivery, which was written to compare the two
+# surveys and is the only place either delivery states 2005's figures at all.
+# Everything in it is a weekday of the study region counting walking of fifteen
+# minutes or more and nothing shorter — the 2005 survey collected no shorter walk,
+# which is why the chapter exists in that form.
+PUBLISHED_2005 = PublishedYear(
+    year=2005,
+    label="Encuesta de movilidad 2005",
+    source=(
+        "EODH 2011, Tomo III, chapter 5 (Comparacion de indicadores de las encuestas de "
+        "movilidad 2005-2011), paragraphs 5.14 to 5.16 and Figures 5.15 to 5.17"
+    ),
+    definition=(
+        "one weekday of the study region, all modes, including walking of fifteen minutes or "
+        "more and excluding shorter walks — the same partition D39's second pedestrian column "
+        "counts"
+    ),
+    total_trips_per_weekday=9_700_000.0,
+    mode_shares={
+        PEDESTRIAN: 0.14,
+        MOTORCYCLE: 0.01,
+        # "el vehiculo privado se mantiene entre el rango del 14% y el 16%" across the
+        # two years; 0.15 is the midpoint of the range the chapter states.
+        CAR: 0.15,
+    },
+    control_year=2011,
+    control_total_trips_per_weekday=13_200_000.0,
+    control_mode_shares={
+        PEDESTRIAN: 0.28,
+        MOTORCYCLE: 0.03,
+        CAR: 0.15,
+    },
+    caveats=(
+        "the chapter states that 2005 counted a transfer as a trip of its own where 2011 counts "
+        "it as part of one, so 2005's total is inflated relative to 2011's and the real growth "
+        "between them is larger than the published totals imply",
+        "the chapter says outright that the walking of the two surveys was collected differently "
+        "even at the same fifteen-minute threshold, so the pedestrian row is the weakest of the "
+        "three",
+        "the 2015 delivery's Tomo IV states that a direct comparison with 2005 is not possible "
+        "and publishes 2005 figures only as reference values, which is why this comparison "
+        "decides whether to implement 2005 rather than anchoring anything",
+        "the source states no bicycle share for 2005 anywhere, so BICYCLE has nothing to be "
+        "compared against",
+    ),
+)
+
+# The mobility index the same chapter publishes, per socioeconomic stratum: trips
+# per person on a weekday, on the same fifteen-minute partition, in 2005 and in
+# 2011. It is the closest thing the source has to the quantity D40 holds flat,
+# because it is a rate and not a level — and it is what says the held rate is an
+# assumption rather than a measurement.
+PUBLISHED_2005_TRIPS_PER_PERSON: dict[str, tuple[float, float]] = {
+    "estrato 1": (0.95, 1.48),
+    "estrato 2": (1.08, 1.58),
+    "estrato 3": (1.27, 1.68),
+    "estrato 4": (1.51, 2.12),
+    "estrato 5": (2.01, 2.31),
+    "estrato 6": (1.92, 2.31),
+}
+
+
+INTERPOLATED_EXPOSURE_QUANTITIES: tuple[SurveyExposureQuantity, ...] = (
+    SurveyExposureQuantity(
+        name=TRIPS_PER_DAY_OF_TYPE_COL,
+        unit="trips per day",
+        means="the level, measured where the year is a survey year and constructed everywhere "
+              "else. Read EXPOSURE_PROVENANCE before reading this: fourteen of the eighteen "
+              "years are constructed, and a model fitted on all eighteen without knowing which "
+              "is fourteen observations of an assumption. Same definition as the column of the "
+              "same name in analysis__exposure_by_unit, and identical to it on the four "
+              "measured years",
+    ),
+    SurveyExposureQuantity(
+        name=TRIPS_PER_DAY_OF_TYPE_OVER_15MIN_COL,
+        unit="trips per day",
+        means="the same on D39's narrower pedestrian definition, walking of fifteen minutes or "
+              "more, and identical to the column beside it for BICYCLE, MOTORCYCLE and CAR. "
+              "THE PEDESTRIAN SERIES IS READ ON THIS ONE, because a fifteen-year interpolation "
+              "cannot be laid over a quantity whose definition changes between two of its four "
+              "anchors. It is interpolated on its own rate and never scaled out of the column "
+              "beside it, for the same reason it was apportioned again rather than rescaled. "
+              "See D39",
+    ),
+    SurveyExposureQuantity(
+        name=INTERPOLATED_RATE_COL,
+        unit="trips per day per inhabitant",
+        means="THE QUANTITY THAT IS ACTUALLY INTERPOLATED: this unit's trips of this actor type "
+              "on this kind of day, over this unit's population in this year. Between two "
+              "surveys it moves log-linearly, a constant proportional change per year; outside "
+              "the measured range it is held flat. The level above is this times POPULATION, "
+              "which is why a unit whose population grew forty per cent between two surveys has "
+              "a level that moves and a rate that need not. See D40",
+    ),
+    SurveyExposureQuantity(
+        name=INTERPOLATED_RATE_OVER_15MIN_COL,
+        unit="trips per day per inhabitant",
+        means="the same rate on the narrower pedestrian definition, interpolated separately, "
+              "because the ratio between the two definitions is not constant across the four "
+              "years and interpolating one of them and scaling the other would put a moving "
+              "ratio through a fixed one",
+    ),
+)
+
+
+def interpolated_exposure_columns() -> tuple[str, ...]:
+    """The interpolated exposure table's columns, in order.
+
+    The same identity as `survey_exposure_columns`, spelled the same way and
+    valued the same way, because the whole point of this table is to be joined to
+    the measured one, to the casualty matrix and to the predictor tables. Then the
+    denominator, then the two levels and the two rates, then the three columns that
+    say what kind of number each row holds.
+
+    `VALUE_STATUS` is deliberately not here. In the measured table it answers "is
+    there a number in this row"; in this one every row has a number and the
+    question a reader actually has is a different one — was it measured or was it
+    constructed — which is `EXPOSURE_PROVENANCE`. Carrying a column that is
+    `MEASURED` on all 6,480 rows beside a column that is `MEASURED` on 1,440 of
+    them would be two words for two different things one letter apart.
+    """
+    return (
+        SCALE_COL,
+        AREA_CODE_COL,
+        AREA_NAME_COL,
+        AREA_UNIT_KM2_COL,
+        YEAR_COL,
+        ACTOR_TYPE_COL,
+        DAY_TYPE_COL,
+        POPULATION_COL,
+        *(quantity.name for quantity in INTERPOLATED_EXPOSURE_QUANTITIES),
+        EXPOSURE_PROVENANCE_COL,
+        YEARS_TO_NEAREST_SURVEY_COL,
+        # Carried through from the survey year the value rests on, so a row built
+        # on top of 2011's Saturday says so as loudly as 2011's Saturday does.
+        SAMPLE_SUPPORT_COL,
+    )
+
+# ---------------------------------------------------------------------------
 # Figures
 # ---------------------------------------------------------------------------
 FIGURE_DPI = 150
@@ -3892,6 +4151,36 @@ def new_run_directory(now: dt.datetime | None = None, base: Path | None = None) 
     run_dir = base / f"{RUN_DIR_PREFIX}{stamp}"
     run_dir.mkdir(parents=True, exist_ok=True)
     return run_dir
+
+
+def run_directory_holding(filename: str, run: str | None = None) -> Path:
+    """The run whose `data/` holds `filename`: the one named, or the most recent.
+
+    A route that reads another route's exported table has to say which run it
+    read, because a constructed table whose input cannot be identified is
+    traceable to nothing and every figure in this study carries its run. Named
+    runs sort chronologically by construction, so "the most recent" is the last of
+    the sorted matches and needs no timestamp parsing.
+
+    It raises rather than returning None, and the message says which route to run,
+    because the alternative is a stage that quietly builds nothing.
+    """
+    if run is not None:
+        candidate = RESULTS_DIR / run / DATA_SUBDIR / filename
+        if not candidate.exists():
+            raise FileNotFoundError(
+                f"{run} does not hold {DATA_SUBDIR}/{filename}. It is named in config as the "
+                "run to read; either it was deleted or the route that writes that file never "
+                "ran in it"
+            )
+        return RESULTS_DIR / run
+    matches = sorted(RESULTS_DIR.glob(f"{RUN_DIR_PREFIX}*/{DATA_SUBDIR}/{filename}"))
+    if not matches:
+        raise FileNotFoundError(
+            f"no run under {RESULTS_DIR.name}/ holds {DATA_SUBDIR}/{filename}. Run the route "
+            "that writes it first"
+        )
+    return matches[-1].parent.parent
 
 
 # ---------------------------------------------------------------------------

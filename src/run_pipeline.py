@@ -14,6 +14,7 @@ resolution should not have to rebuild fifty-seven figures first.
     python -m src.run_pipeline predictors      # the static urban predictors
     python -m src.run_pipeline population      # the denominator, per unit and per year
     python -m src.run_pipeline exposure        # travel exposure from the mobility surveys
+    python -m src.run_pipeline interpolation   # the same, carried across the years no survey covers
     python -m src.run_pipeline completeness    # do the sources cover every month?
     python -m src.run_pipeline integrate       # rebuild the layers from the updated extract
     python -m src.run_pipeline loading --dump-intermediates
@@ -37,6 +38,7 @@ from src import (
     correction,
     exposure,
     integration,
+    interpolation,
     latex,
     loading,
     maps,
@@ -123,6 +125,39 @@ def run_completeness(log: RunLog) -> None:
     completeness.export(table, log)
     log.table("record funnel:", log.funnel())
     completeness.report(table, log)
+
+
+def run_interpolation(log: RunLog) -> None:
+    """Exposure in the fourteen years no survey covers, from the four that do.
+
+    A route of its own, after `exposure` and before whatever fits the models. It
+    reads the exposure table another run exported and the population panel, and
+    writes one more table beside them; **it reads no survey and it changes
+    nothing** — `analysis__exposure_by_unit` is the record of what the surveys
+    say, and this panel is a construction that sits beside it exactly as the
+    corrected casualty set sits beside the observed one.
+
+    Two of the things it prints are neither checks nor decoration. The volatility
+    of the per-unit steps is the price of interpolating per unit, and it is
+    reported so that a decision about smoothing is taken by a person with the
+    table in hand. The comparison against 2005 is the measurement D40 defers the
+    fifth survey on. Neither can fail the run, and both would be invisible if the
+    route only printed what passed.
+    """
+    units = loading.load_territorial_units(log)
+    panel, _, _ = population.build(units, log)
+
+    measured = interpolation.read_measured(log)
+    table = interpolation.build(measured, panel, predictors.prepare_units(units), log)
+    paths = interpolation.export(table, measured, log)
+
+    log.table("record funnel:", log.funnel())
+    if not interpolation.verify(table, measured, panel, units, log, paths=paths):
+        raise RouteFailed("the interpolated exposure panel does not agree with what it was built from")
+
+    interpolation.report(table, measured, log)
+    interpolation.step_volatility(measured, panel, log)
+    interpolation.compare_with_2005(table, panel, log)
 
 
 def run_rho(log: RunLog) -> None:
@@ -402,6 +437,11 @@ ROUTES: tuple[Route, ...] = (
     Route("predictors", "the static urban predictors, with histograms and their correlation", run_predictors),
     Route("population", "the resident population of every unit, in every year of the study", run_population),
     Route("exposure", "travel exposure per unit, year, mode and day, from the mobility surveys", run_exposure),
+    Route(
+        "interpolation",
+        "the exposure carried across the fourteen years no survey covers, as a rate",
+        run_interpolation,
+    ),
     Route("rho", "rho(t): share of two-party crashes where both parties were hurt", run_rho),
     Route("map", "the reference map of the territorial units, with and without a scale bar", run_map),
     Route("completeness", "month-by-month coverage of the casualty layers", run_completeness),

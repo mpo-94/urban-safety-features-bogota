@@ -83,6 +83,7 @@ python -m src.run_pipeline map        # the reference map of the thirty units
 python -m src.run_pipeline predictors # the static urban predictors and their figures
 python -m src.run_pipeline population # the denominator: one number per unit and per year
 python -m src.run_pipeline exposure   # travel exposure per unit, and its choropleth
+python -m src.run_pipeline interpolation  # the same, carried across the years no survey covers
 python -m src.run_pipeline rho        # the ρ(t) diagnostic, beside the pipeline
 python -m src.run_pipeline completeness   # does every month of every year have data?
 python -m src.run_pipeline integrate  # rebuild the layers from the updated extract
@@ -156,15 +157,31 @@ file it came out of. `MobilitySurvey.trips` is therefore a tuple of sources, eac
 carrying the day type its file holds, and no day-type rule ever opens a file.
 `docs/implementing-2011.md` is that year's record.
 
-**Interpolating over the fourteen years no survey covers is the next stage and it
-is specified rather than built.** It runs **per unit**, because the study is thirty
-units and a city curve handed identically to each of them would carry no spatial
-information between survey years. What is interpolated is the rate — that unit's
-trips over that unit's population — log-linearly between adjacent surveys, and the
-level comes back multiplied by that unit's population for that year, from a panel
-that is annual. Outside the measured range the rate is held flat rather than
-extrapolated, because a slope fitted to two points and prolonged four years is an
-invention. Every constructed cell says it is one.
+**The fourteen years no survey covers are filled by the `interpolation` route, and
+that is built.** It runs **per unit**, because the study is thirty units and a city
+curve handed identically to each of them would carry no spatial information between
+survey years. What is interpolated is the rate — that unit's trips over that unit's
+population — log-linearly between adjacent surveys, and the level comes back
+multiplied by that unit's population for that year, from a panel that is annual.
+Outside the measured range the rate is held flat rather than extrapolated, because a
+slope fitted to two points and prolonged four years is an invention. **Every
+constructed cell says it is one**: the panel is 6,480 rows and 85 % of them are
+constructed, so `EXPOSURE_PROVENANCE` and `YEARS_TO_NEAREST_SURVEY` are what stop
+fourteen constructed years being read as fourteen observations.
+
+The route reads the exposure table another run exported and the population panel,
+and **it reads no survey and changes nothing**: the measured table is the record of
+what the surveys say and the panel is a construction that sits beside it. Which run
+it read is in its log and in its exported dictionary.
+
+**Two comparisons come out of it and neither is a check that can pass.** The 2011
+delivery's own chapter comparing itself against the 2005 survey — the only evidence
+about the years before the study's first survey — says the held 2007–2010 block sits
+14 to 17 points away from what 2005 published, on a comparison whose 2011 control
+agrees to a tenth of a point. And the interpolated curve disagrees with the study's
+own casualty series in 2020, where pedestrian casualties halve and a straight line
+between 2019 and 2023 cannot see it. Both are in section 16 of the verification
+report.
 
 **The pedestrian mode is measured twice and that half is built.** On the full
 definition the series swings 46 % over the surveyed region and changes direction

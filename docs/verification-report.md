@@ -2249,7 +2249,7 @@ unit × mode × step combinations moving by more than a factor of two:
 | 2015 → 2019 | 3 | 6 | 1 | 2 |
 | 2019 → 2023 | 4 | 1 | 1 | 1 |
 
-**64 of 360, and 41 of the 64 are on the 2011 → 2015 step** — the same segment that
+**64 of 360, and 45 of the 64 are on the 2011 → 2015 step** — the same segment that
 carries the instrument change in walking, the imputation without geography and the
 smaller share of its city totals reaching the units than 2015 delivers on every
 mode. The widest single step is
@@ -2258,6 +2258,14 @@ Chapinero's cycling rate at 8.85×, followed by Teusaquillo at 6.12× and Usaqu�
 Chapinero's higher level is held by 2019 and 2023. D40 requires the interpolation to
 print this table on every run and leaves open whether the trajectories need
 shrinking toward the city's.
+
+**This table is on the full pedestrian column and the one the run prints is not.**
+D39 puts the pedestrian series on the fifteen-minute column, and measured there the
+walking row is 6 / 4 / 4 instead of 4 / 3 / 4 — 67 of 360 in all, 47 of them on the
+first step. The other three modes are identical in both columns, so walking is the
+whole difference. Section 16 has the version the interpolation prints. *(The 45
+above read 41 until 2026-09-10, which was an arithmetic slip: the table it
+summarises has summed to 45 since it was first measured.)*
 
 **2011's walking is 46 % above 2015's and the gap is entirely below fifteen
 minutes.** It is not a reading — Tabla 43 of the 2015 delivery gives 8,136,778 for
@@ -2715,3 +2723,354 @@ has two points rather than one, so "publish the weekday alone because it is the 
 day the series shares" is no longer forced. **Whether a Saturday measured well in
 2015 and badly in 2023 belongs in one series is a decision for my advisor.** D38 has
 both.
+
+
+---
+
+## 16. Exposure in the years no survey covers
+
+Run `run_20260910_004623`, route `interpolation`, command
+`python -m src.run_pipeline interpolation`. **Seventeen checks, none failed.** The
+decision is D40 and the specification is
+[`interpolating-the-exposure.md`](interpolating-the-exposure.md).
+
+The surveys sit at 2011, 2015, 2019 and 2023 and the casualty series runs
+2007–2024. Four of those eighteen years are measured, nine fall between two
+measured years, four fall before the first and one after the last. This stage fills
+the fourteen.
+
+**It reads the exposure table another run exported and the population panel, and it
+reads no survey.** The source run is named in the log and in the exported
+dictionary — `run_20260909_221932` here, which is `run_20260909_214626` re-run and
+identical to it — because a constructed table whose input cannot be identified is
+traceable to nothing. `analysis__exposure_by_unit` is not touched: it is the record
+of what the surveys say, and this panel is a construction that sits beside it,
+exactly as the corrected casualty set sits beside the observed one (D31).
+
+### What it produces
+
+**6,480 rows: 30 units × 4 actor types × 3 day types × 18 years**, in
+`analysis__exposure_by_unit_interpolated.{csv,parquet}`, with
+`reference__exposure_interpolated_dictionary.csv` beside them.
+
+| | Rows | Share |
+|---|---:|---:|
+| `MEASURED` — the year is a survey year and the value is the survey's | 960 | 15 % |
+| `INTERPOLATED` — built log-linearly from the rate of the two surveys either side | 2,280 | 35 % |
+| `HELD` — outside the measured range, the rate flat and the population moving | 3,240 | 50 % |
+
+**Eighty-five per cent of the panel is constructed**, which is the single fact
+`EXPOSURE_PROVENANCE` exists to keep in front of a reader. A model fitted on all
+eighteen years without it is fitted on fourteen observations of an assumption.
+
+The columns beyond the identity the other tables share:
+
+| Column | What it holds |
+|---|---|
+| `POPULATION` | the unit's residents that year, from the annual panel (D36) |
+| `TRIPS_PER_DAY_OF_TYPE` | the level, measured or constructed |
+| `TRIPS_PER_DAY_OF_TYPE_OVER_15MIN` | the same on D39's pedestrian definition; identical to the first for the three modes with one definition |
+| `TRIPS_PER_DAY_OF_TYPE_PER_INHABITANT` | the rate the interpolation actually runs on |
+| `TRIPS_PER_DAY_OF_TYPE_OVER_15MIN_PER_INHABITANT` | the same rate on the narrower definition, interpolated separately |
+| `EXPOSURE_PROVENANCE` | `MEASURED`, `INTERPOLATED` or `HELD` |
+| `YEARS_TO_NEAREST_SURVEY` | 0 on a survey year and nowhere else; the largest is 16 |
+| `SAMPLE_SUPPORT` | carried through from the survey year the value rests on |
+
+**Two rates and not one, which is a departure from what D40 sketched.** The
+specification named a single `TRIPS_PER_INHABITANT`, and there are two because the
+procedure is run twice — once per pedestrian definition — and each level has to be
+recoverable from its own rate. They are named for the column they divide rather
+than `TRIPS_PER_INHABITANT`, because the measured table already carries a
+per-inhabitant column computed on `TRIPS_PER_AVERAGE_DAY` and the two tables are
+joined to each other.
+
+### The checks
+
+| Check | Result |
+|---|---|
+| The table carries exactly the declared columns, in the declared order | OK, 15 of 15 |
+| Every row names a unit of the study | OK, 30 of 30 |
+| No combination of unit, year, actor type and day type appears twice | OK, 0 duplicated |
+| `WEEKDAY`: the grid of unit, actor type and year is complete over the window | OK, 2,160 rows of 2,160 |
+| `SATURDAY`: the grid of unit, actor type and year is complete over the window | OK, 2,160 rows of 2,160 |
+| `SUNDAY`: the grid of unit, actor type and year is complete over the window | OK, 2,160 rows of 2,160 |
+| **Every measured year comes out identical to the measured table** | OK, 960 rows, 6 shared columns, compared bit for bit |
+| `TRIPS_PER_DAY_OF_TYPE` is its rate times the population of the same unit and year | OK to 1e-12 over 6,480 rows |
+| `TRIPS_PER_DAY_OF_TYPE_OVER_15MIN` is its rate times the same population | OK to 1e-12 over 6,480 rows |
+| No null and no negative anywhere a number is required | OK, 0 and 0 over 5 columns |
+| Every row's provenance is one of the declared three | OK, 960 / 2,280 / 3,240 |
+| Each series has exactly as many measured years as surveys measured that day type | OK, 4 weekday, 3 Saturday, 1 Sunday |
+| The distance to the nearest survey is zero on the measured years and nowhere else | OK, 0 and 0; the largest distance is 16 years |
+| The fifteen-minute column equals the full one on the modes with one definition | OK, 4,860 rows |
+| The fifteen-minute walking of a constructed year is still a part of its walking | OK, 0 rows where the part exceeds the whole, over 1,620 |
+| The population of every row is the population panel's for that unit and year | OK, 0 rows the panel does not cover |
+| Every exported file is on disk and none is empty | OK, 2 of 2 |
+
+**The first of them is the one that matters and the rest are arithmetic.** An
+interpolation must not move an observation, so the 960 measured rows are compared
+against the measured table bit for bit on all six columns the two tables share —
+and they pass because a measured year's level is carried straight through rather
+than recovered from its own rate. The round trip through a division and a
+multiplication is right to a part in 1e16, and there is no reason to do arithmetic
+where there is nothing to compute.
+
+**Two of the checks are not obvious and were written because they are not.** That
+the fifteen-minute column stays inside the full one is guaranteed on a
+log-linearly interpolated year — the ratio of two log-linear curves is log-linear
+between two ratios that are each at most one — but **not** on a year filled
+linearly because a rate of zero made the logarithm undefined, and 21 cells of each
+column are filled that way. And that the distance to the nearest survey is zero
+exactly on the measured rows is what stops a constructed year from looking measured
+through the one column a model is most likely to filter on.
+
+### The zero rates, and why no epsilon was introduced
+
+**Twenty-one cells of each column are filled linearly instead of log-linearly**,
+because one end of their segment is a rate of exactly zero and the logarithm is
+undefined there. They are 2011's Saturday: seven cells at zero — Torca with no
+walking and no motorcycle, Tibabuyes and Porvenir with no motorcycle, Tunjuelito,
+Rafael Uribe and San Cristóbal with no cycling — carried across the three
+constructed years of the 2011 → 2015 segment.
+
+Those zeros are observations and not gaps, which is why the segments are filled
+rather than left out. And no epsilon is introduced to keep the logarithm alive:
+nudging a zero to 1e-9 would turn "nobody cycled in San Cristóbal on a Saturday in
+2011" into a rate that rises by orders of magnitude across the segment, which is
+arithmetic inventing a trend out of an observed zero.
+
+### The three day types are three different objects
+
+| Day type | Anchors | Longest gap | What the series is |
+|---|---|---:|---|
+| `WEEKDAY` | 2011, 2015, 2019, 2023 | 4 years | four measured years evenly spaced, which is the friendliest shape this problem could have had |
+| `SATURDAY` | 2011, 2015, 2023 | **8 years** | three anchors of three different qualities across a longer span |
+| `SUNDAY` | 2023 | — | one anchor and no trajectory at all |
+
+**The Saturday's three anchors are not three of a kind.** 2011's is marked
+`CITY_LEVEL_ONLY` — the consultant analysed that day at the scale of the city and
+said its error was larger than the weekday's — 2023's is the one D38 records as
+behaving implausibly once rescaled, and the segment between 2015 and 2023 is eight
+years with 2019 inside it, because 2019 surveyed no Saturday at all. Any document
+using the Saturday series says this.
+
+**The Sunday rests on one survey year and is held flat across the whole window.**
+Its 2,040 constructed rows are 2023's rate moved by nothing but the population, so
+a model reading them is reading one survey seventeen times. It is in the table
+rather than out of it for the reason D36 gave for the population panel over the
+snapshot — a table that holds it filters down to one that does not, and the reverse
+is impossible — and because every one of those rows says what it is. **Whether it
+belongs in any model is a decision for a person**, and the run warns about it by
+name on every execution.
+
+**`SAMPLE_SUPPORT` is inherited, and the weaker anchor wins.** 960 rows carry
+`CITY_LEVEL_ONLY`, all of them Saturdays: 2011's own 120, the 480 of 2007–2010 held
+from it, and the 360 of 2012–2014 interpolated between it and 2015. A constructed
+value cannot be better supported than what it was constructed from, so the marking
+reaches years the marked survey did not measure.
+
+### What it looks like, and the price of interpolating per unit
+
+The thirty units on one weekday, on `TRIPS_PER_DAY_OF_TYPE_OVER_15MIN` — the column
+the series is read on for all four modes:
+
+| Year | | `PEDESTRIAN` | `BICYCLE` | `MOTORCYCLE` | `CAR` |
+|---|---|---:|---:|---:|---:|
+| 2007 | `HELD` | 2,480,903 | 311,698 | 264,143 | 1,333,887 |
+| 2008 | `HELD` | 2,503,979 | 315,372 | 265,367 | 1,344,263 |
+| 2009 | `HELD` | 2,525,786 | 318,804 | 266,672 | 1,354,140 |
+| 2010 | `HELD` | 2,546,066 | 321,978 | 268,007 | 1,363,382 |
+| 2011 | `MEASURED` | 2,563,176 | 324,701 | 269,182 | 1,371,125 |
+| 2012 | `INTERPOLATED` | 2,632,971 | 368,707 | 339,757 | 1,424,685 |
+| 2013 | `INTERPOLATED` | 2,728,923 | 429,996 | 432,249 | 1,484,876 |
+| 2014 | `INTERPOLATED` | 2,853,947 | 515,029 | 553,967 | 1,553,320 |
+| 2015 | `MEASURED` | 3,012,134 | 633,406 | 714,894 | 1,631,914 |
+| 2016 | `INTERPOLATED` | 2,819,565 | 653,200 | 698,827 | 1,659,333 |
+| 2017 | `INTERPOLATED` | 2,666,855 | 682,360 | 686,330 | 1,696,368 |
+| 2018 | `INTERPOLATED` | 2,552,257 | 723,708 | 678,099 | 1,745,291 |
+| 2019 | `MEASURED` | 2,494,690 | 787,563 | 680,233 | 1,827,723 |
+| 2020 | `INTERPOLATED` | 2,585,654 | 788,612 | 718,415 | 1,790,668 |
+| 2021 | `INTERPOLATED` | 2,671,401 | 783,035 | 751,392 | 1,733,411 |
+| 2022 | `INTERPOLATED` | 2,767,170 | 776,696 | 783,813 | 1,670,854 |
+| 2023 | `MEASURED` | 2,883,103 | 773,132 | 818,851 | 1,611,352 |
+| 2024 | `HELD` | 2,886,760 | 773,687 | 819,544 | 1,608,373 |
+
+**How far a unit's rate moves between two adjacent surveys**, on the weekday and on
+the column the series is read on — the number of unit × mode × step combinations
+moving by more than a factor of two:
+
+| Step | `PEDESTRIAN` | `BICYCLE` | `MOTORCYCLE` | `CAR` |
+|---|---:|---:|---:|---:|
+| 2011 → 2015 | 6 | 16 | 22 | 3 |
+| 2015 → 2019 | 4 | 6 | 1 | 2 |
+| 2019 → 2023 | 4 | 1 | 1 | 1 |
+
+**67 of 360, and 47 of them on the 2011 → 2015 step.** Measured on the full
+pedestrian column the same table gives 4 / 3 / 4 for walking — 64 and 45 — and the
+other three modes are identical, so walking is the whole difference between the two
+versions and the run prints both. The widest ten steps:
+
+| Step | Unit | Mode | Factor | Per year |
+|---|---|---|---:|---:|
+| 2011 → 2015 | UPL24 Chapinero | `BICYCLE` | 8.85× | +72.5 % |
+| 2019 → 2023 | UPL07 Torca | `PEDESTRIAN` | 8.01× | −40.6 % |
+| 2011 → 2015 | UPL32 Teusaquillo | `BICYCLE` | 6.12× | +57.3 % |
+| 2011 → 2015 | UPL25 Usaquén | `BICYCLE` | 5.48× | +53.0 % |
+| 2015 → 2019 | UPL15 Porvenir | `BICYCLE` | 5.34× | +52.0 % |
+| 2015 → 2019 | UPL15 Porvenir | `CAR` | 5.11× | +50.3 % |
+| 2011 → 2015 | UPL05 Usme – Entrenubes | `MOTORCYCLE` | 4.94× | +49.1 % |
+| 2011 → 2015 | UPL33 Barrios Unidos | `BICYCLE` | 4.81× | +48.1 % |
+| 2011 → 2015 | UPL20 Rafael Uribe | `MOTORCYCLE` | 4.59× | +46.4 % |
+| 2011 → 2015 | UPL27 Niza | `BICYCLE` | 4.19× | +43.0 % |
+
+The last column is what log-linear interpolation makes of each step in **every**
+constructed year of that segment: Chapinero's cycling rate rises 72.5 % in 2012, in
+2013 and again in 2014. **The run prints this and does not fail on it.** Part of
+the change is real — 2019 and 2023 hold Chapinero's higher level — and no check can
+separate a real change from sampling noise. Whether the per-unit trajectories need
+shrinking toward the city's is a decision for a person, asked with this table in
+hand rather than answered by smoothing quietly.
+
+### The test D40 defers the 2005 survey on
+
+This is the check that matters, because everything above can pass on an
+interpolation of the wrong thing. The interpolation holds the rate flat before
+2011, so the 2007–2010 block asserts that trips per person did not move between
+2007 and 2011. **The only evidence about that period is the 2005 survey**, which is
+not on disk and not implemented — and the 2011 delivery's own Tomo III, chapter 5,
+is where its figures live.
+
+**The chapter is comparable to this study by construction.** It states that
+everything in it counts trips *"incluyendo los viajes a pie mayores o iguales a
+quince (15) minutos"*, which is exactly D39's second pedestrian column and exactly
+why D39 had to be built before this test could be run. It publishes 9,700,000 trips
+on a 2005 weekday against 13,200,000 on a 2011 one, and a modal split for each:
+walking 14 % → 28 %, motorcycle 1 % → 3 %, private vehicle steady at 14–16 %.
+
+**Levels cannot be compared across the two footprints and compositions can.** The
+published figures are the whole surveyed region and this table is the thirty units,
+so no level of one is a level of the other; but the share of one mode among three,
+and the factor by which a mode grew, survive the change of footprint. **The control
+is what makes even that safe:**
+
+| Mode | Published 2011 | This study, 2011 | Gap |
+|---|---:|---:|---:|
+| `PEDESTRIAN` | 60.9 % | 61.0 % | +0.1 |
+| `MOTORCYCLE` | 6.5 % | 6.4 % | −0.1 |
+| `CAR` | 32.6 % | 32.6 % | +0.0 |
+
+**The two readings of 2011 agree to a tenth of a point**, which is what says the
+2005 column is being compared against something. And then the test:
+
+| Mode | Published 2005 | The held block, 2007 | Gap |
+|---|---:|---:|---:|
+| `PEDESTRIAN` | 46.7 % | 60.8 % | **+14.2** |
+| `MOTORCYCLE` | 3.3 % | 6.5 % | **+3.1** |
+| `CAR` | 50.0 % | 32.7 % | **−17.3** |
+
+The held block cannot differ from 2011 at all — holding a rate flat holds the
+composition with it — so this table is 2005 against 2011 with the two intervening
+years of population growth in between. **It lands nowhere near.**
+
+The same thing as growth, which is what the held rate actually asserts:
+
+| Mode | 2005 | 2011 | Published | Held | Ratio |
+|---|---:|---:|---:|---:|---:|
+| `PEDESTRIAN` | 1,358,000 | 3,696,000 | 2.72× | 1.06× | 2.57× |
+| `MOTORCYCLE` | 97,000 | 396,000 | 4.08× | 1.06× | 3.86× |
+| `CAR` | 1,455,000 | 1,980,000 | 1.36× | 1.06× | 1.29× |
+
+A held rate moves only with its denominator, so over six years it grows 6 % —
+against a published 36 % for car and a published 308 % for motorcycle.
+
+**And the source publishes the quantity D40 holds flat, directly.** The same
+chapter gives trips per person on a weekday, by socioeconomic stratum, for both
+years: 0.95 → 1.48, 1.08 → 1.58, 1.27 → 1.68, 1.51 → 2.12, 2.01 → 2.31, 1.92 →
+2.31. **Every one of the six rises, by 15 % to 56 %, 36 % on the median, over six
+years.** The held block asserts that this quantity did not move at all. Nothing in
+this comparison is closer to the assumption being tested, and nothing contradicts
+it more directly.
+
+**Four caveats travel with those numbers and the run prints all four.**
+
+1. 2005 counted a transfer as a trip of its own where 2011 counts it as part of one,
+   so 2005's total is inflated relative to 2011's and the real growth is **larger**
+   than the published totals imply — the discrepancy above is conservative.
+2. The chapter says outright that the walking of the two surveys was collected
+   differently even at the same fifteen-minute threshold, so the pedestrian row is
+   the weakest of the three. The motorcycle and car rows are not subject to it.
+3. The 2015 delivery's Tomo IV goes further: it states that a direct comparison
+   with 2005 **is not possible** and publishes 2005 figures only as reference
+   values. That is a statement about levels; the compositions and the mobility
+   index are what this test rests on, and it is why the test decides whether to
+   implement 2005 rather than anchoring anything to it.
+4. The source states no bicycle share for 2005 anywhere, so `BICYCLE` has nothing
+   to be compared against.
+
+**The verdict, and it is a number rather than an impression.** The held block puts
+the 2007–2010 composition 14 to 17 points away from what 2005 published, on a
+comparison whose 2011 control agrees to a tenth of a point, and it asserts a flat
+trips-per-person where the source measures a 36 % rise. Whatever share of that is
+methodology rather than city — and some of it is — **the four held years are the
+weakest block in the panel and they are weak in a direction the data can name.**
+Implementing 2005 would turn the study's only backward extrapolation into an
+interpolation between measured points. Whether that is worth a full implementation
+pass is my advisor's decision; what this section provides is the number D40 said
+would decide it.
+
+### Against the crash series, which is the one annual series that exists
+
+D40 also asks for the interpolated curve to be compared against any annual series
+that exists per mode — motorcycle and car registrations, TransMilenio ridership.
+**None of them is on disk.** What the deliveries carry is a single year of
+TransMilenio turnstile counts in the 2015 Tomo IV and a 2005 peak-hour figure, and
+neither is a series. Obtaining one per mode is what D40 defers as the anchored
+version of this decision.
+
+The series that does exist is the study's own casualty count, and comparing them is
+D40's third check. Indexed to 2007 = 100, city-wide, weekday exposure against
+affected parties of the same actor type, on the **observed** casualty set — which
+carries the recording change D28 corrects, so these are not risks:
+
+| Year | `PEDESTRIAN` cas. / exp. | `BICYCLE` cas. / exp. | `MOTORCYCLE` cas. / exp. | `CAR` cas. / exp. |
+|---|---|---|---|---|
+| 2011 | 102 / 103 | 167 / 104 | 122 / 102 | 55 / 103 |
+| 2015 | 97 / 121 | 234 / 203 | 137 / 271 | 51 / 122 |
+| 2019 | 92 / 101 | 432 / 253 | 196 / 258 | 67 / 137 |
+| **2020** | **50** / **104** | 435 / 253 | 160 / 272 | 58 / 134 |
+| 2023 | 73 / 116 | 432 / 248 | 290 / 310 | 157 / 121 |
+| 2024 | 76 / 116 | 407 / 248 | 304 / 310 | 141 / 121 |
+
+**2020 is the disagreement, and it is not subtle.** Pedestrian casualties halve
+while the interpolated pedestrian exposure rises 4 %, because 2020 sits on a
+straight line between 2019 and 2023 and the interpolation cannot see it. Bogotá's
+mobility in 2020 was not on a log-linear path from 2019 to 2023, and no external
+series is needed to know that. **The constructed years 2020, 2021 and 2022 are the
+second-weakest block in the panel after the held one**, and for a reason that has a
+name.
+
+Over the whole window the shapes are otherwise coherent, and one of them is
+strikingly so: motorcycle exposure ends at 3.10× its 2007 level and motorcycle
+casualties at 3.04×. What does not agree is the **timing** — the interpolation puts
+all of the motorcycle's growth in 2011–2015, where the survey measures it, while
+the casualties take off after 2018. Cycling exposure ends at 2.48× and cycling
+casualties at 4.07×, so the implied risk per trip rises; walking exposure moves
+within 16 % across eighteen years while its casualties fall by a quarter. None of
+those is a defect of the interpolation, and all of them are things a model will be
+asked to explain.
+
+### What is open
+
+- **Whether the per-unit trajectories need shrinking toward the city's.** The table
+  above is what the question is asked with. The answer must not be to interpolate
+  the city and hand every unit the same curve, because the unit is what the study
+  is about.
+- **Whether 2005 is implemented.** The measurement is above.
+- **Whether the held block enters the models**, and whether 2020–2022 do.
+  `YEARS_TO_NEAREST_SURVEY` and `EXPOSURE_PROVENANCE` are in the table so that both
+  can be tested rather than assumed.
+- **What the Sunday series is for**, given that it rests on one anchor.
+- **Whether the anchored version replaces this one.** D40 defers it and says why;
+  it needs one external annual series per mode, each obtained, checked against the
+  survey years it overlaps, and shown to measure what the survey measures.
+- **Which casualty set the window follows**, 2007–2024 or 2008–2024. The panel is
+  built over the wider one so that the choice stays a filter.
