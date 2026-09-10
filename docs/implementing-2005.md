@@ -252,7 +252,10 @@ private vehicle at **13.5 %** against a published 16.
 Several reconstructions close that gap — reading the chart's two labels the other
 way round, or folding *Bus privado / De compañía* into "Privado", or using
 `FACTRED_FI` instead of `FACTFINAL` — and **choosing among them by which one fits is
-precisely what this project does not do.** It is left open, and it matters: swapping
+precisely what this project does not do.** *(§11 closes this, and it closes in favour
+of what is declared: the ordering of the slices is confirmed by eight of the ten
+categories, and an assumption validated on eight is the one to trust for the two it
+cannot be validated on.)* It mattered because: swapping
 those two labels would move the pedestrian's published 2005→2011 growth from 2.72×
 to 2.38× and the car's from 1.19× to 1.36×, which changes *which rows carry* D40's
 argument even though it does not change its direction.
@@ -264,9 +267,9 @@ argument even though it does not change its direction.
 | What | Field | Status after this pass |
 |---|---|---|
 | Which file holds the trips, and how it is encoded | `trips` | **Settled.** `MODULOD` of `Encuesta.mdb`, through the existing `AccessTable` |
-| Which column is the expansion factor | `weight_column` | **Open.** Two candidates, and the choice is the survey's own against the count-adjusted one |
-| What one unit of it expands to | `weight_expands_to` | **Open**, and tangled with the one above |
-| A published total to check against | `published_total` | **Open, and the hardest.** Four candidate figures on three territories; see §6 |
+| Which column is the expansion factor | `weight_column` | **Settled by an exact reproduction.** `FACTRED_FI`; see §11 |
+| What one unit of it expands to | `weight_expands_to` | **Settled.** One typical weekday, which is 2019's answer; see §11 |
+| A published total to check against | `published_total` | **Settled.** 9,689,027, stated to the trip in Tomo II of the 2011 delivery — but over a universe no other year's control total uses; see §11 |
 | How the year says which kind of day | `day_type_rule` | **Settled by the primary source.** `DayTypeIsAlwaysOne`, like 2019 — slide 32 says the reference day is the day before, *"y en caso de ser sábado, domingo o lunes sobre el día jueves"*, so every reference day is a weekday by construction |
 | How it states the trip duration | `duration_rule` | **Settled.** `DurationFromMinutesColumn("TIEMPO_VIA")`, whole minutes, no nulls |
 
@@ -283,12 +286,9 @@ legs, and §4 shows that decision is worth 2.14 % of the four modes.
 **Not done:** the whole of stage 1 onwards. Nothing is declared, nothing is
 implemented, no figure from 2005 has entered any table.
 
-**Three things are open** and two of them are the same thing: which expansion factor,
-what it expands to, and what published total settles them. §6 is where that work
-starts, and it may end in a decision rather than a measurement — if no published
-figure can be reconciled, the honest options are to declare the year with no control
-total and say so loudly, as `MobilitySurvey.published_total = None` already allows,
-or to leave 2005 as a city-level reference rather than a panel year.
+*Three things were open when this was written and all three are now closed by §11:
+which expansion factor, what it expands to, and what published total settles them.
+What replaced them is one small change to `MobilitySurvey`, described there.*
 
 **Two changes to the interpolation are already known to be needed** if 2005 does
 become an anchor, both because it would be the first anchor outside the study window:
@@ -379,3 +379,163 @@ with it rather than discovered later:
 ends, because JICA was a regional master plan and its zones do not stop at the city
 line. Its geometry is not on disk and not in either delivery. Looking for it is worth
 one search before accepting the boundary loss as fixed.
+
+
+---
+
+## 10. The zoning: JICA was the wrong thing to look for
+
+**There is no JICA geometry anywhere under `data/`.** The only zonings on disk are
+the three ZAT of 2015, 2019 and 2023, the UPZ layer and the localities. Nothing in
+either the 2005 or the 2011 delivery carries a shapefile of it.
+
+**But Tomo II of the 2011 delivery says JICA is not what 2005 was zoned on.** Its
+paragraph 4.21 is explicit: the 2005 origin-destination survey covers *"618 zonas
+dentro del casco urbano de la ciudad de Bogotá o los 17 municipios aledaños… De esta
+manera se suman 635 zonas en total que se definen como las zonas de transporte de la
+encuesta de viajes O-D del 2005"*. That is the **EMME** zoning, the one
+`D29_EMME`/`D32_EMME` carry, with 621 distinct codes in our records against the 635
+the text describes. JICA is something else and older — the 134 zones of the 1996–97
+master plan, kept in the file as a second coding.
+
+So the zoning to want is the EMME one, and its source is named: *"Archivos SIG del
+Plan Maestro de Movilidad de Bogotá para el año 2005, Secretaría de Tránsito y
+Transporte"*. **It is not on disk either**, and unlike JICA it is worth asking for by
+name.
+
+### And Tomo II gives the seventeen municipalities their codes
+
+Its Tabla 4.1 lists them: **609 Cota, 610 Chía, 611 Funza, 612 Mosquera, 613 Sopó,
+614 Cajicá, 615 Tocancipá, 616 Tabio, 617 Zipaquirá, 618 Gachancipá, 619 Tenjo, 620
+Madrid, 621 Bojacá, 622 Facatativá, 624 Soacha, 626 Sibaté, 635 La Calera.**
+
+**The records confirm that structure exactly, with no exceptions on either end:**
+
+| | Origin | Destination |
+|---|---:|---:|
+| Records whose EMME code is one of the seventeen | 6,980 | 6,850 |
+| Records with no UPZ | 9,383 | 9,487 |
+| **Both** | **6,980** | **6,850** |
+| A municipality code *and* a UPZ | **0** | **0** |
+| No zone in any zoning at all | 2,403 | 2,637 |
+
+So every record that UPZ cannot place is either a named municipality or has no
+geography whatsoever — the second being the same category as 2011's imputed sixth.
+
+### Which makes most of the boundary loss recoverable without the 2005 GIS files
+
+§9 measured what UPZ costs and found it is not the coarseness but the boundary: a
+trip with one end outside Bogotá cannot be drawn at all. **Of the 12,860 records with
+an end outside Bogotá, 9,157 — 71.2 % — have both ends as either a UPZ or a named
+municipality**, and they are worth **750,536 trips a day**. What stays unplaceable is
+3,703 records and 324,477 trips.
+
+**What that needs is municipal boundaries and nothing else**: seventeen polygons of
+standard national cartography, to be used exactly as an outer ZAT is used in every
+other year — one zone, one centroid, a line drawn from it. It is not under `data/`
+yet and it is a far smaller thing to obtain than a 2005 GIS archive.
+
+---
+
+## 11. The factor, settled by reproducing a published total to the trip
+
+**Tomo II of the 2011 delivery states 2005's total, and it states it to the unit.**
+Paragraph 4.26: *"el número total de viajes reportado en la encuesta de movilidad
+para el área de estudio en el año 2005 fue de 9.689.027"*. The 2011 Tomo III's
+"aproximadamente 9.700.000", which `config.PUBLISHED_2005` was declared on, is that
+figure rounded.
+
+Eight readings of the file were tested against it:
+
+| Reading | Sum | Against the published figure |
+|---|---:|---:|
+| Every record, `FACTFINAL` | 10,192,098 | +5.19 % |
+| Every record, `FACTRED_FI` | 10,425,456 | +7.60 % |
+| Without transfer legs, `FACTFINAL` | 9,577,058 | −1.16 % |
+| Without transfer legs, `FACTRED_FI` | 9,800,396 | +1.15 % |
+| Without walks under fifteen minutes, `FACTFINAL` | 10,120,832 | +4.46 % |
+| Without transfers and short walks, `FACTFINAL` | 9,507,719 | −1.87 % |
+| Bogotá households only, `FACTFINAL` | 9,455,723 | −2.41 % |
+| **Bogotá households only, `FACTRED_FI`** | **9,689,027.11** | **+0.0000001 %** |
+
+**One reading matches, and it matches to a tenth of a trip in nine and a half
+million** — one part in 10⁸. That is the same order of agreement as the 2015 matrices,
+and it settles three fields at once.
+
+- **`weight_column` is `FACTRED_FI`**, the count-adjusted factor, not the survey's
+  own `FACTFINAL`. The dictionary distinguishes them — *"Factor de expansión de
+  viajes"* against *"Factor de expansión de viajes ajustado por conteos"* — and the
+  published figure is computed on the adjusted one.
+- **`weight_expands_to` is one typical weekday**, which is 2019's answer rather than
+  2023's. Two things say so. The household factor over Bogotá sums to 1,946,608
+  households implying **7,175,566 residents against the 7,312,766 the validation
+  report states, 98.1 %**; and 9,689,027 trips over the 6,512,461 expanded persons
+  aged five and over is **1.488 trips per person**, inside the range of the mobility
+  index the 2011 comparison chapter publishes by stratum for 2005, 0.95 to 2.01.
+- **`published_total` is 9,689,027**, with Tomo II ¶4.26 as its source.
+
+### And one thing has to be reported rather than absorbed
+
+**The control total covers a universe no other year's does: Bogotá households, not
+the whole surveyed region.** 15,652 of the file's 18,091 households. Every other year
+publishes a total over everything its factor weights, and `surveys.read` checks the
+sum of the whole file against `published_total` accordingly. **2005 cannot pass that
+check as written**, and it is not because the reading is wrong.
+
+That is §6b's case exactly — a year that cannot be made to fit without a change —
+and the change is small and of the shape the contract asks for: a declared statement
+of *which subset* the published total covers, beside the total itself, so the run
+checks the sum the publication actually made. It is the second time a year has needed
+something (2011 needed `TripSource`), and like that one it leaves the other four
+untouched, since a year that declares no subset checks the whole file as before.
+
+### Where the two factors differ, and it is one of our four modes
+
+The adjustment was applied to the motorised modes and to those only, exactly as the
+validation study describes:
+
+| Mode | `FACTFINAL` → `FACTRED_FI` |
+|---|---:|
+| Bicicleta | −0.0 % |
+| Bus escolar, Bus privado | −0.0 % |
+| Moto | **−0.1 %** |
+| A pie | **+0.1 %** |
+| Buseta, Bus alimentador | +1.7 % |
+| TransMilenio | +2.2 % |
+| Bus | +2.6 % |
+| Taxi | +3.1 % |
+| Vehículo privado como pasajero | **+5.4 %** |
+| Vehículo privado como conductor | **+8.3 %** |
+
+**So the choice of factor is immaterial for three of this study's four modes and
+material for one.** Walking, cycling and the motorcycle move by a tenth of a per
+cent; the car moves by 8 %. Which is worth knowing before any 2005 car figure is
+compared against another year's.
+
+### The modal split, and why the declaration stands
+
+§6 recorded a live discrepancy: `config.PUBLISHED_2005` carries `PEDESTRIAN 0.14`
+and `CAR 0.16`, read off the pie chart of Figura 5.16 by assigning its ten labels to
+its ten legend entries in slice order, and the microdata seemed to fit the other way
+round. It was left open rather than fitted. It can now be closed, and it closes in
+favour of what is declared.
+
+Recomputed over the region on `FACTFINAL` — which is the universe the published pie
+turns out to be on, since the Bogotá-only universe puts *Intermunicipal* at 0.7 %
+against a published 2 % — and folding *Bus privado / De compañía* into "Privado",
+nine of the ten categories land within the chart's own half-point rounding: TPC 46.0
+against 46, TransMilenio with its feeder 11.3 against 11, Bicicleta 2.8 against 3,
+Moto 0.7 against 1, Taxi 3.4 against 3, Escolar 4.2 against 4, Intermunicipal 1.6
+against 2, Otro 0.2 against 0.3, and walking 14.9 against 14.
+
+**The tenth is the private vehicle at 14.9 against 16**, about a point out. And the
+two readings cannot be told apart by magnitude, because walking and the private
+vehicle both measure 14.9: swapping the labels moves the error from one to the other
+and leaves it the same size.
+
+**What decides it is the ordering, not the magnitudes.** The legend is alphabetical
+and the slices run clockwise in that order, and **eight of the ten categories confirm
+that ordering unambiguously**. An assumption validated on eight cases is the one to
+trust for the two it cannot be validated on. So `PEDESTRIAN 0.14` and `CAR 0.16`
+stand, and what is recorded instead is that our reading puts the private vehicle
+about a point below what the chart shows.
