@@ -138,16 +138,30 @@ the casualty matrix on unit, year and actor type, and it has to be interpolated
 over the years no survey covers, and both are natural in that shape. The mode is
 therefore a column value and not part of a column name.
 
-Adding a survey year is one `MobilitySurvey` in `src/config.py`. Two things a
-year may also need are rules — for how it says which kind of day a trip was made
-on, and for how it states the trip duration — because no two of the four surveys
-say either the same way. Each was commissioned by a different city administration
-and catalogues its data its own way, so nothing about a year's files can be
-inherited from the year before while everything downstream of them has to come
-out identical. **2023 and 2019 are built**; adding the second changed no
-measurement and left the first's figures identical to the last decimal.
+Adding a survey year is one `MobilitySurvey` in `src/config.py`. Three things a
+year may also need are rules — for how its trips are stored, for how it says which
+kind of day a trip was made on, and for how it states the trip duration — because
+no two of the four surveys say any of them the same way. Each was commissioned by a
+different city administration and catalogues its data its own way, so nothing about
+a year's files can be inherited from the year before while everything downstream of
+them has to come out identical. **All four years are built**: 2023, 2019, 2015 and
+2011. Adding each one left every year before it identical to the last decimal.
 `docs/adding-a-survey-year.md` is the procedure, and §6b of
 `docs/mobility-surveys-inventory.md` is the contract it has to satisfy.
+
+The fourth year is the one that did not fit, and it is reported rather than
+absorbed. 2011's weekday and Saturday are separate samples of separate households in
+two Access databases, so which kind of day a record belongs to is a property of the
+file it came out of. `MobilitySurvey.trips` is therefore a tuple of sources, each
+carrying the day type its file holds, and no day-type rule ever opens a file.
+`docs/implementing-2011.md` is that year's record.
+
+**Interpolating over the fourteen years no survey covers is the next stage and it
+is specified rather than built.** The rate is what gets interpolated — trips per
+inhabitant, log-linearly between adjacent surveys — and the level is recovered from
+the population panel, which is annual. Outside the measured range the rate is held
+flat rather than extrapolated. Every constructed cell says so. See D39, D40 and
+`docs/interpolating-the-exposure.md`.
 
 A year need not have a kind of day at all. 2019 surveyed one typical working day
 and nothing else, which its questionnaire, its glossary, its report and its

@@ -64,8 +64,12 @@ carried, so the second is larger for the same underlying records.
 | D35 | The desire lines enter as exposure, apportioned by share of length | Methodological | Closed on the rule; the year and the selection are **open** | Yes |
 | D36 | The population enters as a panel, one number per unit and per year | Methodological | Closed on the shape; which years are measured and which modelled is **open** | Yes |
 | D37 | `data/` is filed by the role the data plays, and every root is declared | Implementation | Closed on the roots; where the exposure layers finally live is **open** | Yes |
+| D38 | Exposure is built from the survey, per unit, year, mode and day type | Methodological | Closed for all four years; which day type the models take is **open** | Yes |
+| D39 | The pedestrian mode is measured twice, and the series is read on the fifteen-minute one | Methodological | Closed | **Not yet** |
+| D40 | Exposure between survey years is interpolated as a rate, not as a level | Methodological | Closed on the method; whether 2005 joins the series is **open, and is a measurement away** | **Not yet** |
 
-Methodological decisions: D1-D7, D9, D10, D11, D15, D17, D18, D19, D21, D22, D32, D35.
+Methodological decisions: D1-D7, D9, D10, D11, D15, D17, D18, D19, D21, D22, D32, D35,
+D38, D39, D40.
 Implementation decisions: D8, D12, D13, D14, D16, D20, D23, D24, D25, D26, D27, D33, D34.
 
 ---
@@ -4191,3 +4195,237 @@ comparing 2011's Saturday with its weekday has to say so.
 it does not matter for any result. It is recorded because the question was asked in
 D35 and a reader deserves to know it was pursued to the point where the answer
 stopped mattering rather than dropped.
+
+---
+
+## D39 — The pedestrian mode is measured twice, and the series is read on the fifteen-minute one
+
+**Kind:** Methodological. It decides which walking trips the study's denominator
+counts when four years are put in one series, and it amends D38 without reversing
+it.
+
+**Status:** Closed. Decided by my advisor on 2026-09-09, against the measurement
+below.
+
+**Built:** Not yet. It adds one measured column to the exposure table and changes
+nothing about how a survey is read.
+
+### The measurement that forced it
+
+D38 decided that every walking trip is in, whatever its length, and gave two
+reasons that are still true: 2011 and 2015 cannot offer the narrower category at
+all, and the crash source cannot separate a short walk from a long one either, so a
+denominator that excluded short walks would divide casualties by an exposure that
+does not contain them.
+
+That decision was taken when one year was implemented, and a comparison with
+nothing to compare against cannot be wrong. With four years measured, the
+pedestrian series on the column two years are comparable on is this — one weekday,
+the whole surveyed region, from run `run_20260908_101110`:
+
+| | Every walking trip | Index | Fifteen minutes or more | Index |
+|---|---:|---:|---:|---:|
+| 2011 | 8,136,778 | 100 | 3,733,664 | 100 |
+| 2015 | 5,576,943 | 69 | 3,600,522 | 96 |
+| 2019 | 6,941,798 | 85 | 3,956,917 | 106 |
+| 2023 | 6,203,098 | 76 | 4,104,040 | 110 |
+
+**The full column swings 46 % and does not move in one direction; the
+fifteen-minute column rises monotonically after 2015 and its whole range is 14 %.**
+The difference between the two is not the city. It is the instrument: 2011's
+questionnaire asks for the short walk outright — *"para viajes realizados
+completamente a pie incluya siempre los viajes al trabajo y estudio; para otros
+propósitos solo aquellos cuya duración sea mayor a 3 minutos"* — and tells the
+interviewer not to ask about stages for a trip made wholly on foot, while 2015's
+states no floor, no such prompt, and records walking as a stage with its own minute
+counter. The 2015 delivery's own Tabla 43 confirms it from the other side:
+pedestrian **stages** fall 17 % between the two surveys where pedestrian **trips**
+fall 31 %.
+
+The other three modes have no such problem and need no second definition. Their
+movements are large but they are the city: motorcycle travel roughly doubles between
+2011 and 2015, which the 2015 delivery publishes as +102.82 % and calls the largest
+change in its survey.
+
+**And this is not a private worry.** The Sarmiento group names the same thing as a
+limit on comparability in Delclòs-Alió et al. (2022), of which two of Bogotá's
+neighbours in that study are examples: *"some of the surveys used in the study
+explicitly omit short walking trips… not only this might partially limit
+comparability, but it is also likely that actual levels of walking may be even
+higher than what we have described here."*
+
+### The decision
+
+**Both definitions are measured, both are exported, and the series is read on the
+fifteen-minute one.** The exposure table gains a second pedestrian quantity beside
+the first; every other mode carries the same number in both, because no other mode
+has two definitions.
+
+- **The full column stays** because it is what the surveys measure, because D38's
+  two reasons for it have not stopped being true, and because the crash source
+  still cannot separate a short walk from a long one — so the full column is the
+  one whose denominator matches the numerator's category.
+- **The series is read on the fifteen-minute column** because a fifteen-year
+  interpolation cannot be laid over a quantity whose definition changes between two
+  of its four anchors. That is the same rule as `TRIPS_PER_DAY_OF_TYPE`: **anything
+  that puts two years side by side reads the column the two years mean the same
+  thing on.**
+- **The report shows what the choice costs.** Both columns exist, so the models can
+  be run against each and the document can say whether the conclusions move. If
+  they do, that is a finding about how much of the pedestrian result rests on a
+  category the surveys disagree about.
+
+**What is given up, and it is real.** Between a quarter and a half of walking leaves
+the modelled denominator: 4,403,115 trips a day in 2011, 1,976,421 in 2015,
+2,984,881 in 2019 and 2,099,058 in 2023. Those are real journeys with real
+casualties attached, and the fifteen-minute rate therefore over-states risk per trip
+by a factor that differs by year. The full column is exported precisely so that the
+factor can be computed rather than argued about.
+
+**The threshold is fifteen minutes and it is not ours.** It is the split the 2011
+report publishes as its own second modal partition, the split the 2015 delivery
+publishes for both of its day types, the split 2023 builds into its two walking
+labels, and the definition the 2005 survey used for the whole mode. Choosing any
+other number would mean losing every one of those published controls.
+
+---
+
+## D40 — Exposure between survey years is interpolated as a rate, not as a level
+
+**Kind:** Methodological. It decides what the study's exposure is in the fourteen
+years no survey covers, which is most of the panel.
+
+**Status:** Closed on the method. Decided by my advisor on 2026-09-09. **Whether
+the 2005 survey joins the series is open, and it is a measurement away rather than
+an argument away** — see the last section.
+
+**Built:** Not yet. `docs/interpolating-the-exposure.md` is the specification.
+
+### What has to be filled, and what is already annual
+
+The casualty series runs 2007–2024 observed and **2008–2024 corrected**, because
+D30 takes 2007 out of the corrected set: a year that cannot say which of two
+vehicles was which cannot support an inter-mode matrix. The surveys sit at 2011,
+2015, 2019 and 2023 — evenly spaced, every four years, which is the friendliest
+shape this problem could have had.
+
+So of the eighteen observed years: **four are measured, nine fall between two
+measured years, four fall before the first and one after the last.** On the
+corrected set it is four, nine, three and one.
+
+**One thing is already annual and it is the denominator's denominator.** D36 put the
+population in as a panel, one number per unit and per year, covering 2005–2035. Every
+year the interpolation has to fill already has a population for every one of the
+thirty units, from a source that is not the survey.
+
+### The decision
+
+**Interpolate the rate; recover the level from the annual population.**
+
+For each unit, actor type and day type:
+
+1. take the rate at each measured year, `TRIPS_PER_DAY_OF_TYPE / POPULATION`;
+2. interpolate that rate **log-linearly** between adjacent survey years — a
+   constant proportional change per year rather than a constant absolute one, which
+   keeps every value positive and treats a mode growing from a small base the way
+   growth actually works;
+3. recover the level as `rate(t) × POPULATION(unit, t)`.
+
+**Why the rate and not the level.** The level is the product of two things that move
+at different speeds and are known with very different confidence: how many people
+live in a unit, which we know every year from the census panel, and how much each of
+them travels by a given mode, which we know four times. Interpolating the level
+throws the annual knowledge away and smears the demographic change across four-year
+steps. Interpolating the rate uses each source for what it is good for. In a unit
+whose population grew 40 % between two surveys — and several of the western
+expansions did — the two give visibly different answers, and only one of them is
+using information we actually have.
+
+**Outside the measured range the rate is held flat, not extrapolated.** For
+2007–2010 the rate is 2011's; for 2024 it is 2023's. The population still moves, so
+the level still moves. Prolonging a trend instead would mean extrapolating four
+years backwards from a slope fitted to two points — and for the pedestrian mode that
+slope is the 2011→2015 segment, which D39 has just established measures a change of
+instrument. **A trend extrapolated from an artefact is worse than no trend.**
+
+**Every cell says where it came from.** The interpolated table carries
+`EXPOSURE_PROVENANCE`, one of `MEASURED`, `INTERPOLATED` or `HELD`, and
+`YEARS_TO_NEAREST_SURVEY`, which runs 0 to 4. This is the same discipline as
+`VALUE_STATUS` and `SAMPLE_SUPPORT`: a number that was measured and a number that
+was constructed are different facts, and a table that cannot tell them apart invites
+a reader to treat fourteen constructed years as fourteen observations. It also lets
+a model weight by distance to a measured year, or drop the held block, without
+re-running anything.
+
+### What was rejected, and why it is worth writing down
+
+**The nearest-survey step function.** Each year takes the closest survey, no
+interpolation at all. This is not a straw man: it is what **Zewdie et al. (2024)**
+does, in one of the three papers this thesis is built on and with Sarmiento as
+second author — a single 2019 survey as the Poisson offset for the five crash years
+2015–2019. It has a real virtue, which is that it never invents a number. It was
+rejected because it puts three discontinuities inside the panel and wastes the one
+gift this data set gives us: four measured years, exactly four years apart, over the
+middle of the series. A step function is the right answer when you have one survey;
+we have four.
+
+**Prolonging the trend outside the measured range.** Rejected above.
+
+**Anchoring the annual city total on an external indicator per mode** — motorcycle
+and car registrations, TransMilenio ridership, bicycle counts — and interpolating
+only each unit's spatial share. **This is the better method and it is not rejected;
+it is deferred.** It is more defensible than anything above, because it replaces an
+assumption about the shape of a curve with an annual measurement of the curve
+itself. What it costs is one external series per mode, each of which has to be
+obtained, checked against the survey years it overlaps, and shown to measure the
+same thing the survey measures — which is the whole of this project's method applied
+four more times. It is the natural second version of this decision and the report
+should say that it is.
+
+### Whether 2005 joins the series, and how that gets decided
+
+Adding the 2005 survey would turn the only backward extrapolation into an
+interpolation between measured points — three or four years of the panel, depending
+on which casualty set the models take.
+
+**It is not implemented and it is not on disk.** Nothing of 2005 is under `data/`.
+Including it is a full implementation pass: the download, the six things
+§6b requires, and a fifth zoning, over six years that contain the opening of
+TransMilenio's phases II and III.
+
+**Its pedestrian mode only exists under D39's definition.** The 2005 survey counted
+walking of more than fifteen minutes and nothing shorter — the 2011 report says so
+outright, *"a diferencia de la encuesta del año 2005 en la cual sólo se tomaron en
+cuenta viajes mayores a 15 minutos para el modo a pie"* — and publishes its own
+fifteen-minute partition to be comparable with it. So D39 is what makes 2005
+includable at all; without it there would be nothing to discuss.
+
+**Decision — not now, and the question is settled by measurement rather than by
+argument.** The interpolation is built on the four years, the held rate produces a
+2007–2010 block, and that block is compared against the 2005 figures the 2011 report
+already publishes. If it lands far from them, 2005 is implemented and the reason for
+implementing it is a number. If it lands close, the held rate was adequate and no
+session was spent on it. Doing the cheap thing that tests the expensive thing is the
+same move this project made with the delivered desire-lines layer, and it paid then.
+
+### What this leaves open
+
+**Which casualty set the panel is built against**, and therefore whether the window
+starts at 2007 or 2008. The observed set has eighteen years and 2007 among them; the
+corrected set has seventeen and does not. It is not this decision's to take — D31
+says both sets exist and the models are to be run against both — but the
+interpolation has to produce whichever window is asked for, so it is built over the
+full 2007–2024 and the choice stays a filter.
+
+**Whether the held block belongs in the models at all.** Four of eighteen years with
+no within-unit behavioural variation, only demographic, is a block a panel estimator
+will treat as information. `YEARS_TO_NEAREST_SURVEY` is in the table so that this
+can be tested rather than assumed.
+
+**Whether the 2011→2015 segment should be interpolated at all for the pedestrian
+mode.** D39 removes the definitional part of that segment's problem. It does not
+remove the rest: 2011 also delivers a smaller share of its city totals to the units
+than any other year, because the sixth of its records that were imputed carry no
+geography and because its shorter reported durations fail the plausibility test more
+often. That is a level difference between two adjacent anchors that is a property of
+the delivery, and the interpolation will run straight through it.

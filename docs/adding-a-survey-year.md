@@ -50,6 +50,10 @@ catalogues its data its own way, so nothing about a year's files can be inherite
 from the year before — while everything downstream of them has to come out
 identical.
 
+**What comes after the four years is the interpolation**, and it has a document of
+its own: [`interpolating-the-exposure.md`](interpolating-the-exposure.md), with D39
+and D40 behind it. This one ends where the surveys end.
+
 Read first, in this order:
 
 0. **[`implementing-2011.md`](implementing-2011.md)**, if the year is 2011. It is
@@ -574,6 +578,27 @@ over all seven reference days" — which is true of 2023 and false of 2019.
 **What to do:** any sentence the run prints about what the factor expands to must
 be conditioned on `weight_expands_to`, not written once for the year in front of
 you.
+
+### A note on the fifth year, which is 2005 and is not implemented
+
+This document says "four years" throughout because four are declared. Bogotá ran a
+fifth mobility survey in **2005**, and if it is ever added this procedure holds for
+it with two things known in advance:
+
+- **Its pedestrian mode exists only under D39's definition.** 2005 counted walking
+  of more than fifteen minutes and nothing shorter — the 2011 report states it and
+  publishes its own fifteen-minute partition to be comparable with it. Read against
+  the full pedestrian column it would look like a collapse in walking that never
+  happened.
+- **What it buys is one segment.** The casualty series starts in 2007 and the first
+  declared survey is 2011, so 2005 is the only thing that turns that backward
+  extrapolation into an interpolation. D40 defers the decision to a measurement: the
+  held-rate block for 2007–2010 is compared against the 2005 figures the 2011 report
+  publishes, and 2005 is implemented only if that comparison says it is worth a
+  session.
+
+Nothing of 2005 is under `data/`. Implementing it starts at section 1 of this
+document, like every other year.
 
 ### And the one from the inventory pass, still the best example
 

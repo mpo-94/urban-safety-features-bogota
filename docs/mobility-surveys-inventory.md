@@ -45,6 +45,20 @@ those of the day before. And the survey turns out to measure **one kind of day
 only**, so the day-type dimension this document assumed all four years would
 support is a property of 2023 and not of the series. Both are in section 5.
 
+**A fifth survey exists and is deliberately not here.** Bogotá also ran a mobility
+survey in **2005**, and it is not in `data/` and not declared. What it would buy is
+one thing and it is worth stating: the casualty series starts in 2007 and the first
+survey is 2011, so 2005 is the only thing that could turn that backward
+extrapolation into an interpolation. What it costs is a full implementation pass and
+a fifth zoning — and its pedestrian mode exists only under D39's definition, because
+**2005 counted walking of more than fifteen minutes and nothing shorter**. The 2011
+report says so outright, *"a diferencia de la encuesta del año 2005 en la cual sólo
+se tomaron en cuenta viajes mayores a 15 minutos para el modo a pie"*, and publishes
+its own fifteen-minute partition to be comparable with it. D40 defers the question
+to a measurement rather than an argument: build the interpolation on four years and
+compare its 2007–2010 block against the 2005 figures the 2011 report already
+publishes.
+
 **What the study needs from them.** Four modes — on foot, bicycle, motorcycle and
 car — as **trips per day apportioned to each UPL**, for 2011, 2015, 2019 and 2023.
 That is sixteen combinations and **all sixteen are measured**. The delivered
@@ -154,6 +168,23 @@ now taken, and D38 carries the reasoning:
   part of that rise is 2019 counting trips 2015 did not. Not correctable without
   imposing a floor on 2019 that its own publication does not use, which would
   make the study's walking disagree with the survey's.
+
+- **The pedestrian mode is the only one of the four whose definition moves between
+  the surveys, and the series says so plainly.** One weekday, the whole surveyed
+  region, on `TRIPS_PER_DAY_OF_TYPE`:
+
+  | | Every walking trip | Index | Fifteen minutes or more | Index |
+  |---|---:|---:|---:|---:|
+  | 2011 | 8,136,778 | 100 | 3,733,664 | 100 |
+  | 2015 | 5,576,943 | 69 | 3,600,522 | 96 |
+  | 2019 | 6,941,798 | 85 | 3,956,917 | 106 |
+  | 2023 | 6,203,098 | 76 | 4,104,040 | 110 |
+
+  The full column swings 46 % and does not move in one direction; the
+  fifteen-minute column rises monotonically after 2015 and its whole range is 14 %.
+  **D39 is the decision that follows**: both are measured and exported, and
+  anything that puts two years side by side reads the second. The three other modes
+  have one definition and need no second column.
 
 - **2011's walking is the largest figure in the table and the gap against 2015 is
   entirely below fifteen minutes.** 8,136,778 against 5,576,942 is 46 %, and it is
@@ -1188,6 +1219,15 @@ that the imputed module is the one to consult, Tomo I's two published universes 
 Tomo III's two expansion procedures. And the one artefact that looked like the
 year's best control — the eight Emme matrices — turned out not to be a reading of
 the household survey at all, which only the matrix training deck says.
+
+**The interpolation is specified and it is the next stage.** D39 and D40 are the
+decisions and [`interpolating-the-exposure.md`](interpolating-the-exposure.md) is
+what to build: interpolate the **rate** log-linearly between adjacent surveys, hold
+it flat outside the measured range, recover the level from the annual population
+panel, and mark every cell with its provenance. The one thing this section can add
+is why the four years turned out to be a friendly shape for it — **2011, 2015, 2019
+and 2023 are evenly spaced, four years apart** — and why the pedestrian mode needed
+D39 before any of it could run.
 
 **Interpolation will meet the ρ correction.** The four measured years sit in very
 different places in the history of casualty recording: 2011 and 2015 before the

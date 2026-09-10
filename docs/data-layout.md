@@ -306,6 +306,13 @@ Two things about the delivery belong here rather than there:
   2011, as this document said it would be. The driver itself is not a Python package
   and cannot be: a machine without it can run the other three years and will stop
   with an ODBC error on 2011.
+- **A fifth survey exists and is not here.** Bogotá ran a mobility survey in
+  **2005** and nothing of it is under `data/`. It is named in this document because
+  "delivered and not declared" and "never delivered" are different facts and a
+  folder cannot tell them apart — the same reason `UndeclaredLayer` exists. If it
+  is ever obtained it goes under `SURVEYS_DIR / "2005"` beside the other four. D40
+  says what would decide that and `adding-a-survey-year.md` says what is known
+  about it in advance.
 - **The eight Emme matrices of `Matrices Finales/` are out of scope and are not a
   control**, which is worth stating because they look like one. The year's matrix
   training deck describes them as built from the intercept surveys and the traffic

@@ -2170,6 +2170,22 @@ four rather than 2015 the odd year of two. Two things are true at once and the s
 cannot separate them: cycling did reorganise across the city in those four years,
 and 2011's cycling rests on 3,526 zoned records spread over thirty units.
 
+**The pedestrian series is not interpolable on the full definition and is on the
+fifteen-minute one, which is what D39 decides.** Measured on the same reading the
+run makes, outside the pipeline on 2026-09-09, one weekday and the whole surveyed
+region:
+
+| | Every walking trip | Index | Fifteen minutes or more | Index |
+|---|---:|---:|---:|---:|
+| 2011 | 8,136,778 | 100 | 3,733,664 | 100 |
+| 2015 | 5,576,943 | 69 | 3,600,522 | 96 |
+| 2019 | 6,941,798 | 85 | 3,956,917 | 106 |
+| 2023 | 6,203,098 | 76 | 4,104,040 | 110 |
+
+The full column swings 46 % and changes direction twice; the fifteen-minute column
+rises monotonically after 2015 and its whole range is 14 %. **The second column is
+not yet in the exposure table** — D39 adds it and D40 is what will read it.
+
 **2011's walking is 46 % above 2015's and the gap is entirely below fifteen
 minutes.** It is not a reading — Tabla 43 of the 2015 delivery gives 8,136,778 for
 2011, to the trip. Split at fifteen minutes the two years agree within 4 % above it,
