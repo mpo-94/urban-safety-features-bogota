@@ -14,6 +14,11 @@ that the printed correlation and the drawn one are the same numbers. Section 14
 covers the population panel, which is what the predictors, the exposure and the
 casualty counts are all divided by.
 
+Section 18 covers the month, the master table that cuts the same events by unit
+and month, and the 57 maps that place every casualty where it happened. It is also
+where the defect that table found on its first run is recorded, in D29's promotion
+order.
+
 Travel exposure has two sections because it has two sources. **Section 15 is the
 study's exposure**, built from the household mobility survey, per unit, year,
 road user type and kind of day. **Section 13 is the delivered desire lines**,
@@ -31,7 +36,7 @@ set.
 | Study period | 2007–2024 (18 years) |
 | Sources | fatality and injury point layers with 2024 from the updated extract (D19), vehicle table |
 | Stages | loading → party resolution → matrix aggregation |
-| Command | `python -m src.run_pipeline matrix` |
+| Command | `python -m src.run_pipeline corrected`, which is what runs when no route is named (section 18) |
 | Result | 22,680 matrix cells, 203,077 affected parties, 234,370 injured, 7,542 killed |
 | Outcome | **every check passed** |
 
@@ -456,7 +461,9 @@ complete one.
 | `data/analysis__matrix_long.{csv,parquet}` | 22,680 rows, the complete grid | **the table the models consume** |
 | `data/presentation__crosstab_{count}__all_years.csv` | 3 files, aggregate matrices | reading and reporting |
 | `data/by_year/presentation__crosstab_{count}__{year}.csv` | 54 files | per-year matrices |
-| `figures/parties/`, `figures/injured/`, `figures/killed/` | 19 heatmaps each | one per year plus an aggregate, shared colour scale within each count |
+| `data/analysis__casualties_by_unit_month.{csv,parquet}` | 12,600 rows, both datasets | the same events cut by unit, year and month (D43, section 18) |
+| `figures/{count}/{year}/` | 19 folders per count, 3 figures in each | the matrix, the master table and the map of that count and year |
+| `figures/{count}__rho_corrected/{year}/` | 18 folders per count, 2 figures in each | the same, without a map: the correction adds no coordinate (D44) |
 | `intermediate/` | 6 stages, parquet and CSV | the state after each stage, for inspection; off by default |
 
 The long table is the only one meant for analysis. The cross-tabulations are the
@@ -470,6 +477,13 @@ observation are drawn in flat grey rather than at the bottom of the ramp, so a
 true zero cannot be read as a small value. Within each count the per-year figures
 share one colour scale; the aggregate figure has its own, since eighteen years
 and one year are not on the same ruler.
+
+**The figures are filed by count, then by year**, so that the three views of one
+count and one year — the matrix, the master table and the map — sit in one folder
+rather than in three trees. Each file still carries the year in its name, because a
+figure copied out of its folder into a document has to keep saying what it is. A
+full run of the default route writes **279 figures**: 111 matrices, 111 master
+tables and 57 maps.
 
 ---
 
@@ -3492,3 +3506,217 @@ whatever caption it had.
   than one.
 - **Whether an external annual series replaces the patch.** D42 is built to be
   retired: it is twelve numbers and the unpatched variant is untouched.
+
+---
+
+## 18. The month, the master table and the maps
+
+Run `run_20260911_074803`, route `corrected`, which is now what runs when no route
+is named. Three things were built on one seam, and a fourth was found by building
+them.
+
+### The seam: what `crash_attributes` carries now
+
+The month and the coordinate of a crash join the year, the crash type and the
+territorial unit in `parties.crash_attributes`, which is the one function that
+places a crash in space and time and is what makes the matrix and ρ agree by
+construction rather than by two implementations matching.
+
+**The month does not come from the column called `MES_OCURRE`.** Measured on
+2026-09-11 against both layers as this repository reads them:
+
+| | Rows | `MES_OCURRE` null | `FECHA_OCUR` parses | Year agrees with `ANO_OCURRE` |
+|---|---:|---:|---:|---:|
+| `MUERTO` | 8,592 | **8,592 (100 %)** | 8,592 (100 %) | 8,592 (100 %) |
+| `LESIONADO` | 268,921 | **268,921 (100 %)** | 268,921 (100 %) | 268,921 (100 %) |
+
+It is not sparse, it is empty, and the date is the only thing in the sources that
+says which month a crash happened in.
+
+**The check that keeps `first` honest.** A crash must carry one month and one
+coordinate, and it is measured on every route that places a crash:
+
+```
+crash month and point agree within a crash: 277,513 in -> 188,368 out (-89,145)
+    note: 0 crash(es) of 188,368 carry more than one month, and 0 place their
+          records more than 1 m apart
+    note: widest separation inside a crash: 0.000 m
+    note: 0 casualty record(s) have no usable date, leaving 0 crash(es) with no month
+```
+
+**That check was wrong when first written, and the way it was wrong is worth
+recording.** It compared coordinates as strings of degrees rounded to seven
+decimals and reported five crashes in disagreement. All five are 2024, all five
+span both layers, and all five are **0.0 m apart**: they differ in the seventh
+decimal of a degree, about a centimetre, which is float noise from the round trip
+between the two files. A rounding at seven decimals calls that a disagreement and
+a rounding at six does not, and neither answer is about the data. The check now
+compares a distance in metres against a declared tolerance of 1 m, which says what
+it means and has no edge for a value to sit on.
+
+### The master table
+
+One exported table, `data/analysis__casualties_by_unit_month.{csv,parquet}`,
+holding both datasets:
+
+| `DATASET` | Rows | Grid | Affected parties | Injured | Killed |
+|---|---:|---|---:|---:|---:|
+| `OBSERVED` | 6,480 | 30 × 18 × 12 | 203,077 | 234,370 | 7,542 |
+| `RHO_CORRECTED` | 6,120 | 30 × 17 × 12 | 216,155 | 251,852 | 7,325 |
+
+The corrected set has seventeen years because 2007 is out of it altogether (D30).
+
+**The check that matters is that the two tables of the same events agree.** Summed
+over the months and over the pairs, per unit and year, in all three counts:
+
+```
+master table verification [OBSERVED]:
+both tables cover the same unit-years                              OK  540 and 540
+parties: master table equals the matrix, per unit and year         OK  0 differ; 203,077 and 203,077
+injured: master table equals the matrix, per unit and year         OK  0 differ; 234,370 and 234,370
+killed:  master table equals the matrix, per unit and year         OK  0 differ;   7,542 and   7,542
+grid has exactly the declared number of unit-months                OK  6,480 of 6,480
+every month of the year is in the grid                             OK  12 of 12
+no negative cell                                                   OK  0
+one row per unit, year and month                                   OK  0 duplicated keys
+the exported file holds what was built                             OK  6,480 rows, 444,989 counted, on disk and in memory
+```
+
+The corrected set passes the same nine on its own 510 unit-years.
+
+**111 figures**, one per count, year and dataset, plus one per count and dataset
+over the whole span. Thirty units down the side, twelve months across the top,
+totals on both sides and the grand total in the corner; for `all_years` the
+eighteen years replace the months. The body is shaded on a logarithmic ramp shared
+by every year of a count and the totals are outside it — affected parties in a
+unit-month run from 1 to 143 with a median of 28, and a total is an order of
+magnitude above the cells it sums.
+
+### What the month column found on its first run
+
+**The correction was putting 19.3 % of the parties it adds into January**, against
+7.1 % of the parties already there, sliding monotonically to 2.2 % in December
+against 8.4 %. The correction has no monthly term at all — it is computed per
+pair, per year and per unit — so this could only come from which crashes inside a
+cell get promoted, and it did: D29 took them in order of crash identifier, and
+identifiers are issued in sequence, so within a year they run with the calendar.
+Measured Spearman between identifier and date: **0.987 in 2012, 0.962 in 2016,
+0.952 in 2020**.
+
+Nothing before the master table could have seen it. The correction's arithmetic
+never leaves the year, so every total it produced was right; what was wrong was
+the distribution inside the year, and until the month became a column there was no
+figure in which a month appeared.
+
+The order is now a keyed hash of the identifier, which keeps everything D29 chose
+it for — reproducible, auditable, and the same on every run — and drops the
+chronology it smuggled in. After the change:
+
+| Month | Share of base | Share of what the correction adds | Ratio before | Ratio after |
+|---|---:|---:|---:|---:|
+| Jan | 7.14 % | 6.99 % | 2.70x | **0.98x** |
+| Jun | 8.07 % | 8.10 % | 0.54x | **1.00x** |
+| Dec | 8.37 % | 8.47 % | 0.26x | **1.01x** |
+
+All twelve months now fall between 0.98x and 1.03x. **The change moved which
+crashes are promoted and nothing else**: against the previous run the party matrix
+is identical in all 21,420 cells and the three totals are unchanged — 216,155
+affected parties, 251,852 injured, 7,325 killed. The person counts move between
+1,645 injured cells and 46 killed cells, because a group's people are allocated
+over the parties promoted in it and those now sit in different units, while the
+group totals do not change.
+
+The run measures this every time and warns past 1.25x, so the claim that the
+correction is blind to the month is checked rather than asserted.
+
+**And the observed set was never affected.** Its monthly distribution is stable
+through every stage of the funnel and agrees with what the sources say:
+
+| Stage | January | Total |
+|---|---:|---:|
+| Source rows, both layers | 7.17 % | 277,513 |
+| One row per crash | 7.25 % | 188,368 |
+| Affected parties | 7.19 % | 203,808 |
+| Affected parties, located | **7.20 %** | 203,077 |
+
+### The maps
+
+**57 maps**: three counts by eighteen years plus an aggregate each, for the
+observed dataset only. The corrected set gets no map because the correction adds
+no coordinate (D44).
+
+Every one of them places each casualty at the coordinate of its crash, over a
+Gaussian density computed in metres and clipped to the thirty units, and the
+recipe was chosen by drawing rather than in advance:
+
+| | `parties` | `injured` | `killed` |
+|---|---|---|---|
+| Bandwidth σ | 200 m | 200 m | 300 m |
+| Ramp floor | 35th percentile | 35th percentile | 20th percentile |
+| Shared class breaks | 11.6 to 306 /km² | 13 to 390 /km² | 0.043 to 18.8 /km² |
+| Marks in a year | ~16,700 | ~16,300 | ~490 |
+
+Shared everywhere: a 25 m raster, seven quantile classes bunched towards the dense
+end by `1 - (1 - p) ** 2`, `YlOrRd` on the stretch 0.12 to 0.78, a cool near-black
+mark, a 5 km scale bar, 12 inches tall, PDF with **no raster layer at all** —
+the density bands are filled contours and the marks are vector.
+
+The shared breaks do what a shared scale is for: **2020 comes out visibly paler
+than 2023 with nothing done to make it**, which is 11,270 injured against 20,172.
+
+```
+casualty map verification:
+parties: drawn plus set aside equals what the span holds   OK  203,077 drawn, 731 outside, 0 undated, of 203,808
+parties: every point drawn falls inside the units          OK  0 of 203,077 outside
+injured: drawn plus set aside equals what the span holds   OK  234,370 drawn, 1,083 outside, 0 undated, of 235,453
+injured: every point drawn falls inside the units          OK  0 of 196,386 outside
+killed:  drawn plus set aside equals what the span holds   OK  7,542 drawn, 43 outside, 0 undated, of 7,585
+killed:  every point drawn falls inside the units          OK  0 of 7,410 outside
+one map per count and year, plus the aggregate             OK  57 of 57
+every map is on disk and none is empty                     OK  0 missing, 0 empty, smallest 1,506 KB
+```
+
+**The balance lands on D11's own figures without being told them.** The 731
+parties, 1,083 injured and 43 killed set aside are exactly the ones the matrix
+drops at aggregation for falling outside every unit; the maps account for the same
+casualties the same way.
+
+### The output tree
+
+```
+data/
+  analysis__casualties_by_unit_month.{csv,parquet}     both datasets, one file
+figures/
+  parties/<year>/            heatmap, master table, map
+  parties/all_years/         the same three
+  injured/... killed/...
+  parties__rho_corrected/<year>/     heatmap and master table, no map
+  ...
+```
+
+**The matrices moved** from `figures/<count>/heatmap_<count>__<year>.png` into
+`figures/<count>/<year>/`, so the three views of one count and year share a folder
+and a reader opening it gets all three. They keep the year in the file name,
+because a figure copied out of its folder has to keep saying what it is.
+
+| | Files |
+|---|---:|
+| Matrix heatmaps | 111 |
+| Master tables | 111 |
+| Maps | 57 |
+| **Total** | **279** |
+
+### One more thing the session changed
+
+**Running with no route now writes both casualty datasets.** It used to run
+`matrix`, which writes the observed one alone, so a plain
+`python -m src.run_pipeline` produced half the study and said so nowhere a reader
+would look — the two are told apart by which folders exist. The corrected set
+never replaces the observed one (D31), so producing both is what running the
+pipeline means and producing one is something a person does on purpose.
+
+Neither route was renamed, although both names now read oddly: `corrected` is
+named in D28 and D31 as the route the correction was built in, and this report
+cites past runs by their route. Renaming would falsify records of runs that
+already happened. What is fixed instead is that every run states which datasets it
+writes, at the start and at the end, and warns when it writes only one.

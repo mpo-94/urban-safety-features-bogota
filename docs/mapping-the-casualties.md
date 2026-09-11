@@ -1,5 +1,21 @@
 # Mapping the casualties, and giving every year a master table
 
+> **Built on 2026-09-11, and this document is now a record rather than a plan.**
+> What was decided while building it is in **D43** and **D44**; what a run produces
+> and what every check reported is in **section 18 of the verification report**.
+> Read those first. This is kept because it is where the sources were measured, and
+> because three of the things it predicted turned out differently:
+>
+> - `killed` takes a **wider** kernel than the dense counts and not a narrower one.
+>   Section 5 expected the surface to go flat on a sparse count; it cannot, because
+>   quantile classes are relative to their own surface. Widening it until the discs
+>   meet is what makes the corridors legible, and the price is in D44.
+> - **`inferno` is wrong** over a light ground, where section 5 suggested it. Its
+>   low end is near-black, so the empty north dominates and the dense core recedes.
+> - **Five crashes do carry two coordinates**, against the zero section 2 measured
+>   on the injuries source alone. They are a centimetre apart and the disagreement
+>   is float noise, but it is why the check is a distance in metres.
+
 **Nothing here is built.** This is the specification for the next session, written
 in the session that measured what it rests on, so that the work can start from
 facts rather than from assumptions about the sources.

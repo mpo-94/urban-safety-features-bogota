@@ -26,6 +26,13 @@ figure reported here. The matrix is to be modelled against a set of urban
 predictors — all of them built environment, measured from the delivered
 cartography — with generalized linear models on panel data.
 
+Beside the matrix the pipeline cuts the same events a second way — by unit, year
+and month, with no pair attached — and draws a map that places every casualty at
+the coordinate of its crash. The three answer different questions: who was harmed
+by whom, how many happened in a place and when, and where inside a unit they fell.
+**None of the maps is a map of risk**; they carry counts, and the corridors that
+light up are the ones that carry the travel.
+
 **The models do not exist yet.** What is built is everything they read: the
 matrix in an observed and a corrected form, the static predictors, and a measure
 of travel exposure. The sections below say which of those each route produces.
@@ -380,6 +387,22 @@ python -m src.run_pipeline matrix --no-dump-intermediates
 The territorial scale, the study period and every other setting live in
 `src/config.py`. Data are read from `data/` and nothing is ever written outside
 the run directory.
+
+## What a full run writes
+
+A run of the default route leaves, beside its log and its funnel:
+
+| | |
+|---|---|
+| `data/analysis__matrix_long{,__rho_corrected}.{csv,parquet}` | the casualty matrix as a complete grid, one file per dataset — **what the models read** |
+| `data/analysis__casualties_by_unit_month.{csv,parquet}` | the same events by unit, year and month, both datasets in one file |
+| `data/presentation__crosstab_*` | the matrices reshaped for reading, whole span and per year |
+| `data/presentation__matrix_*.tex` | the tables the deliverables print, emitted rather than transcribed |
+| `figures/{count}/{year}/` | the matrix, the master table and the map of that count and year |
+| `figures/{count}__rho_corrected/{year}/` | the same without a map, since the correction adds no coordinate |
+
+279 figures in all: 111 matrices, 111 master tables and 57 maps. The maps are PDF
+with no raster layer in them; everything else is PNG.
 
 ## Status
 

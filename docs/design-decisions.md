@@ -69,11 +69,13 @@ carried, so the second is larger for the same underlying records.
 | D40 | Exposure between survey years is interpolated as a rate, not as a level | Methodological | Closed on the method; 2005 joined the series on 2026-09-10 and the weekday held block is gone | Yes |
 | D41 | The panel is compared against the casualty series, and that comparison is a diagnostic and never a constructor | Methodological | Closed on the diagnostic; the pandemic patch it left open is decided by D42 | Yes |
 | D42 | The pandemic years are patched by the mirror assumption, at the city level, in a variant of their own | Methodological | Decided and built on 2026-09-10 | Yes |
-| D43 | The casualties get a map that places every one of them, and a master table by unit and month | Methodological | **Specified, not built** — see `mapping-the-casualties.md` | Not yet |
+| D43 | The same events get a second cut, by unit, year and month, with no pair attached | Implementation | Closed | Yes |
+| D44 | The casualty map places every casualty where it happened, and is not a map of risk | Methodological | Closed on what it is and on the recipe | Yes, for the observed set |
 
 Methodological decisions: D1-D7, D9, D10, D11, D15, D17, D18, D19, D21, D22, D32, D35,
-D38, D39, D40.
-Implementation decisions: D8, D12, D13, D14, D16, D20, D23, D24, D25, D26, D27, D33, D34.
+D38, D39, D40, D44.
+Implementation decisions: D8, D12, D13, D14, D16, D20, D23, D24, D25, D26, D27, D33, D34,
+D43.
 
 ---
 
@@ -770,6 +772,29 @@ none.
 **Rejected — a linear scale with a clipped maximum.** It hides the dominant cell
 instead of showing the rest, and the clipping point becomes an arbitrary editorial
 choice buried in the code.
+
+**Amended on 2026-09-11: the colour of a printed number is read off the cell, not
+off the ramp.** The rule was `white if norm(value) > 0.55 else black` — light text
+high up the scale — which is a rule about one ramp's direction and not about the
+cell it is written on. `HEATMAP_COLORMAP` is viridis, which runs dark to light, so
+the largest count came out pale under white text and a cell holding 1 came out
+dark under black. Both ends were wrong at once, which is why it read as a scale
+problem and was not one.
+
+The colour is now taken from the cell the image actually painted — the image's own
+colormap through the image's own norm — and decided from its luminance, which
+works for any colormap and cannot be inverted by changing one. It moved **3,184 of
+the 3,898 printed numbers** across the 114 matrix figures of
+`run_20260901_092654`: 1,873 from black to white on dark cells and 1,311 the other
+way on bright ones. The only cells it left alone are the ones in the middle of the
+ramp, where the two rules happen to agree.
+
+The rule lived in two modules and now lives in one, `src/figures.py`, which is
+where a convention several figures depend on belongs. It governs the matrices, the
+exposure heatmaps and the master table figure of D43. `src/maps.py` keeps its own,
+which answers a different question — it is handed a fill it computed itself rather
+than a value and a norm — and uses sRGB relative luminance because a choropleth's
+labels sit on saturated hues where the channel weights matter.
 
 ---
 
@@ -5436,3 +5461,253 @@ The checks the implementation is not finished without:
   fail on it.
 - **`EXPOSURE_VARIANT` is part of the key**, and no exported table can be summed
   across variants without the check noticing.
+
+---
+
+## D43 — The same events get a second cut, by unit, year and month, with no pair attached
+
+**Kind:** Implementation.
+
+**Status:** Closed.
+
+**Built:** Yes. One exported table and 111 figures, in the `corrected` route.
+
+**Context.** The matrix answers who was harmed by whom. It cannot answer how many
+events happened in a place and when, because it is summed over the year and cut by
+pair: a year whose casualties all fall in one half of it looks exactly like a year
+spread evenly, and a unit's total is spread over forty-two cells before anyone can
+read it.
+
+**Decision — one row per unit, year, month and dataset, with the three counts and
+no pair.** It is a much smaller table than the matrix — 30 units × 18 years × 12
+months is **6,480 rows** for the observed set and 6,120 for the corrected one,
+which starts in 2008 (D30) — and it is a different question rather than a summary
+of the same one.
+
+The grid is complete for the reason D10 gives: a unit-month with no casualty is an
+observation of no harm and has to be a zero rather than a row that is not there.
+
+**Decision — the month comes from `FECHA_OCUR` and the column named `MES_OCURRE`
+is empty.** Measured on 2026-09-11: `MES_OCURRE` is null in 8,592 of 8,592
+fatality rows and 268,921 of 268,921 injury rows. It is not sparse; it is empty.
+`FECHA_OCUR` parses in 100 % of the rows of both layers and its year agrees with
+`ANO_OCURRE` in 100 % of them. This is the third time this project has been saved
+by refusing to take a column's name as evidence of what it holds, after `len_km`
+and `p34_aplicacion_durante_viaje`.
+
+**Decision — the month and the point are resolved in `crash_attributes` and
+nowhere else.** That function already gives a crash its year, its crash type and
+its territorial unit, and is what makes the matrix and ρ put the same crash in the
+same cell by construction. Adding the month and the coordinate there gives every
+new artefact what it needs through the path that already guarantees agreement,
+instead of a second resolution that has to be kept in step by hand.
+
+It resolves the unit by sorting nulls last and taking the first non-null, because
+a crash's victims were verified to agree except where one could not be located.
+The month and the point take a plain `first`, and **the check in
+`parties.check_crash_attributes` is what keeps that honest**: a crash must carry
+one month and one coordinate. It runs on every route that places a crash and
+reports whether it passes or fails, because a check that only speaks when it
+breaks leaves no evidence it ran.
+
+That check compares coordinates as **a distance in metres**, not as rounded
+degrees, and that was not the first design. Five crashes of 2024 are written a
+centimetre apart between the fatality layer and the injury layer — the seventh
+decimal of a degree, float noise from the round trip — which a rounding at seven
+decimals calls a disagreement and a rounding at six does not. Neither answer is
+about the data. A distance says what the check means and has no edge for a value
+to sit on. Over 188,368 crashes the widest spread inside any one of them is
+**under a millimetre**, and the tolerance is 1 m.
+
+**Decision — both datasets in one exported file, unlike the matrices.** The
+matrices keep separate files because the observed ones already feed the dashboard
+under the names they have (D31). This table is new and nothing reads it yet, so
+the `DATASET` column is what tells the two apart wherever it is opened, and a
+consumer wanting both does not have to know there are two files to look for.
+
+**Decision — the figure is thirty units by twelve months, every cell printed and
+shaded, totals on both sides and outside the ramp.** Thirty by twelve is the shape
+that reads on a page and it is the shape the predictors' master table already has
+(D24), so the two look like they belong to one study. The aggregate figure carries
+the eighteen years across the top instead of the months.
+
+**The shading covers the body and never the totals.** A row total is an order of
+magnitude above the cells it sums, so one ramp over both would spend the whole
+scale on the totals and leave the body flat. The totals sit on a neutral ground
+with a rule separating them, and the note under the title says so, because a
+reader cannot see a scale something was left out of.
+
+Inside the body one ramp covers the whole table, which is where this figure
+departs from D24: the predictors' columns are a share and a density and cannot
+share a scale, while every cell here is the same count of the same thing. The ramp
+is logarithmic, as every count figure of this pipeline is (D12), because affected
+parties in a unit-month run from 1 to 143 with a median of 28 — a span of 143x
+that a linear ramp would flatten into two dark rows and twenty-eight
+indistinguishable ones. It is shared across the years of a count, as the matrices
+share theirs; the aggregate takes its own.
+
+**The check that matters is that the two tables agree.** Summed over the months
+and over the pairs, the master table and the matrix must give the same three
+counts per unit and year, exactly. Two tables describing one set of events that
+disagree are worse than one table, because whichever a reader opens first looks
+right, and the two are cut differently enough that a defect in either would not
+show up inside it.
+
+**Rejected — deriving the table from the exported matrix.** The matrix has no
+month and never will; it is cut by pair and summed over the year. Deriving one
+from the other is impossible in this direction, and in the other direction it
+would mean carrying the pair into a table whose whole point is not to have one.
+
+**What it found immediately.** The first run that cut the corrected set by month
+showed January taking 19.3 % of the parties the correction adds against 7.1 % of
+the base — an artefact of D29's promotion order, which nothing before this table
+could have seen, because the correction's arithmetic never leaves the year. D29 is
+amended with the measurement and with the fix.
+
+---
+
+## D44 — The casualty map places every casualty where it happened, and is not a map of risk
+
+**Kind:** Methodological.
+
+**Status:** Closed on what the map is and on the recipe. Whether a rate map is
+built beside it is **open**.
+
+**Built:** Yes. 57 maps, observed dataset only, in the `corrected` and `matrix`
+routes.
+
+**Context.** The matrix and the master table both count by unit. Neither can say
+where inside a unit the casualties fell, and a unit of this study runs from 6.52
+to 53.82 square kilometres — large enough that "in Kennedy" is not a location.
+
+**Decision — not a choropleth.** Every casualty is drawn at the coordinate of its
+crash. The counting by unit is what the master table beside it does, and a map
+repeating it would say the same thing twice while adding the one thing a table
+cannot carry, which is position.
+
+**Decision — two layers, always both: a density surface and the points over it.**
+The pair degrades in the right direction. With sixteen thousand injured in a year
+the surface carries the figure and the marks are texture; with five hundred deaths
+the marks carry it. Either alone fails at one end.
+
+**Decision — the density is weighted by the count the folder is about.** A crash
+that injured four people contributes four to `injured/` and one to `parties/` at
+the same coordinate, and a crash in which nobody died places nothing at all on the
+`killed/` map. This is what makes the three maps of one year three different maps
+rather than three drawings of the same dots, and it is the same distinction D2 and
+D3 exist to keep.
+
+**Decision — the corrected dataset gets matrices and master tables and no map.**
+The correction promotes parties of crashes that already happened, so it adds no
+coordinate: the corrected map would be the same points at slightly different
+weights. The difference is real — `parties` and `injured` do change — but it is
+visible where it belongs, in the matrices and the tables, which is where the
+correction is a number rather than a position. A hundred more figures would not
+add a fact.
+
+### The recipe, and that it was chosen by drawing rather than in advance
+
+Every value below is a parameter with no right answer, so each is declared in
+`config.py` with its reason, printed in the figure's own caption, and **the same
+for every year of a count** — choosing per year would make two maps look
+comparable while being drawn to different rulers.
+
+**Kernel, not hexagonal bins.** Both were drawn on 2023. Hexbin invents nothing
+and degrades more honestly on the sparse count, where a kernel turns one death
+into a disc; the kernel shows the corridor structure that is the reason to draw a
+map at all. The choice was made by a person looking at four figures, with the
+kernel's failure mode measured and accepted rather than overlooked.
+
+**σ = 200 m for `parties` and `injured`, 300 m for `killed`.** The counts differ by
+two orders of magnitude. Four widths were drawn on a year of deaths: at 120 m the
+map is five hundred isolated dots with nothing to say about how they sit together;
+at 300 m the discs meet and the corridors read as corridors; at 450 m the same
+deaths join into one field over half the city. **Merging the discs is exactly how a
+kernel manufactures connectedness**, so the ceiling was found by looking for it,
+and the caption of every sparse map says that the coloured area is the smoothing
+and the black marks are the events.
+
+**Quantile classes, concentrated towards the dense end, not a logarithmic ramp.** A
+logarithmic ramp is right for raw counts and wrong for a smoothed surface: the
+smoothing has already pulled the values together, so a ramp reaching down to the
+empty edges spends two thirds of its colours there and paints the city one shade.
+And even quantiles are not neutral either — cutting at 1/7, 2/7 and so on gives
+every class the same share of the coloured surface by construction, so the darkest
+band comes out as large as the palest in every map ever drawn that way. The
+positions are bunched by `1 - (1 - p) ** 2`, which puts roughly 26, 22, 18, 14, 10,
+6 and 2 per cent of the surface in the seven classes, so the darkest marks the
+densest fiftieth. Seven printed steps also survive being printed, where a
+continuous gradient does not, and the bar carries the value at every break.
+
+**The floor is the 35th percentile for the dense counts and the 20th for `killed`.**
+It decides how much of the map is coloured at all and changes no value. A year of
+injuries is broadly raised over the built city and 35 keeps the bare grey meaning
+"covered and nearly empty"; a year of deaths is near zero almost everywhere with
+five hundred peaks in it, and 35 cut into the surround of each peak.
+
+**`YlOrRd`, light to dark, on the stretch from 0.12 to 0.78 of it.** The
+specification suggested `inferno` and drawing it settled the question the other
+way: its low end is near-black, so over the light ground the empty north of the
+city becomes the heaviest thing in the figure and the dense core recedes. Neither
+end of the colormap is usable — the palest is too close to the ground and the
+darkest swallows the marks — and 0.78 was chosen against a number: a near-black
+mark on the darkest class reads at 3.4:1 there against 2.7:1 at 0.86.
+
+**The marks are a cool near-black, vector, sized and faded by how many there are.**
+The colour has the best worst case of the candidates: against the ground, the
+palest class and the darkest it never falls below 3.4:1, where a strong blue falls
+to 1.6 and white to 1.2. The size and opacity are interpolated between the two
+limit cases — 6.5 pt at 0.80 for five hundred marks, 0.8 pt at 0.16 for two
+hundred thousand — rather than stepped, so two neighbouring years cannot land
+either side of a band edge and come out different for nothing in the data. **The
+darkness of the mark layer is therefore not comparable between two figures, and
+nothing is asked to be**: it says where events are, and every comparison of how
+many rests on the surface and its shared breaks.
+
+**The whole figure is vector.** The surface is drawn as seven classes, so what
+separates two colours is a contour and a contour is a shape; filling those shapes
+rather than painting pixels leaves no raster in the file at all, and the boundary
+between bands is an exact polyline rather than a staircase of cells. It costs
+about 0.6 MB on figures of 2 to 5 MB and is faster to draw than rasterising.
+
+**The class breaks are pooled over the years of a count.** 2020 comes out visibly
+paler than 2023 with nothing done to make it, which is 11,270 injured against
+20,172 — that is the whole purpose of a shared scale. The aggregate takes its own,
+because a cell of it holds eighteen years.
+
+### What the map is not, and it is in every caption
+
+**A map of counts is not a map of danger.** The Caracas, the Boyacá and the Primera
+de Mayo light up because that is where the travel is, not necessarily where a trip
+is most dangerous. This is the single most likely misreading and the one a
+committee will make out loud, so it is in the caption of all 57 figures and not
+only here. **No map of this set may be quoted as evidence about where cycling or
+walking is dangerous.**
+
+The maps of `killed` carry a second caveat naming their own bandwidth, because at
+five hundred events a year the coloured area is a smoothing of the marks and not
+the place of the events.
+
+### The checks
+
+The map accounts for the same casualties the matrix does, in the same way. Drawn
+plus set aside equals what the span holds, and what is set aside is D11's own
+figure without being told it: **731 parties, 1,083 injured and 43 killed** fall
+outside every unit and leave the map for the same reason they leave the
+aggregation. Every one of the 203,077 points drawn is verified to be inside the
+thirty units geometrically rather than assumed, because a crash's unit and its
+coordinate are resolved by two different rules.
+
+**Rejected — drawing one mark per source row.** That would weight `parties/` by how
+many people were hurt, which is the difference between the three counts and the
+reason the study keeps them apart.
+
+**Rejected — a single recipe for all three counts.** It was tried and it fails at
+both ends: the settings that make sixteen thousand marks legible make five hundred
+invisible, and a bandwidth that shows corridors in one shows a field in the other.
+
+**Open — whether a rate map is built beside these.** Casualties per inhabitant or
+per trip, by unit, now that the exposure panel and the population panel both
+exist. It answers the question the count map cannot and it is a different figure
+with a different caveat. It is not in this stage's scope and it is worth taking
+deliberately rather than by extension.
