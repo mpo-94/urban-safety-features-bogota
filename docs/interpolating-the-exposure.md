@@ -1,13 +1,16 @@
 # Interpolating the exposure over the years no survey covers
 
-**Both halves are built, and the year the stage was waiting on is in.** D39 landed
-on `run_20260909_214626`, D40 on `run_20260910_031907`, and 2005 — the fifth anchor —
-on `run_20260910_154603`. This document is no longer a specification: it is what was
-built, what it is checked against, and what building it changed. **Sections 8 and 9
-are the last of those**: section 8 is the measurement that decided 2005 was worth
-implementing and section 9 is what implementing it did. A reader who knows the
-decisions should start from those two. Section 16 of
-[`verification-report.md`](verification-report.md) is the measured record of the run.
+**Both halves are built, the year the stage was waiting on is in, and the pandemic
+has a patch.** D39 landed on `run_20260909_214626`, D40 on `run_20260910_031907`,
+2005 — the fifth anchor — on `run_20260910_154603`, and D42 on
+`run_20260910_235848`. This document is no longer a specification: it is what was
+built, what it is checked against, and what building it changed. **Sections 8, 9 and
+10 are the last of those**: section 8 is the measurement that decided 2005 was worth
+implementing, section 9 is what implementing it did, and section 10 is the pandemic
+patch and the span the panel is built over. A reader who knows the decisions should
+start from those three. Sections 16 and 17 of
+[`verification-report.md`](verification-report.md) are the measured record of the
+run.
 
 **Read [D39 and D40](design-decisions.md) first.** They are the decisions; this is
 what was built and what it is checked against. It is the counterpart of
@@ -514,3 +517,85 @@ series** — and those are the years the recording practice was changing, which 
 measures and which the diagnostic's second column already carries. A disagreement
 there is not by itself evidence against the panel, which is the whole reason D41 is a
 diagnostic and not a constructor.
+
+---
+
+## 10. The pandemic, and the span the panel is built over
+
+Run `run_20260910_235848`: **13,440 rows over two variants, 25 checks, none failed.**
+The decision is D42 and section 17 of the verification report is the measured record.
+Two things changed here and they are independent of one another.
+
+### The window and the span stopped being the same thing
+
+The **window** is 2007–2024 and it has not moved. It opens where the casualty series
+opens, because the exposure exists to be the denominator of a casualty rate and a
+year with no numerator has no rate to model.
+
+The **span** of a series is the window extended back to that series' own earliest
+survey. The weekday has a survey at 2005, so it runs 2005–2024 and carries 2006 as
+an ordinary interpolated year between 2005 and 2011. The Saturday and the Sunday
+have none before 2011, so they run 2007–2024 exactly as before.
+
+**Doing it per day type rather than by moving the window is the whole point.** Moving
+the window would have forced a Saturday and a Sunday for 2005 and 2006 built by
+holding a 2011 rate backwards — a Saturday for a year whose survey never measured
+one, which is the same thing this stage refuses when it leaves 2019's Sunday
+**absent** from the table rather than zero. A model that wants 2007–2024 filters on
+the year, the way it already chooses between the two casualty datasets and between
+the two variants.
+
+**It also removed a hole from the figures**, which is what raised the question: the
+heatmaps had a grey column at 2006 because the panel held no value for it, and the
+honest fix was to produce the value rather than to have a figure invent one.
+
+**And it caught a defect in how a measured year was written.** A measured year now
+carries the survey's own number on **every** column it measured, including one the
+year is not comparable on. 2005's full pedestrian column holds long walking, so it
+anchors nothing and 2006–2010 of that column stay held from 2011; but the year itself
+measured that number. Recovering it from the held rate instead put a value in a
+measured row that no survey ever reported, and the check that compares every measured
+year against the measured table caught it on the first run after 2005 gained a row.
+
+### The pandemic years are a variant and not a correction of the panel
+
+Section 8's second weak block — 2020, 2021 and 2022 — is patched, and D42 is the
+decision. The rate is not interpolated there: the risk is assumed smooth between 2019
+and 2023, and the exposure is what the casualties imply given that risk, which is
+D41's mirror applied as a declared exception on dated years.
+
+**The panel carries both answers.** `EXPOSURE_VARIANT` is part of the key,
+`INTERPOLATED` is this document's construction untouched, and `PANDEMIC_PATCHED`
+differs from it on 360 rows out of 6,720. The fourth provenance value
+`IMPLIED_FROM_RISK` marks every one of them.
+
+What it does to the series, inside the units, on the column the series is read on and
+indexed to 2019 = 100: walking 100 / **60** / **80** / 107 / 116 where the unpatched
+panel says 100 / 104 / 107 / 111 / 116; cycling 100 / 100 / **112** / 104 / 98; the
+motorcycle 100 / **76** / 102 / 115 / 120; the car 100 / **69** / 94 / 95 / 88.
+**The four modes are computed independently of one another and they agree**, and that
+is the argument for the patch rather than the plausibility of any one of them.
+
+Three things about it belong in this document because they are properties of the
+stage and not of the decision:
+
+- **The factor is one number per mode and year, computed at the city.** Each unit
+  keeps the share of the city its survey gave it, so the patch moves the level of the
+  panel and none of its geography. Per-unit factors were measured and rejected on
+  their dispersion: the bicycle's run 0.68 to 1.74 across units on a median of sixty
+  casualties, where Poisson noise alone is worth fourteen per cent.
+- **Both levels and both rates are multiplied by it**, which is what keeps D39's two
+  invariants alive through the patch rather than by luck.
+- **In the patched years the risk is not measurable.** It is the log-linear path
+  between 2019 and 2023 by construction, so no model fitted on that variant can be
+  read as having measured how risk moved in those years.
+
+### And the stage now writes something to look at
+
+The panel is a long table of 13,440 rows, which is the right shape for joining and
+the wrong shape for looking. The run writes a second shape beside it — twenty-five
+wide tables under `review/` and thirty-two figures in six numbered folders under
+`figures/interpolation/` — and **nothing downstream reads any of it**. Section 17 of
+the verification report lists the folders and the three conventions in them that are
+decisions rather than styling: a dot on every year coloured by its provenance, every
+index read against 2011, and the run id on every figure.

@@ -4457,9 +4457,14 @@ Three consequences are worth carrying:
 - **Anchors are read per column and per actor type**, because a year may measure a
   column and not be comparable on it. See D39's amendment.
 - **Two places assumed every anchor lies inside the window** and 2005 is the first
-  that does not. The population panel now covers the survey years as well as
-  2007–2024, and the check that counts measured years per series counts the anchors
-  the window contains and reports how many sit outside it.
+  that does not. That assumption was removed twice over: first by covering the survey
+  years in the population panel and counting the anchors the window contains, and
+  then, on 2026-09-10, by **building each series over its own span** — the window
+  extended back to that series' earliest survey. The weekday runs 2005–2024 and
+  carries 2006 as an ordinary interpolated year; the Saturday and the Sunday run
+  2007–2024, because moving the window instead would have forced a Saturday for a
+  year whose survey never measured one. The window still opens in 2007, where the
+  casualty series opens, and a model gets it by filtering on the year.
 - **The new segment is the widest of the four.** 59 of the 480 unit × mode × step
   combinations move by more than a factor of two on 2005 → 2011 against 47 on
   2011 → 2015, and the motorcycle passes it in all thirty units. The block that was

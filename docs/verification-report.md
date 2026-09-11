@@ -2797,19 +2797,32 @@ both.
 
 ## 16. Exposure in the years no survey covers
 
-Run `run_20260910_154603`, route `interpolation`, command
-`python -m src.run_pipeline interpolation`. **Seventeen checks, none failed.**
+Run `run_20260910_235848`, route `interpolation`, command
+`python -m src.run_pipeline interpolation`. **Twenty-five checks, none failed.**
 
-**2005 joined the series on 2026-09-10 and the weekday held block is gone.** What
-follows was written when the panel rested on four anchors; the figures that moved
-are marked, and the subsection *What 2005 changed* at the end is the difference. The
-decision is D40 and the specification is
+**Three things happened to this stage after it was first built**, all on
+2026-09-10, and each is marked where it lands: 2005 joined the series and the
+weekday held block went away; the pandemic years gained a second variant, which is
+D42 and section 17; and the panel stopped ending where the study window ends. What
+follows was written when the panel rested on four anchors and ran 2007–2024 — the
+figures that moved are marked, and the two subsections at the end are the
+difference. The decision is D40 and the specification is
 [`interpolating-the-exposure.md`](interpolating-the-exposure.md).
 
-The surveys sit at 2011, 2015, 2019 and 2023 and the casualty series runs
-2007–2024. Four of those eighteen years are measured, nine fall between two
-measured years, four fall before the first and one after the last. This stage fills
-the fourteen.
+The surveys sit at 2005, 2011, 2015, 2019 and 2023 and the casualty series runs
+2007–2024. Four of those eighteen years are measured, thirteen fall between two
+measured years and one after the last.
+
+**The window and the span are two different things, and the difference is worth
+stating before any figure is read.** The *window* is 2007–2024: it opens where the
+casualty series opens, because the exposure exists to be the denominator of a
+casualty rate and a year with no numerator has no rate to model. The *span* of a
+series is the window extended back to that series' own earliest survey, which for
+the weekday is 2005 and for the Saturday and the Sunday is nothing earlier than the
+window itself. So the weekday carries 2005 and 2006 and the other two day types do
+not, **no Saturday is invented for a year whose survey never measured one**, and a
+model that wants 2007–2024 gets it by filtering on the year — the same way it
+chooses between the two casualty datasets and between the two variants.
 
 **It reads two tables another run exported and the population panel, and it reads no
 survey.** The source run is named in the log and in the exported dictionary —
@@ -2826,17 +2839,23 @@ exactly as the corrected casualty set sits beside the observed one (D31).
 
 ### What it produces
 
-**6,480 rows: 30 units × 4 actor types × 3 day types × 18 years**, in
+**6,720 rows a variant and 13,440 in all**, in
 `analysis__exposure_by_unit_interpolated.{csv,parquet}`, with
-`reference__exposure_interpolated_dictionary.csv` beside them.
+`reference__exposure_interpolated_dictionary.csv` and
+`reference__pandemic_patch_factors.csv` beside them. The 6,720 are 30 units × 4
+actor types × (20 weekday years + 18 Saturdays + 18 Sundays), which is the span rule
+above: the weekday reaches back to 2005 because a survey measured it there.
+
+The census of one variant — the patched one differs from it on 360 rows, which is
+section 17:
 
 | | Rows | Share |
 |---|---:|---:|
-| `MEASURED` — the year is a survey year and the value is the survey's | 960 | 15 % |
-| `INTERPOLATED` — built log-linearly from the rate of the two surveys either side | 2,280 | 35 % |
-| `HELD` — outside the measured range, the rate flat and the population moving | 3,240 | 50 % |
+| `MEASURED` — the year is a survey year and the value is the survey's | 1,080 | 16 % |
+| `INTERPOLATED` — built log-linearly from the rate of the two surveys either side | 2,880 | 43 % |
+| `HELD` — outside the measured range, the rate flat and the population moving | 2,760 | 41 % |
 
-**Eighty-five per cent of the panel is constructed**, which is the single fact
+**Eighty-four per cent of the panel is constructed**, which is the single fact
 `EXPOSURE_PROVENANCE` exists to keep in front of a reader. A model fitted on all
 eighteen years without it is fitted on fourteen observations of an assumption.
 
@@ -2849,9 +2868,20 @@ The columns beyond the identity the other tables share:
 | `TRIPS_PER_DAY_OF_TYPE_OVER_15MIN` | the same on D39's pedestrian definition; identical to the first for the three modes with one definition |
 | `TRIPS_PER_DAY_OF_TYPE_PER_INHABITANT` | the rate the interpolation actually runs on |
 | `TRIPS_PER_DAY_OF_TYPE_OVER_15MIN_PER_INHABITANT` | the same rate on the narrower definition, interpolated separately |
-| `EXPOSURE_PROVENANCE` | `MEASURED`, `INTERPOLATED` or `HELD` |
+| `EXPOSURE_VARIANT` | which assumption the row was built under, and **part of the key**: `INTERPOLATED` is D40 alone, `PANDEMIC_PATCHED` is D42 over three years (section 17). Two rows differing only here are one question answered twice and are never added together |
+| `EXPOSURE_PROVENANCE` | `MEASURED`, `INTERPOLATED`, `HELD`, or `IMPLIED_FROM_RISK` on the patched variant's pandemic years |
 | `YEARS_TO_NEAREST_SURVEY` | 0 on a survey year and nowhere else; the largest is 16 |
+| `PANDEMIC_PATCH_FACTOR` | what the row's levels and rates were multiplied by; exactly 1.0 outside the patched block, so dividing by it recovers the unpatched value |
 | `SAMPLE_SUPPORT` | carried through from the survey year the value rests on |
+
+**A measured year carries the survey's own number on every column it measured**,
+including one the year is not comparable on. 2005's full pedestrian column holds
+long walking, so it anchors nothing and the years around it stay held from 2011 —
+but the year itself measured that number and the panel says so, exactly as the
+measured table does. Recovering it from the held rate instead would have put a value
+in a measured row that no survey ever reported, and the check that compares every
+measured year against the measured table is what caught it, on the first run after
+2005 gained a row of its own.
 
 **Two rates and not one, which is a departure from what D40 sketched.** The
 specification named a single `TRIPS_PER_INHABITANT`, and there are two because the
@@ -2863,31 +2893,36 @@ joined to each other.
 
 ### The checks
 
+**Twenty-five of them on `run_20260910_235848`, none failed.** Nineteen are the
+panel's own and six are D42's, which are in section 17.
+
 | Check | Result |
 |---|---|
-| The table carries exactly the declared columns, in the declared order | OK, 15 of 15 |
+| The table carries exactly the declared columns, in the declared order | OK, 17 of 17 |
 | Every row names a unit of the study | OK, 30 of 30 |
+| Every row names a declared variant of the panel | OK, 6,720 and 6,720 |
+| **Unit, year, actor type, day type and variant identify a row uniquely** | OK, 0 duplicated over 13,440 |
 | No combination of unit, year, actor type and day type appears twice | OK, 0 duplicated |
-| `WEEKDAY`: the grid of unit, actor type and year is complete over the window | OK, 2,160 rows of 2,160 |
-| `SATURDAY`: the grid of unit, actor type and year is complete over the window | OK, 2,160 rows of 2,160 |
-| `SUNDAY`: the grid of unit, actor type and year is complete over the window | OK, 2,160 rows of 2,160 |
-| **Every measured year comes out identical to the measured table** | OK, 960 rows, 6 shared columns, compared bit for bit |
-| `TRIPS_PER_DAY_OF_TYPE` is its rate times the population of the same unit and year | OK to 1e-12 over 6,480 rows |
-| `TRIPS_PER_DAY_OF_TYPE_OVER_15MIN` is its rate times the same population | OK to 1e-12 over 6,480 rows |
+| `WEEKDAY`: the grid of unit, actor type and year is complete over its span | OK, 2,400 rows of 2,400, 2005–2024 |
+| `SATURDAY`: the grid of unit, actor type and year is complete over its span | OK, 2,160 rows of 2,160, 2007–2024 |
+| `SUNDAY`: the grid of unit, actor type and year is complete over its span | OK, 2,160 rows of 2,160, 2007–2024 |
+| **Every measured year comes out identical to the measured table** | OK, 1,080 rows, 6 shared columns, compared bit for bit |
+| `TRIPS_PER_DAY_OF_TYPE` is its rate times the population of the same unit and year | OK to 1e-12 over 13,440 rows |
+| `TRIPS_PER_DAY_OF_TYPE_OVER_15MIN` is its rate times the same population | OK to 1e-12 over 13,440 rows |
 | No null and no negative anywhere a number is required | OK, 0 and 0 over 5 columns |
-| Every row's provenance is one of the declared three | OK, 960 / 2,280 / 3,240 |
-| Each series has exactly as many measured years as surveys measured that day type | OK, 4 weekday, 3 Saturday, 1 Sunday |
+| Every row's provenance is one of the declared values | OK, 2,160 / 5,400 / 5,520 / 360 over both variants |
+| Each series has exactly as many measured years as surveys measured that day type | OK, 5 weekday, 3 Saturday, 1 Sunday |
 | The distance to the nearest survey is zero on the measured years and nowhere else | OK, 0 and 0; the largest distance is 16 years |
-| The fifteen-minute column equals the full one on the modes with one definition | OK, 4,860 rows |
-| The fifteen-minute walking of a constructed year is still a part of its walking | OK, 0 rows where the part exceeds the whole, over 1,620 |
+| The fifteen-minute column equals the full one on the modes with one definition | OK, 10,080 rows over both variants |
+| The fifteen-minute walking of a constructed year is still a part of its walking | OK, 0 rows where the part exceeds the whole, over 3,360 |
 | The population of every row is the population panel's for that unit and year | OK, 0 rows the panel does not cover |
-| Every exported file is on disk and none is empty | OK, 2 of 2 |
+| Every exported file is on disk and none is empty | OK, 3 of 3 |
 
 **The first of them is the one that matters and the rest are arithmetic.** An
-interpolation must not move an observation, so the 960 measured rows are compared
+interpolation must not move an observation, so the 1,080 measured rows are compared
 against the measured table bit for bit on all six columns the two tables share —
 and they pass because a measured year's level is carried straight through rather
-than recovered from its own rate. The round trip through a division and a
+than recovered from its own rate, on every column the survey measured. The round trip through a division and a
 multiplication is right to a part in 1e16, and there is no reason to do arithmetic
 where there is nothing to compute.
 
@@ -3307,3 +3342,151 @@ and fitting a category boundary to close a gap is not something this project doe
   survey years it overlaps, and shown to measure what the survey measures.
 - **Which casualty set the window follows**, 2007–2024 or 2008–2024. The panel is
   built over the wider one so that the choice stays a filter.
+
+---
+
+## 17. The pandemic patch, and the panel in a shape a person can read
+
+Run `run_20260910_235848`, route `interpolation`, the same run as section 16. The
+decision is **D42** and the two halves of this section are what it produced and what
+was built to look at it.
+
+### What the panel said about 2020 before this
+
+Inside the thirty units, on the weekday, indexed to 2019 = 100:
+
+| Mode | 2019 | 2020 | 2021 | 2022 | 2023 |
+|---|---:|---:|---:|---:|---:|
+| `PEDESTRIAN` | 100 | 104 | 107 | 111 | 116 |
+| `BICYCLE` | 100 | 100 | 99 | 99 | 98 |
+| `MOTORCYCLE` | 100 | 106 | 110 | 115 | 120 |
+| `CAR` | 100 | 98 | 95 | 91 | 88 |
+
+**It said walking grew four per cent in 2020 and kept growing**, which is not a
+defect of D40's arithmetic: the information that 2020 happened is not in the two
+anchors it interpolates between. For those three years the degree of freedom is
+spent on the risk instead of on the exposure, which is D41's mirror applied as a
+declared exception on dated years.
+
+### The twelve factors, and the twelve the other dataset gives
+
+Derived from the ρ-corrected series of run `run_20260901_092654`, at the city, one
+per mode and year; the second block is the same computation on the observed set,
+printed on every run as a sensitivity:
+
+| Mode | 2020 | 2021 | 2022 | | 2020 obs. | 2021 obs. | 2022 obs. |
+|---|---:|---:|---:|---|---:|---:|---:|
+| `PEDESTRIAN` | **0.584** | **0.746** | 0.963 | | 0.584 | 0.746 | 0.963 |
+| `BICYCLE` | 1.001 | **1.126** | 1.054 | | 1.001 | 1.126 | 1.054 |
+| `MOTORCYCLE` | **0.721** | 0.925 | 1.001 | | 0.734 | 0.948 | 1.012 |
+| `CAR` | **0.706** | 0.993 | 1.040 | | 0.695 | 1.101 | 1.084 |
+
+And the series they produce, on the same index as above:
+
+| Mode | 2019 | 2020 | 2021 | 2022 | 2023 |
+|---|---:|---:|---:|---:|---:|
+| `PEDESTRIAN` | 100 | **60** | **80** | 107 | 116 |
+| `BICYCLE` | 100 | 100 | **112** | 104 | 98 |
+| `MOTORCYCLE` | 100 | **76** | 102 | 115 | 120 |
+| `CAR` | 100 | **69** | 94 | 95 | 88 |
+
+**The evidence is not that any one of those numbers looks right; it is that the four
+modes agree.** They are computed independently of one another, from four casualty
+counts and four interpolated risks, and together they say that everything collapsed
+in 2020 except cycling, which held and then peaked in 2021 — the year Bogotá opened
+its temporary bike lanes. Nothing in the method knows that.
+
+**ρ does not touch the pedestrian in any of the seventeen years the two sets share**,
+so the factor that matters most does not depend on that question at all. It moves the
+bicycle by at most 1.3 %, and the car by up to 129 % and the motorcycle by up to 24 %
+— which is exactly the population ρ exists to repair. The 2020 factors agree within
+1.5 points under either set; where they disagree is the car in 2021, 0.993 against
+1.101.
+
+### What the run proves about it
+
+The patched years are a **variant** of the panel and not a replacement: 13,440 rows
+under an `EXPOSURE_VARIANT` column that is part of the key, of which 360 carry the
+fourth provenance value `IMPLIED_FROM_RISK`. Six checks are D42's own and all six
+pass:
+
+| Check | Result |
+|---|---|
+| The patch moves nothing outside the pandemic years of one kind of day | 360 rows differ and all 360 are `WEEKDAY` 2020–2022 |
+| The mode-year combinations that differ are the ones declared | 12 against 12 |
+| `IMPLIED_FROM_RISK` marks the patched block and nothing else | 360 against 360 |
+| The factor is exactly one everywhere else | 0 of 13,080 |
+| Every patched value is its unpatched value times that row's factor | 6,720 rows × 4 columns |
+| The patched city total is the casualties over the smoothed risk | 12 combinations, largest relative gap **1.8e-16** |
+
+D39's two invariants are checked on both variants and hold, which is what applying
+one factor to both levels **and** both rates buys: the fifteen-minute column stays a
+part of the full one, and the two stay equal on the three modes with a single
+definition.
+
+### What it does not fix, measured
+
+**A uniform factor removes the level of D41's 2020 departure and not its structure.**
+D41 measured that the departure runs along a proxy for income — Spearman −0.49 for
+the car and −0.53 for the pedestrian against each unit's car trips per inhabitant in
+2019 — and a single city factor moves every unit by the same amount. The alternative
+absorbs that structure by writing the risk's geography into the exposure, which is
+worse on the quantity the thesis estimates, so the decision takes the conservative
+one and marks the years. The dispersion that settled it is the figure
+`03_pandemic/pandemic__unit_dispersion`:
+
+| Mode, 2020 | 5th pct | median | 95th pct | range | median casualties per unit |
+|---|---:|---:|---:|---|---:|
+| `PEDESTRIAN` | 0.42 | 0.58 | 0.79 | 0.40–0.83 | 51 |
+| `BICYCLE` | 0.73 | 0.99 | 1.43 | 0.68–1.74 | 60 |
+| `MOTORCYCLE` | 0.59 | 0.71 | 0.93 | 0.52–0.96 | 146 |
+| `CAR` | 0.51 | 0.72 | 1.03 | 0.45–1.18 | 58.5 |
+
+At fifty casualties a cell Poisson noise alone is worth about fourteen per cent, so
+the bicycle's 0.68 to 1.74 is very nearly all of it noise. **The figure makes the
+argument rather than asserting it**: the motorcycle, with two hundred casualties a
+unit, scatters visibly less than the pedestrian with fifty.
+
+### The review artefacts, and what they are not
+
+The panel is a long table of 13,440 rows, which is the right shape for joining it to
+the casualty matrix and the predictors and the wrong shape for looking at it. The run
+therefore writes a second shape, and **nothing downstream reads any of it**: no model,
+no dashboard, no other route. It is for the one question no check can answer, which is
+whether the panel looks like the city it describes.
+
+**Under `review/`, twenty-five tables**: one per mode and kind of day with the thirty
+units down and the years across, both variants in the same file, in a level version
+and an index version, plus the provenance of every series. They are for a spreadsheet.
+
+**Under `figures/interpolation/`, thirty-two figures in six numbered folders**, so
+that a directory listing is a reading order:
+
+| Folder | What it answers |
+|---|---|
+| `00_summary` | the four modes on one sheet, and where every cell of the panel comes from |
+| `01_city` | one mode and one kind of day, with the level above and the rate below |
+| `02_units` | the thirty units as thirty small series and as a heatmap |
+| `03_pandemic` | D42's twelve factors, what they do, and why at the city |
+| `04_diagnostic` | D41's ratio, at the city and unit by unit |
+| `05_volatility` | every unit's step between adjacent surveys, which is D40's open question |
+
+Three conventions in them are decisions rather than styling. **Every year carries a
+dot on the colour of its own provenance**, so a figure cannot be read as eighteen
+observations. **Every index and every heatmap is read against 2011**, which is the
+first measured year inside the study window: not the first year of the window, which
+is itself a construction, and not 2005, which only the weekday has — indexing each
+series against its own earliest survey would index the weekday against 2005 and the
+Saturday against 2011 and stop the four heatmaps being comparable. And **every figure
+carries its run id in the corner**, because a figure pasted into a message loses
+whatever caption it had.
+
+### What is open
+
+- **Whether the pandemic years enter the models**, patched or unpatched. They are
+  marked either way, so it is a filter.
+- **Whether the per-unit factors are shrunk toward the city's**, which is the same
+  question D40 has about the trajectories and is now asked with two figures rather
+  than one.
+- **Whether an external annual series replaces the patch.** D42 is built to be
+  retired: it is twelve numbers and the unpatched variant is untouched.

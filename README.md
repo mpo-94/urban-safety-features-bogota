@@ -71,7 +71,10 @@ pip install -r requirements.txt
 
 `src/run_pipeline.py` is the only entry point. Each invocation is a **route**: a
 named path through the stages, which gets its own timestamped directory under
-`results/` with the tables, the figures and the full log of that run.
+`results/` with the tables, the figures and the full log of that run. A run
+directory holds `data/` for the tables other things read, `figures/` for what is
+drawn, and — where a route writes it — `review/` for tables shaped to be read rather
+than joined.
 
 ```bash
 python -m src.run_pipeline            # full pipeline; announces the route it picked
@@ -175,9 +178,17 @@ population — log-linearly between adjacent surveys, and the level comes back
 multiplied by that unit's population for that year, from a panel that is annual.
 Outside the measured range the rate is held flat rather than extrapolated, because a
 slope fitted to two points and prolonged four years is an invention. **Every
-constructed cell says it is one**: the panel is 6,480 rows and 85 % of them are
-constructed, so `EXPOSURE_PROVENANCE` and `YEARS_TO_NEAREST_SURVEY` are what stop
+constructed cell says it is one**: the panel is 6,720 rows a variant and 84 % of them
+are constructed, so `EXPOSURE_PROVENANCE` and `YEARS_TO_NEAREST_SURVEY` are what stop
 fourteen constructed years being read as fourteen observations.
+
+**The window and the span are not the same thing.** The window is 2007–2024 and it
+opens where the casualty series opens, because the exposure exists to be the
+denominator of a casualty rate and a year with no numerator has no rate to model. A
+series is built over that window extended back to its own earliest survey, so the
+weekday runs 2005–2024 and carries 2006 like any other year between two anchors,
+while the Saturday and the Sunday run 2007–2024 — no Saturday is invented for a year
+whose survey never measured one. A model that wants the window filters on the year.
 
 The route reads the exposure table another run exported and the population panel,
 and **it reads no survey and changes nothing**: the measured table is the record of
@@ -215,6 +226,31 @@ the ordinary constructed cells and disagree exactly in the held block and in
 denominator, while building the exposure from an assumed risk would assume the shape
 of what the study estimates. Both comparisons are in section 16 of the verification
 report.
+
+**Three of the eighteen years are patched, and they say so.** D40's line through
+2020 says walking grew four per cent that year and kept growing, which is not a
+defect of the interpolation: the information that 2020 happened is not in the two
+anchors. So for 2020, 2021 and 2022 the degree of freedom is spent on the other
+factor — the risk is assumed smooth and the exposure is what the casualties imply
+given that risk — as a declared exception on dated years rather than as a method.
+**The panel carries both answers**: `EXPOSURE_VARIANT` is part of its key, and the
+patched variant differs from the unpatched one on 360 of 6,720 rows, every one of
+them marked `IMPLIED_FROM_RISK`. The factor is one number per mode and year computed
+at the city, so each unit keeps the share the survey gave it and the patch moves the
+level of the panel and none of its geography. The evidence for it is not that any one
+factor looks right but that the four modes, computed independently, agree: everything
+collapses in 2020 except cycling, which holds and then peaks in 2021. What it costs
+is that in those three years the risk is not measurable, that the error has a known
+sign — if risk per trip rose on emptied streets, the patch overstates how far travel
+fell — and that a city factor leaves the spatial structure of the departure in place.
+That is D42, and section 17 of the verification report is the measured record.
+
+**And the stage writes something to look at.** A long table of 13,440 rows is the
+right shape for joining and the wrong shape for reading, so the run also writes
+twenty-five wide tables under `review/` and thirty-two figures in six numbered
+folders under `figures/interpolation/`. **Nothing downstream reads any of it**: they
+answer the one question no check can, which is whether the panel looks like the city
+it describes.
 
 **The pedestrian mode is measured twice and that half is built.** On the full
 definition the series swings 46 % over the surveyed region and changes direction
