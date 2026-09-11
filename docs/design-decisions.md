@@ -2001,8 +2001,50 @@ them, so no party is credited with more deaths than occupants.
 **Decision — which crashes inside a cell are chosen does not matter, and they are
 chosen in a fixed order anyway.** Every crash in a cell shares its pair, its year,
 its unit and the side that went unrecorded, so they are interchangeable for every
-purpose the study puts them to. They are taken in order of crash identifier, so
-the choice is reproducible and auditable rather than arbitrary at each run.
+purpose the study puts them to. The order exists to be reproducible and auditable
+rather than arbitrary at each run, and it must carry nothing beyond that.
+
+**Amended on 2026-09-11: the order is a hash of the crash identifier and no longer
+the identifier itself.** The original rule took a cell's crashes in order of
+identifier, which satisfies reproducibility and was believed to satisfy the rest.
+It does not. Identifiers are issued in sequence, so within a year they run with
+the calendar — Spearman 0.95 in 2020, 0.96 in 2016, 0.99 in 2012 — and "the first
+crashes of a cell by identifier" is "the earliest crashes of that year". The order
+expressed a preference nobody chose.
+
+Nothing that existed before could see it. The correction's arithmetic is entirely
+at the level of a pair, a year and a unit, so every total it produces was right;
+what was wrong was the distribution *inside* the year, and until the master table
+gave the study a month column there was no figure in which a month appeared. The
+first run that cut the corrected set by month showed January taking **19.3 % of
+the promoted parties against 7.1 % of the base**, and December 2.2 % against
+8.4 % — a monotone slide from 2.70x to 0.26x across the calendar.
+
+Hashing the identifier keeps every property the order was chosen for and drops
+the one it smuggled in. After the change the ratio runs from 0.98x to 1.03x in
+all twelve months, which is what "the correction is blind to the month" looks
+like when it is true.
+
+**What the change moved, measured on `run_20260911_042319` against
+`run_20260911_040759`.** The party matrix is identical in all **21,420 cells**,
+and the three totals are unchanged: 216,155 affected parties, 251,852 injured,
+7,325 killed. The same number of crashes is promoted in every cell; different
+ones are. The person counts move between cells — 1,645 injured cells and 46
+killed cells differ — because `_assign_people` allocates a group's people over
+the parties promoted in it and those parties now sit in different units, while
+the group totals it allocates do not change.
+
+**The order is keyed on a constant, `CORRECTION_PROMOTION_ORDER_SALT`, so that
+the claim can be tested rather than asserted.** Changing that one word reshuffles
+which crashes are promoted and must change no total; a run is what says whether
+"which crashes are chosen does not matter" is still true.
+
+**And the run now measures it.** `matrix.report_correction_seasonality` compares
+each month's share of what the correction adds against its share of what was
+already there, and says so when any month departs by more than
+`CORRECTION_SEASONALITY_TOLERANCE`. It reports and does not fail the run: the
+annual figures were never in question, so refusing to write them would answer a
+question nobody asked.
 
 ---
 

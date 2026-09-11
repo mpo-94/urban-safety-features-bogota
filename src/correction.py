@@ -33,6 +33,7 @@ Run it with:
 
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
 
 import numpy as np
@@ -56,6 +57,7 @@ _AFFECTED_A = "_affected_a"
 _AFFECTED_B = "_affected_b"
 _PROMOTED_TYPE = "_promoted_type"
 _PROMOTED_PARTY = "_promoted_party"
+_PROMOTION_ORDER = "_promotion_order"
 
 SIDE_A = "A"
 SIDE_B = "B"
@@ -488,6 +490,37 @@ def build_plan(
 # ---------------------------------------------------------------------------
 
 
+def promotion_order(crash_ids: pd.Series) -> pd.Series:
+    """A fixed, auditable order over crashes that carries no meaning of its own.
+
+    The order has one job: to be the same on every run, so that two runs of the
+    same sources promote the same crashes and the choice can be audited. It must
+    carry nothing else, because the crashes it orders are interchangeable.
+
+    **The crash identifier fails that second requirement and it took the master
+    table to notice.** Identifiers are issued in sequence, so within a year they
+    run with the calendar — Spearman 0.95 to 0.99 — and taking the first of a
+    cell's crashes took the earliest ones. Nothing that existed before the month
+    became a column could see it: the correction's own arithmetic never leaves
+    the year, so every total was right and only the distribution inside the year
+    was wrong. It put 19.3 % of the promoted parties in January against 7.1 % of
+    the base.
+
+    A hash of the identifier keeps the order reproducible and drops the ordering
+    nobody chose. Ties fall back on the identifier so the result is total.
+    """
+    keyed = config.CORRECTION_PROMOTION_ORDER_SALT.encode("utf-8")
+    return crash_ids.astype(str).map(
+        # Seven bytes rather than eight: 56 bits is far more than the 2^17 crashes
+        # need to avoid collisions, and it fits in a signed 64-bit integer, which
+        # eight bytes does not.
+        lambda identifier: int.from_bytes(
+            hashlib.blake2b(identifier.encode("utf-8"), digest_size=7, key=keyed).digest(),
+            "big",
+        )
+    )
+
+
 def select_promotions(
     outcomes: pd.DataFrame, plan: pd.DataFrame, persons: pd.DataFrame, log: RunLog
 ) -> pd.DataFrame:
@@ -496,17 +529,21 @@ def select_promotions(
     Which crashes inside a cell are chosen does not matter and cannot be known:
     every crash in a cell shares its pair, its year, its unit and the side that
     went unrecorded, so they are interchangeable for every purpose the study puts
-    them to. They are taken in order of crash identifier, so the choice is at
-    least the same on every run and can be audited.
+    them to. They are taken in the order `promotion_order` fixes, so the choice
+    is the same on every run and can be audited without being a preference.
     """
+    # Computed once over the whole frame rather than inside the loop, which runs
+    # a few thousand times over the same crashes.
+    ordered = outcomes.assign(**{_PROMOTION_ORDER: promotion_order(outcomes[config.CRASH_ID_COL])})
+
     chosen: list[pd.DataFrame] = []
     for _, cell in plan.iterrows():
-        pool = outcomes[
-            (outcomes[config.PAIR_COL] == cell[config.PAIR_COL])
-            & (outcomes[config.YEAR_COL] == cell[config.YEAR_COL])
-            & (outcomes[config.AREA_CODE_COL] == cell[config.AREA_CODE_COL])
-            & (outcomes[config.OUTCOME_COL] == cell[config.CORRECTION_POOL_COL])
-        ].sort_values(config.CRASH_ID_COL, kind="stable")
+        pool = ordered[
+            (ordered[config.PAIR_COL] == cell[config.PAIR_COL])
+            & (ordered[config.YEAR_COL] == cell[config.YEAR_COL])
+            & (ordered[config.AREA_CODE_COL] == cell[config.AREA_CODE_COL])
+            & (ordered[config.OUTCOME_COL] == cell[config.CORRECTION_POOL_COL])
+        ].sort_values([_PROMOTION_ORDER, config.CRASH_ID_COL], kind="stable")
         take = pool.head(int(cell[config.CORRECTION_DEFICIT_COL])).copy()
         if len(take) != int(cell[config.CORRECTION_DEFICIT_COL]):
             raise RuntimeError(

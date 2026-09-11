@@ -4539,9 +4539,24 @@ CASUALTY_TABLE_CELL_FONT_PT = 7.0
 # 8.4 % in the base.
 #
 # A quarter either way is far wider than any real seasonality of the mechanism
-# and far narrower than the 2.7x this currently reaches, so it catches the
-# artefact without firing on noise. Measured on run_20260911_033605.
+# and far narrower than the 2.7x it reached before the promotion order was fixed,
+# so it catches the artefact without firing on noise. First measured on
+# run_20260911_033605.
 CORRECTION_SEASONALITY_TOLERANCE = 1.25
+
+# What the promotion order is keyed on. The crashes of a cell are interchangeable
+# — same pair, same year, same unit, same side unrecorded — so the order exists
+# only to be fixed and auditable, never to express a preference. Ordering by the
+# crash identifier did express one: identifiers are issued in sequence, so within
+# a year they run with the calendar, and taking the first of them took the
+# earliest months. Hashing the identifier keeps every property the order was
+# chosen for and drops the one nobody chose.
+#
+# It is a constant rather than a literal because it makes the claim testable:
+# changing this word reshuffles which crashes are promoted while changing no
+# total, so "which crashes are chosen does not matter" can be checked by running
+# the pipeline twice instead of being asserted. See D29.
+CORRECTION_PROMOTION_ORDER_SALT = "promotion-order-v1"
 
 # ---------------------------------------------------------------------------
 # Tables compiled as LaTeX rather than drawn
