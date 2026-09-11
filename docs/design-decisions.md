@@ -62,7 +62,7 @@ carried, so the second is larger for the same underlying records.
 | D33 | The tables the deliverables print are emitted as LaTeX, not transcribed | Implementation | Closed | Yes |
 | D34 | The predictor figures come in two sets, and two variables are in neither | Implementation | Closed | Yes |
 | D35 | The desire lines enter as exposure, apportioned by share of length | Methodological | Closed on the rule; the year and the selection are **open** | Yes |
-| D36 | The population enters as a panel, one number per unit and per year | Methodological | Closed on the shape; which years are measured and which modelled is **open** | Yes |
+| D36 | The population enters as a panel, one number per unit and per year | Methodological | Closed; the 2018 census is the only measured year and the rest are the city's projections | Yes |
 | D37 | `data/` is filed by the role the data plays, and every root is declared | Implementation | Closed on the roots; where the exposure layers finally live is **open** | Yes |
 | D38 | Exposure is built from the survey, per unit, year, mode and day type | Methodological | Closed for all five years; which day type the models take is **open** | Yes |
 | D39 | The pedestrian mode is measured twice, and the series is read on the fifteen-minute one | Methodological | Closed | Yes |
@@ -2853,20 +2853,33 @@ belongs to the study rather than to the module that happens to read it first. Th
 exposure module asks it for one year and does not read the file itself: two
 readers of one file are two chances to sum it differently.
 
-### What is still open
+### Which years are measured and which are modelled, answered by the advisor
 
-**Which years are measured and which are modelled.** The file spans 2005 to 2035.
-No census covers that, so some years are projections and, before 2018, probably
-backcasts of one. The file does not say which, and neither does anything shipped
-with it. **The shape of the series is not evidence**: a smooth curve is what both
-a projection and an interpolated census look like, and reading provenance off it
-would be inference presented as fact. To be confirmed against the source before
-any document says which years are which.
+**The panel rests on the 2018 DANE census, and every other year of it is a
+projection the city computed from that one.** Stated by my advisor on 2026-09-11.
+The file spans 2005 to 2035; the census is 2018; so **2005–2017 are back-projections
+and 2019–2035 are projections**, and the only year in the file that is a count is
+2018.
 
-It matters for the study period. If 2007–2017 is backcast from the 2018 census,
-then the denominator of the first eleven years is a model rather than a count, and
-that belongs in the same paragraph as the ρ correction — both are places where the
-data before 2018 are of a different kind from the data after it.
+That answers a question this decision had left open and that the run had been
+warning about on every execution: the file does not say which years are which, and
+**the shape of the series is not evidence for it** — a smooth curve is what a
+projection and an interpolated census both look like, so reading provenance off one
+would have been inference presented as fact. It took a person who knows where the
+file came from.
+
+**What it means for the study, and it belongs in the body of the thesis.** The study
+window opens in 2007 and the census is 2018, so **the denominator of the first
+eleven years is a model and not a count**. That is the same period in which ρ says
+the recording of casualties was changing, and the two belong in one paragraph: the
+data before 2018 are of a different kind from the data after it, on both sides of
+the rate. Every exposure rate this study quotes for 2007–2017 divides a constructed
+exposure by a back-projected population.
+
+**What is still open** is narrower: whether the city's projection is the DANE one
+disaggregated to the UPL or a model of the city's own, and how it treats the units
+whose boundaries Decreto 555 de 2021 drew after the census was taken. Neither
+changes the sentence above.
 
 ---
 

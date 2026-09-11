@@ -273,13 +273,26 @@ def warn_about_the_file(totals: pd.DataFrame, units: gpd.GeoDataFrame, log: RunL
 
     # Said on every run rather than written down once, because it is the kind of
     # caveat that stops being repeated the moment the number starts looking solid.
+    # The file does not carry this: it was answered by my advisor on 2026-09-11,
+    # and the run says it so that no figure drawn from this panel can be read
+    # without it. See D36.
+    census = config.POPULATION_CENSUS_YEAR
     log.warn(
-        "which years of %s are measured and which are projected or backcast is not in the file: "
-        "it spans %d-%d, wider than any census, and the distinction cannot be read off the shape "
-        "of the series. Open question for my advisor; see D36",
+        "%s spans %d-%d and only %d is a count: it is the DANE census of that year, projected "
+        "and back-projected to the rest by the city. So %d-%d are back-projections and %d-%d are "
+        "projections, and the study window opens in %d — the denominator of its first %d years "
+        "is a model and not a count, over the same period in which rho says the recording of "
+        "casualties was changing. See D36",
         config.POPULATION_SOURCE.path.name,
         int(totals[config.YEAR_COL].min()),
         int(totals[config.YEAR_COL].max()),
+        census,
+        int(totals[config.YEAR_COL].min()),
+        census - 1,
+        census + 1,
+        int(totals[config.YEAR_COL].max()),
+        config.FIRST_YEAR,
+        census - config.FIRST_YEAR,
     )
 
 

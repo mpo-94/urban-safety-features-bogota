@@ -1259,24 +1259,26 @@ seen.
 The file spells the first of them `Sumapáz`, with an accent the official name
 does not carry. It is reported as the file spells it.
 
-### What is open, and it is not answerable from the file
+### Which years are measured and which are modelled, and it was not answerable from the file
 
-**Which years are measured and which are projected or backcast.** The file spans
-2005 to 2035. No census covers that, so some of those years are projections, and
-the ones before 2018 are probably backcasts of one. Nothing in the file or
-shipped beside it says which is which.
+**The panel rests on the 2018 DANE census and every other year of it is a projection
+the city computed from that one.** Stated by my advisor on 2026-09-11. The file
+spans 2005 to 2035, the census is 2018, so 2005–2017 are back-projections, 2019–2035
+are projections, and **2018 is the only year in the file that is a count**.
 
-**The shape of the series is not evidence for it.** A smooth curve is what a
-projection and an interpolated census both look like, and reading provenance off
-one would be inference presented as fact. The run says so on every execution
-rather than letting the panel look more solid than it is.
+Nothing in the file or shipped beside it says this, and **the shape of the series is
+not evidence for it**: a smooth curve is what a projection and an interpolated census
+both look like, and reading provenance off one would have been inference presented as
+fact. The run warned about it on every execution rather than letting the panel look
+more solid than it is, which is what kept the question alive until someone who knew
+the source answered it.
 
-It matters for the study period rather than for the arithmetic. If 2007–2017 is
-backcast from the 2018 census, the denominator of the first eleven years is a
-model and not a count, and that belongs in the same paragraph as the ρ
-correction: both are places where the data before 2018 are of a different kind
-from the data after it. To be confirmed against the source before any document
-says which years are which.
+It matters for the study period rather than for the arithmetic. The window opens in
+2007 and the census is 2018, so **the denominator of the first eleven years is a
+model and not a count** — the same period in which ρ says the recording of casualties
+was changing. Both belong in one paragraph of the thesis: before 2018 the data are of
+a different kind from the data after it, on both sides of every rate this study
+quotes.
 
 ---
 

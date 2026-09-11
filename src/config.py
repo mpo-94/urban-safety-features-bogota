@@ -219,6 +219,17 @@ FIRST_YEAR = 2007
 LAST_YEAR = 2024
 STUDY_YEARS = range(FIRST_YEAR, LAST_YEAR + 1)
 
+# The one year of the population file that is a count rather than a model. The
+# file spans 2005-2035 and no census covers that: it is the DANE census of 2018,
+# projected forward and back by the city. Stated by my advisor on 2026-09-11, and
+# declared here rather than written into a log message because it is a fact about
+# the data and not a sentence about it.
+#
+# It is why the study's first eleven years divide a constructed exposure by a
+# back-projected population, which is the same period in which rho says the
+# recording of casualties was changing. See D36.
+POPULATION_CENSUS_YEAR = 2018
+
 
 def population_years() -> tuple[int, ...]:
     """Every year the population panel has to cover, which is not only the study's.

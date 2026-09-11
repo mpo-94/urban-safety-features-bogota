@@ -80,7 +80,8 @@ data/
 │   ├── fatalities__2024_updated_extract.parquet
 │   └── injuries__2024_updated_extract.parquet
 ├── population/
-│   └── osb_demografia-poblacion-upl.csv  one row per unit, year, sex and age
+│   └── osb_demografia-poblacion-upl.csv  one row per unit, year, sex and age;
+│                                         the 2018 DANE census projected to 2005-2035
 └── shp_properties_sorted/                the predictor bundle, filed by geometry
     ├── areas/
     ├── lines/
