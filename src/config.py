@@ -4674,6 +4674,87 @@ MAP_FIGURE_FORMAT = "pdf"
 # it; see D38.
 MAP_FIGURE_HEIGHT_IN = 9.0
 
+# -- the maps of where the casualties happened ------------------------------
+# Not a choropleth and not a map of risk: every casualty at the coordinate of its
+# crash, over a density surface computed in metres. The counting by unit is the
+# master table's job, and the caveat about counts against risk is in every
+# caption. See D44.
+#
+# The values below are the ones a person had to choose by drawing the map and
+# looking at it, which is why they are constants with their reasons beside them
+# rather than arguments somewhere in the drawing code. Each of them is the same
+# for every year of a count: choosing per year would make two maps look
+# comparable while being drawn to different rulers, which is the mistake the
+# matrix figures already avoid by sharing a colour scale.
+CASUALTY_MAP_TECHNIQUE = "kernel"
+
+# Width of a hexagonal cell, when the technique is the grid.
+CASUALTY_MAP_HEX_CELL_M = 300.0
+
+# Standard deviation of the Gaussian, when the technique is the kernel, and the
+# raster it is computed on. The raster only has to be fine enough that the
+# smoothing is not limited by it; at a third of the bandwidth it is not.
+CASUALTY_MAP_KERNEL_BANDWIDTH_M = 300.0
+CASUALTY_MAP_KERNEL_CELL_M = 100.0
+
+# A density over a light ground reads better on one of the heat ramps than on
+# viridis, which is built to be read as an ordered scale rather than as intensity.
+CASUALTY_MAP_COLORMAP = "inferno"
+
+# A linear ramp is out either way: casualties per cell are extremely skewed, a few
+# intersections carry an enormous share, and a linear ramp shows one bright cell
+# and nothing else. Which of the two remaining it is was decided by drawing both.
+#
+# **Quantile, in classes, and not logarithmic.** A logarithmic ramp is right for
+# raw counts and wrong for a smoothed surface, because the smoothing has already
+# pulled the values together: inside the built city the density runs over about
+# one power of ten, and a logarithmic ramp anchored low enough to include the
+# empty edges spends two thirds of its colours on the edges and paints the whole
+# city one shade of red. The quantile classes put the breaks where the values
+# actually are, so the contrast is inside the city, which is where the reader is
+# looking.
+#
+# Classes rather than a continuous ramp for a second reason the specification
+# names: the number of colours has to survive being printed, and seven steps do
+# where a continuous gradient does not. The bar prints the value at every break,
+# so the classes stay checkable rather than decorative.
+CASUALTY_MAP_RAMP = "quantile"
+CASUALTY_MAP_RAMP_CLASSES = 7
+
+# The floor of the ramp, as a percentile of the values actually drawn. Below it a
+# cell takes the ground colour: on a kernel the bottom percentiles are the faintest
+# tail the smoothing left in a corner of the city, and colouring them at all says
+# there is something there to see.
+CASUALTY_MAP_RAMP_FLOOR_PERCENTILE = 5.0
+
+# The city under the surface, so a unit with no casualty reads as a place the
+# study covers and found nothing rather than as a hole in the map.
+CASUALTY_MAP_GROUND_COLOR = "#eceae5"
+
+# The points over it. Small and faint, because on the injury maps there are tens
+# of thousands of them and they are texture; on the fatality maps there are a few
+# hundred and they are the figure.
+CASUALTY_MAP_POINT_COLOR = "#11202e"
+CASUALTY_MAP_POINT_SIZE = 1.1
+CASUALTY_MAP_POINT_ALPHA = 0.22
+
+# Taller than the choropleths. The thirty units are about 15 by 30 km, so a
+# corridor is a feature a few hundred metres wide on a map thirty kilometres long,
+# and at 9 inches it is a line one pixel across.
+CASUALTY_MAP_HEIGHT_IN = 12.0
+
+# Raster rather than vector, unlike every other map here, and at a resolution to
+# match. A density surface is an image and a year of injuries is twenty thousand
+# overlapping dots; both defeat the point of a vector figure, which is that it has
+# few enough marks to be worth keeping as marks.
+CASUALTY_MAP_DPI = 220
+CASUALTY_MAP_FORMAT = "png"
+
+# A bar of a fixed five kilometres rather than a fraction of the frame, so that
+# every map of the set carries the same ruler and two can be compared without
+# reading two bars.
+CASUALTY_MAP_SCALEBAR_KM = 5
+
 # Two polygons are neighbours if their boundaries come within this distance, in
 # the metric CRS. Exact touching would be the right test on a topologically
 # clean layer; a metre of tolerance costs nothing and survives the slivers a
