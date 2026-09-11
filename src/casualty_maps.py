@@ -63,6 +63,29 @@ QUANTILE = "quantile"
 LOGARITHMIC = "log"
 
 
+def bandwidth_for(count_name: str) -> float:
+    """The kernel width this count is drawn at, the same in every one of its years.
+
+    Declared per count because the counts differ by two orders of magnitude, and
+    never per year because two years drawn at two bandwidths look comparable and
+    are not.
+    """
+    return config.CASUALTY_MAP_KERNEL_BANDWIDTH_M[count_name]
+
+
+def point_style(drawn: int) -> config.MapPointStyle:
+    """How to draw the event marks, given how many of them there are.
+
+    Keyed on the count of marks and not on the folder, because that is what
+    actually decides: a year of deaths and the aggregate of deaths sit in one
+    folder and differ by a factor of fifteen.
+    """
+    for style in config.CASUALTY_MAP_POINT_STYLES:
+        if style.up_to is None or drawn <= style.up_to:
+            return style
+    return config.CASUALTY_MAP_POINT_STYLES[-1]
+
+
 def _class_colours(colours, classes: int, span=None):
     """The colormap cut into as many steps as the ramp has classes.
 
@@ -294,11 +317,13 @@ def render(
     classes: int = config.CASUALTY_MAP_RAMP_CLASSES,
     colour_span: tuple[float, float] | None = None,
     cell_m: float = config.CASUALTY_MAP_HEX_CELL_M,
-    bandwidth_m: float = config.CASUALTY_MAP_KERNEL_BANDWIDTH_M,
+    bandwidth_m: float = 200.0,
     raster_cell_m: float = config.CASUALTY_MAP_KERNEL_CELL_M,
     height_in: float = config.CASUALTY_MAP_HEIGHT_IN,
     dpi: int = config.CASUALTY_MAP_DPI,
     breaks: np.ndarray | None = None,
+    rasterize_points: bool | None = None,
+    style: config.MapPointStyle | None = None,
 ) -> dict[str, float]:
     """Draw one map and return what the figure had to decide, for the note.
 
@@ -379,15 +404,19 @@ def render(
 
     # The points over the surface. They are what carries a map of four hundred
     # deaths, where a smoothed surface would be a picture of sampling noise.
+    marks = style if style is not None else point_style(len(x))
     axis.scatter(
         x, y,
-        s=config.CASUALTY_MAP_POINT_SIZE,
+        s=marks.size,
         c=config.CASUALTY_MAP_POINT_COLOR,
-        alpha=config.CASUALTY_MAP_POINT_ALPHA,
+        alpha=marks.alpha,
         linewidths=0.0,
         zorder=3,
-        rasterized=True,
+        rasterized=(config.CASUALTY_MAP_RASTERIZE_POINTS
+                    if rasterize_points is None else rasterize_points),
     )
+    measured["point_size"], measured["point_alpha"] = marks.size, marks.alpha
+    measured["points"] = float(len(x))
 
     metric.plot(
         ax=axis, facecolor="none",

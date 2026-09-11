@@ -4699,12 +4699,29 @@ CASUALTY_MAP_HEX_CELL_M = 300.0
 # smaller one keeps them apart and lets the arterial grid emerge, because that is
 # where the casualties actually are. At 200 m the corridors are legible as
 # corridors rather than as one continuous field over the built city.
-CASUALTY_MAP_KERNEL_BANDWIDTH_M = 200.0
+#
+# **It is per count and never per year.** Two years of one count drawn at two
+# bandwidths look comparable and are not, which is the same mistake the shared
+# colour scale exists to prevent. It differs between counts because the counts
+# differ by two orders of magnitude: a year of injuries is sixteen thousand points
+# and a year of deaths is five hundred, and at 200 m each isolated death becomes a
+# disc six hundred metres across. Narrowing the kernel for `killed` does not make
+# that disc mean anything — it is still σ and not a measurement — but it keeps one
+# death from covering a neighbourhood.
+CASUALTY_MAP_KERNEL_BANDWIDTH_M: dict[str, float] = {
+    "parties": 200.0,
+    "injured": 200.0,
+    "killed": 120.0,
+}
 
-# The raster the smoothing runs on. It only has to be fine enough not to limit the
-# bandwidth, which means no coarser than half of it; at a quarter it is safely
-# clear of that and the grid is still only a few hundred cells across.
-CASUALTY_MAP_KERNEL_CELL_M = 50.0
+# The raster the smoothing runs on. Two things bound it. It must be no coarser
+# than about a quarter of the narrowest bandwidth, or the raster and not the
+# kernel is what decides the resolution; at 25 m against 120 m it is well clear.
+# And it is what a reader zooming in eventually hits: the surface is drawn as
+# seven classes, so their boundaries are contours, and a finer raster is what
+# makes those contours smooth rather than stepped. Finer than this buys nothing,
+# because a Gaussian of σ = 120 m has no structure below about 120 m to resolve.
+CASUALTY_MAP_KERNEL_CELL_M = 25.0
 
 # Light to dark, over the light ground the city is drawn on. The specification
 # suggested inferno or magma and drawing them settled it the other way: their low
@@ -4754,18 +4771,67 @@ CASUALTY_MAP_RAMP_FLOOR_PERCENTILE = 35.0
 # carrying a map of a few hundred deaths. Stopping short of the dark end keeps the
 # top class a saturated red rather than a near-black, and the points stay visible
 # on it.
-CASUALTY_MAP_RAMP_COLOR_SPAN = (0.12, 0.86)
+#
+# Measured against the point colour below: at a top of 0.86 the darkest class is
+# #c10325 and a near-black point sits on it at a contrast of 2.7:1, which is the
+# point disappearing exactly where the map is densest. At 0.78 the class is
+# #da141e, the point reads at 3.4:1, and the class still stands off the ground at
+# 4.3:1. Both ends were chosen from those three numbers rather than by eye.
+CASUALTY_MAP_RAMP_COLOR_SPAN = (0.12, 0.78)
 
 # The city under the surface, so a unit with no casualty reads as a place the
 # study covers and found nothing rather than as a hole in the map.
 CASUALTY_MAP_GROUND_COLOR = "#eceae5"
 
-# The points over it. Small and faint, because on the injury maps there are tens
-# of thousands of them and they are texture; on the fatality maps there are a few
-# hundred and they are the figure.
-CASUALTY_MAP_POINT_COLOR = "#11202e"
-CASUALTY_MAP_POINT_SIZE = 1.1
-CASUALTY_MAP_POINT_ALPHA = 0.22
+# The points over it.
+#
+# **Near-black and cool.** The ramp is warm from end to end, so a cool near-black
+# separates from every class by hue as well as by lightness, and it is the colour
+# with the best worst case: measured against the ground, the palest class and the
+# darkest, a near-black never falls below 3.4:1 while a strong blue falls to 1.6
+# and white to 1.2. White is the opposite trade — excellent on the dark classes
+# and invisible on the pale ones, which is most of the map.
+CASUALTY_MAP_POINT_COLOR = "#101828"
+
+# **Vector, like the unit boundaries.** Rasterising them was a guess about cost
+# and the guess was wrong: vectorised, a year of injuries adds 22 KB to a 1.2 MB
+# figure and a year of deaths is actually smaller. Only the eighteen-year
+# aggregate is expensive, at 196,386 points and 3.6 MB against 1.5, and that is
+# still a reasonable PDF. So every point in every figure is a real mark that stays
+# sharp at any zoom, and the density surface is the only raster in the file.
+CASUALTY_MAP_RASTERIZE_POINTS = False
+
+# How big and how transparent, decided by how many points the figure has to draw
+# rather than by which folder it is in. The number is what actually governs: a
+# year of deaths and the eighteen-year aggregate of deaths are both in `killed/`
+# and differ by a factor of fifteen, while a year of deaths and a thin year of
+# injuries are in different folders and are closer to each other.
+#
+# **The transparency is what makes stacking visible.** Two casualties at one
+# intersection are two marks at one point, and at 0.85 they read as a single
+# solid dot, while at 0.12 a place needs about eight of them before it is as dark
+# as a single isolated one. That is the right way round: where there are few
+# points each one has to be seen, and where there are two hundred thousand the
+# thing worth seeing is where they pile up.
+@dataclass(frozen=True)
+class MapPointStyle:
+    """How the event marks are drawn when a figure has at most `up_to` of them."""
+
+    up_to: int | None  # None is the last band, which catches everything above
+    size: float  # in points squared, as matplotlib sizes a scatter mark
+    alpha: float
+
+
+CASUALTY_MAP_POINT_STYLES: tuple[MapPointStyle, ...] = (
+    # A year of deaths: about five hundred marks, and they carry the figure.
+    MapPointStyle(up_to=1_500, size=6.5, alpha=0.80),
+    # The aggregate of deaths, and the thinnest injury years.
+    MapPointStyle(up_to=40_000, size=1.8, alpha=0.38),
+    # The eighteen-year aggregates of parties and injuries, near two hundred
+    # thousand marks, where any one of them is texture and the pile-ups are the
+    # information.
+    MapPointStyle(up_to=None, size=0.8, alpha=0.13),
+)
 
 # Taller than the choropleths. The thirty units are about 15 by 30 km, so a
 # corridor is a feature a few hundred metres wide on a map thirty kilometres long,
@@ -4780,7 +4846,13 @@ CASUALTY_MAP_HEIGHT_IN = 12.0
 # stays vector, which is the reason the rest of the study's maps are PDF.
 #
 # The dpi is what those two embedded layers are rendered at, not the whole figure.
-CASUALTY_MAP_DPI = 220
+# The dpi is what the one embedded raster — the density surface — is rendered at,
+# and nothing else: the boundaries, the points, the bar and every number are
+# vector and do not pixelate at any zoom. At 25 m cells the surface is 939 cells
+# across the city and the map axis is 6.85 inches wide, so 400 dpi puts about
+# three device pixels on each cell. Going higher only enlarges pixels that carry
+# no more information, because the kernel itself has none below its bandwidth.
+CASUALTY_MAP_DPI = 400
 CASUALTY_MAP_FORMAT = "pdf"
 
 # How far under the colour bar the caption sits, in figure fractions. The caption
