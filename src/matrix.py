@@ -1027,6 +1027,92 @@ def report_master_table(master: pd.DataFrame, log: RunLog) -> None:
     log.table(f"unit-month grid [{dataset}]:", "\n".join(lines))
 
 
+def report_correction_seasonality(
+    observed_master: pd.DataFrame, corrected_master: pd.DataFrame, log: RunLog
+) -> bool:
+    """Where in the year the correction puts the parties it adds.
+
+    **This is a measurement the master table made possible and nothing before it
+    could have made.** The correction is computed per pair, per year and per unit,
+    so it has no opinion about months at all, and the parties it adds ought to fall
+    through the year the way the parties already there do.
+
+    They do not, and the cause is in the selection rule rather than in the data.
+    D29 takes the convertible crashes of a cell in order of crash identifier, on
+    the grounds that every crash in a cell is interchangeable — same pair, same
+    year, same unit, same side unrecorded — so the order only has to be
+    reproducible. That premise held for everything the study did until the month
+    became a column: crash identifiers are issued in sequence, so within a year
+    they run with the calendar, and "the first crashes by identifier" is "the
+    earliest crashes of the year".
+
+    The annual totals are untouched, because the arithmetic never left the year.
+    Only the monthly cut is affected, which is exactly the cut this table adds.
+    """
+    years = sorted(set(corrected_master[config.YEAR_COL].dropna().astype(int)))
+    shared = observed_master[observed_master[config.YEAR_COL].isin(years)]
+    column = config.AFFECTED_PARTIES_COL
+
+    base = shared.groupby(config.MONTH_COL)[column].sum()
+    after = corrected_master.groupby(config.MONTH_COL)[column].sum()
+    added = after - base
+
+    base_share = base / base.sum()
+    added_share = added / added.sum() if added.sum() else added * 0.0
+    ratio = (added_share / base_share).replace([np.inf, -np.inf], np.nan)
+
+    lines = [
+        f"{'month':>5}  {'observed':>9}  {'share':>6}  {'corrected':>10}  {'share':>6}  "
+        f"{'added':>8}  {'of added':>9}  {'ratio':>6}",
+        f"{'-' * 5}  {'-' * 9}  {'-' * 6}  {'-' * 10}  {'-' * 6}  {'-' * 8}  {'-' * 9}  {'-' * 6}",
+    ]
+    for month in range(1, 13):
+        lines.append(
+            f"{MONTH_LABELS[month - 1]:>5}  {int(base[month]):>9,}  {100 * base_share[month]:>5.2f}%  "
+            f"{int(after[month]):>10,}  {100 * after[month] / after.sum():>5.2f}%  "
+            f"{int(added[month]):>8,}  {100 * added_share[month]:>8.2f}%  {ratio[month]:>6.2f}x"
+        )
+    lines.append("")
+    lines.append(
+        f"over {min(years)}-{max(years)}: {int(base.sum()):,} affected parties observed, "
+        f"{int(added.sum()):,} added by the correction"
+    )
+    lines.append(
+        "ratio = a month's share of what the correction adds, over its share of what was "
+        "already there. One means the correction is blind to the month, as its arithmetic is."
+    )
+
+    worst = float(np.nanmax(np.abs(np.log(ratio.to_numpy(dtype=float)))))
+    tolerance = config.CORRECTION_SEASONALITY_TOLERANCE
+    passed = bool(np.exp(worst) <= tolerance)
+    if not passed:
+        lines.append("")
+        lines.append(
+            f"the widest departure is {np.exp(worst):.2f}x, past the {tolerance:.2f}x this run "
+            f"allows. The correction has no monthly term, so this comes from which crashes are "
+            f"promoted inside a cell: D29 takes them in order of crash identifier, and the "
+            f"identifier runs with the calendar (Spearman 0.95 to 0.99 within a year), so the "
+            f"promotions land on the early months."
+        )
+        lines.append(
+            "The annual totals are unaffected — the correction's arithmetic never leaves the "
+            "year — so this bears on the corrected master table's months and on nothing else "
+            "the pipeline produces."
+        )
+    log.table("where in the year the correction adds its parties:", "\n".join(lines))
+
+    if not passed:
+        log.warn(
+            "the corrected set's monthly profile is shaped by the promotion order, not by the "
+            "data: January takes %.1f%% of the added parties against %.1f%% of the base. "
+            "The corrected master table must not be read by month until D29's selection order "
+            "is settled",
+            100 * added_share[1],
+            100 * base_share[1],
+        )
+    return passed
+
+
 # ---------------------------------------------------------------------------
 # Stage
 # ---------------------------------------------------------------------------

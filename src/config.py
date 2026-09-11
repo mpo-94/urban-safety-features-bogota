@@ -4526,6 +4526,23 @@ CASUALTY_TABLE_WIDTH_PER_COLUMN_IN = 0.72
 CASUALTY_TABLE_HEIGHT_IN = 13.5
 CASUALTY_TABLE_CELL_FONT_PT = 7.0
 
+# How far a month's share of the parties the correction adds may sit from that
+# month's share of the parties already there, before the run says so.
+#
+# The correction's arithmetic is entirely at the level of a pair, a year and a
+# unit, so it has no opinion about months and the parties it adds should fall
+# through the year the way the base does. They do not: taking the convertible
+# crashes of a cell in order of crash identifier takes them in order of date,
+# because the identifier is sequential in time (Spearman 0.95 to 0.99 within a
+# year), so the promotions load onto the early months. January takes 19.3 % of
+# everything the correction adds and December 2.2 %, against shares of 7.1 % and
+# 8.4 % in the base.
+#
+# A quarter either way is far wider than any real seasonality of the mechanism
+# and far narrower than the 2.7x this currently reaches, so it catches the
+# artefact without firing on noise. Measured on run_20260911_033605.
+CORRECTION_SEASONALITY_TOLERANCE = 1.25
+
 # ---------------------------------------------------------------------------
 # Tables compiled as LaTeX rather than drawn
 # ---------------------------------------------------------------------------

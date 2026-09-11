@@ -481,7 +481,14 @@ def run_corrected(log: RunLog) -> None:
 
     correction.report(tables["city"], tables["plan"], tables["promotions"], log)
     matrix.report(corrected, log)
+    matrix.report_master_table(observed_master, log)
     matrix.report_master_table(corrected_master, log)
+
+    # Reported and not raised. The corrected set's annual figures are unaffected,
+    # so a run that fails here would refuse to produce tables that are sound; what
+    # is at stake is whether the corrected master table may be read by month, and
+    # that is a question about D29's selection order rather than about this run.
+    matrix.report_correction_seasonality(observed_master, corrected_master, log)
 
 
 # ---------------------------------------------------------------------------
