@@ -127,6 +127,60 @@ def review_variant(table: pd.DataFrame) -> str:
     )
 
 
+def base_year_of(provenance: pd.Series) -> int:
+    """The year every index and every heatmap in this module is read against.
+
+    **The first measured year the panel window contains**, which for the weekday
+    is 2011 and for the Saturday is 2011 as well. The reason it is a measured year
+    and not the first year of the window is that the first year of the window is
+    itself a construction: indexing against 2007 would compare every cell to a
+    number the interpolation invented, and a unit whose 2007 was badly built would
+    look like a unit that changed.
+
+    The reason it is the *first* of them rather than the last is that the panel is
+    read forwards — what a reader asks of these figures is what happened to a unit
+    over the eighteen years, and the answer reads better from the earliest
+    observation.
+
+    **2005 is not it**, even though it is measured and earlier: it lies outside the
+    window, has no row in the panel, and three of the four day types have no 2005
+    at all. It is drawn as the anchor it is, and `_outside_the_window` is what puts
+    it on a figure.
+    """
+    measured = [year for year, value in provenance.items() if value == config.MEASURED_EXPOSURE]
+    return int(measured[0] if measured else provenance.index[0])
+
+
+def _outside_the_window(
+    measured_table: pd.DataFrame | None,
+    window: pd.Index,
+    actor: str,
+    day_type: str,
+) -> pd.DataFrame:
+    """The measured years of this series that the panel has no row for.
+
+    2005 is the only one today. The casualty series starts in 2007 and the panel
+    window follows it, so the fifth survey shapes the 2007-2010 curve from outside
+    and never appears in the table these figures are drawn from. Leaving it off the
+    figure would show four anchors where the series rests on five.
+
+    The population comes back with the level because a figure of rates needs it and
+    the panel has no row to take it from: the rate of a year outside the window is
+    that year's trips over that year's residents, both from the measured table.
+    """
+    empty = pd.DataFrame(columns=[SERIES_COLUMN, config.POPULATION_COL], dtype=float)
+    if measured_table is None:
+        return empty
+    rows = measured_table[
+        (measured_table[config.ACTOR_TYPE_COL] == actor)
+        & (measured_table[config.DAY_TYPE_COL] == day_type)
+        & (~measured_table[config.YEAR_COL].isin(list(window)))
+    ]
+    if rows.empty:
+        return empty
+    return rows.groupby(config.YEAR_COL)[[SERIES_COLUMN, config.POPULATION_COL]].sum().sort_index()
+
+
 def _block(table: pd.DataFrame, variant: str, actor: str, day_type: str) -> pd.DataFrame:
     return table[
         (table[config.EXPOSURE_VARIANT_COL] == variant)
@@ -191,26 +245,32 @@ def _draw_series(
     day_type: str,
     column: str = SERIES_COLUMN,
     scale: float = 1.0,
+    measured_table: pd.DataFrame | None = None,
 ) -> None:
-    """One mode's city series, with both variants and the anchors marked.
+    """One mode's city series, with both variants and every year marked.
 
-    The unpatched panel is the line; the patched one is drawn over it only where
-    the two differ, plus the anchor on each side so that the segment joins the
-    curve rather than floating. Reading it: where there is one line the two
-    constructions agree, and where there are two the difference is the patch.
+    **Every year carries a dot and the dot is coloured by where its value came
+    from**, which is the same palette the provenance strip uses: near-black for a
+    survey year, blue for an interpolated one, grey for a held one and orange for a
+    patched one. A figure that marked only the survey years would say what was
+    measured and leave a reader to count the rest.
+
+    The unpatched panel is drawn **over** the patched one, so that what the line
+    shows by default is the panel as D40 builds it and the patch is visible only
+    where it actually changes something. The patched line is the wider of the two
+    for the same reason: where the two agree it shows as a hairline either side of
+    the blue, and where they part company it is unmistakable.
+
+    And a measured year that sits outside the window — 2005 — is drawn as the
+    anchor it is, joined to the window by a dotted segment, because the series
+    rests on five surveys and the panel has rows for four.
     """
     variants = _variants(table)
     provenance = _provenance_by_year(table, config.INTERPOLATED_VARIANT, actor, day_type)
     _shade_held(axis, provenance)
 
     base = _city_series(table, config.INTERPOLATED_VARIANT, actor, day_type, column) / scale
-    axis.plot(
-        base.index, base.to_numpy(),
-        color=config.EXPOSURE_PROVENANCE_COLORS[config.INTERPOLATED_EXPOSURE],
-        linewidth=1.6, zorder=2,
-        label=config.EXPOSURE_VARIANT_LABELS_ES[config.INTERPOLATED_VARIANT],
-    )
-
+    patched = None
     if config.PANDEMIC_PATCHED_VARIANT in variants:
         patched = _city_series(
             table, config.PANDEMIC_PATCHED_VARIANT, actor, day_type, column
@@ -221,24 +281,67 @@ def _draw_series(
             axis.plot(
                 span, patched.loc[span].to_numpy(),
                 color=config.EXPOSURE_PROVENANCE_COLORS[config.IMPLIED_FROM_RISK_EXPOSURE],
-                linewidth=1.8, zorder=3,
+                linewidth=2.6, zorder=2,
                 label=config.EXPOSURE_VARIANT_LABELS_ES[config.PANDEMIC_PATCHED_VARIANT],
             )
 
-    measured = [
-        year for year, value in provenance.items() if value == config.MEASURED_EXPOSURE
-    ]
     axis.plot(
-        measured, base.loc[measured].to_numpy(), linestyle="none", marker="o", markersize=5,
-        color=config.EXPOSURE_PROVENANCE_COLORS[config.MEASURED_EXPOSURE], zorder=4,
-        label=config.EXPOSURE_PROVENANCE_LABELS_ES[config.MEASURED_EXPOSURE],
+        base.index, base.to_numpy(),
+        color=config.EXPOSURE_PROVENANCE_COLORS[config.INTERPOLATED_EXPOSURE],
+        linewidth=1.6, zorder=3,
+        label=config.EXPOSURE_VARIANT_LABELS_ES[config.INTERPOLATED_VARIANT],
     )
 
+    # The anchor the panel has no row for, and the segment the interpolation
+    # actually used to reach 2007. Dotted, because the panel holds no year
+    # between the two and the line is the curve rather than a set of cells.
+    outside = _outside_the_window(measured_table, base.index, actor, day_type)
+    for year, row in outside.iterrows():
+        # On the rate panel the anchor is its own trips over its own residents; on
+        # a level panel it is the level, scaled like the rest of the axis.
+        value = (
+            row[SERIES_COLUMN] / row[config.POPULATION_COL]
+            if column in (config.INTERPOLATED_RATE_COL, config.INTERPOLATED_RATE_OVER_15MIN_COL)
+            else row[SERIES_COLUMN] / scale
+        )
+        axis.plot(
+            [year, int(base.index.min())], [value, float(base.iloc[0])],
+            linestyle=":", linewidth=1.3,
+            color=config.EXPOSURE_PROVENANCE_COLORS[config.INTERPOLATED_EXPOSURE], zorder=3,
+        )
+        axis.plot(
+            [year], [value], linestyle="none", marker="o", markersize=6,
+            color=config.EXPOSURE_PROVENANCE_COLORS[config.MEASURED_EXPOSURE], zorder=5,
+        )
+
+    # One dot per year, on the colour of its own provenance.
+    for value in config.EXPOSURE_PROVENANCES:
+        years = [year for year, where in provenance.items() if where == value]
+        if not years:
+            continue
+        axis.plot(
+            years, base.loc[years].to_numpy(), linestyle="none", marker="o",
+            markersize=6 if value == config.MEASURED_EXPOSURE else 4,
+            color=config.EXPOSURE_PROVENANCE_COLORS[value], zorder=4,
+            label=config.EXPOSURE_PROVENANCE_LABELS_ES[value],
+        )
+    if patched is not None and differs:
+        axis.plot(
+            differs, patched.loc[differs].to_numpy(), linestyle="none", marker="o",
+            markersize=4,
+            color=config.EXPOSURE_PROVENANCE_COLORS[config.IMPLIED_FROM_RISK_EXPOSURE],
+            zorder=4,
+            label=config.EXPOSURE_PROVENANCE_LABELS_ES[config.IMPLIED_FROM_RISK_EXPOSURE],
+        )
+
     axis.set_ylim(bottom=0)
-    axis.set_xlim(int(base.index.min()), int(base.index.max()))
+    axis.set_xlim(
+        int(min([base.index.min(), *outside.index])), int(base.index.max())
+    )
     # A year is an integer and a tick reading 2007,5 is a year that does not
-    # exist. Every three years lands on the survey years of the series.
-    axis.xaxis.set_major_locator(matplotlib.ticker.MultipleLocator(3))
+    # exist. Every two years, so that both ends of the axis carry a label whether
+    # or not the series reaches back to the anchor outside the window.
+    axis.xaxis.set_major_locator(matplotlib.ticker.MultipleLocator(2))
     axis.xaxis.set_major_formatter(plt.FuncFormatter(lambda value, _: f"{int(value)}"))
     axis.yaxis.set_major_formatter(plt.FuncFormatter(_thousands))
     axis.grid(True, axis="y", color="#e4e4e4", linewidth=0.6, zorder=0)
@@ -333,32 +436,40 @@ def wide_tables(table: pd.DataFrame, log: RunLog) -> dict[str, Path]:
 # ---------------------------------------------------------------------------
 
 
-def _summary_sheet(table: pd.DataFrame, path: Path, log: RunLog) -> None:
+def _summary_sheet(
+    table: pd.DataFrame, path: Path, log: RunLog, measured_table: pd.DataFrame | None = None
+) -> None:
     """The four modes on one sheet, on the kind of day the models take."""
     day_type = config.PANDEMIC_PATCH_DAY_TYPE
     modes = _modes(table)
     fig, axes = plt.subplots(2, 2, figsize=(11, 7))
     for axis, actor in zip(axes.ravel(), modes):
-        _draw_series(axis, table, actor, day_type, scale=1000.0)
+        _draw_series(axis, table, actor, day_type, scale=1000.0, measured_table=measured_table)
         axis.set_title(config.ROAD_USER_LABELS_ES[actor], fontsize=10)
         axis.set_ylabel("miles de viajes al día", fontsize=8)
         axis.tick_params(labelsize=8)
     for axis in axes.ravel()[len(modes):]:
         axis.set_visible(False)
 
+    # One entry per label rather than one per artist: four modes drawn the same way
+    # produce the same handle four times.
     handles, labels = axes.ravel()[0].get_legend_handles_labels()
-    handles.append(Patch(
-        facecolor=config.EXPOSURE_PROVENANCE_COLORS[config.HELD_EXPOSURE], alpha=0.13,
-        label=f"{config.EXPOSURE_PROVENANCE_LABELS_ES[config.HELD_EXPOSURE]} "
-              "(la tasa no se mueve)",
-    ))
-    labels.append(handles[-1].get_label())
-    fig.legend(handles, labels, loc="lower center", ncol=len(handles), fontsize=8, frameon=False)
+    unique = dict(zip(labels, handles))
+    # The band, which the dots already name, so the entry says what the band means
+    # rather than repeating the word.
+    unique["Bloque sostenido: la tasa no se mueve"] = Patch(
+        facecolor=config.EXPOSURE_PROVENANCE_COLORS[config.HELD_EXPOSURE], alpha=0.13
+    )
+    fig.legend(
+        list(unique.values()), list(unique), loc="lower center",
+        ncol=min(4, len(unique)), fontsize=8, frameon=False,
+    )
 
     fig.suptitle(
         "La exposición del estudio en las 30 UPL, "
         f"{config.DAY_TYPE_LABELS_ES[day_type]}\n"
-        "los puntos son los años de encuesta; la caminata es la de 15 minutos o más (D39)",
+        "cada año lleva un punto del color de su procedencia; la caminata es la de 15 "
+        "minutos o más (D39)",
         fontsize=11,
     )
     fig.tight_layout(rect=(0, 0.06, 1, 0.92))
@@ -429,7 +540,14 @@ def _provenance_sheet(table: pd.DataFrame, path: Path, log: RunLog) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _city_figure(table: pd.DataFrame, actor: str, day_type: str, path: Path, log: RunLog) -> None:
+def _city_figure(
+    table: pd.DataFrame,
+    actor: str,
+    day_type: str,
+    path: Path,
+    log: RunLog,
+    measured_table: pd.DataFrame | None = None,
+) -> None:
     """One mode and one kind of day: the level above, the rate below.
 
     The two panels are the decision D40 took, drawn. What is interpolated is the
@@ -441,9 +559,14 @@ def _city_figure(table: pd.DataFrame, actor: str, day_type: str, path: Path, log
     fig, (top, bottom) = plt.subplots(
         2, 1, figsize=(9, 6.4), sharex=True, gridspec_kw={"height_ratios": (2, 1)}
     )
-    _draw_series(top, table, actor, day_type, scale=1000.0)
+    _draw_series(top, table, actor, day_type, scale=1000.0, measured_table=measured_table)
     top.set_ylabel("miles de viajes al día", fontsize=9)
-    _draw_series(bottom, table, actor, day_type, column=RATE_COLUMN)
+    # The same anchor on both panels. They share an x axis, so a panel drawn
+    # without it would pull the other one's limits in and cut the anchor off the
+    # figure entirely.
+    _draw_series(
+        bottom, table, actor, day_type, column=RATE_COLUMN, measured_table=measured_table
+    )
     bottom.set_ylabel("viajes por habitante", fontsize=9)
     bottom.yaxis.set_major_formatter(plt.FuncFormatter(lambda value, _: f"{value:.2f}".replace(".", ",")))
     bottom.set_xlabel("año", fontsize=9)
@@ -469,14 +592,24 @@ def _city_figure(table: pd.DataFrame, actor: str, day_type: str, path: Path, log
 
 
 def _unit_series_sheet(
-    table: pd.DataFrame, actor: str, day_type: str, path: Path, log: RunLog
+    table: pd.DataFrame,
+    actor: str,
+    day_type: str,
+    path: Path,
+    log: RunLog,
+    measured_table: pd.DataFrame | None = None,
 ) -> None:
     """Thirty small series on one sheet, each against its own first measured year.
 
     Indexed rather than levelled, because Kennedy makes forty times the walking
     trips Torca does and a shared axis of levels would show one line and
     twenty-nine flat ones. What the sheet is for is the shape: a unit whose
-    trajectory does something no city does is visible here and nowhere else.
+    trajectory does something no city does is visible here and nowhere else — so
+    the panels are drawn large enough to read one at a time rather than packed to
+    fit the page.
+
+    The unpatched panel is drawn over the patched one, and the anchors of each
+    series carry a dot, including the one outside the window.
     """
     units = (
         table[[config.AREA_CODE_COL, config.AREA_NAME_COL]]
@@ -484,37 +617,91 @@ def _unit_series_sheet(
         .sort_values(config.AREA_CODE_COL)
     )
     provenance = _provenance_by_year(table, config.INTERPOLATED_VARIANT, actor, day_type)
+    base_year = base_year_of(provenance)
     anchors = [year for year, value in provenance.items() if value == config.MEASURED_EXPOSURE]
-    base_year = anchors[0] if anchors else provenance.index[0]
+    outside = _outside_the_window(measured_table, provenance.index, actor, day_type)
+    outside_years = list(outside.index)
 
-    columns = 6
+    columns = 5
     rows = int(np.ceil(len(units) / columns))
-    fig, axes = plt.subplots(rows, columns, figsize=(2.2 * columns, 1.7 * rows), sharex=True, sharey=True)
+    fig, axes = plt.subplots(
+        rows, columns, figsize=(3.2 * columns, 2.4 * rows), sharex=True, sharey=True
+    )
     variants = _variants(table)
+    first, last = int(min([provenance.index.min(), *outside_years])), int(provenance.index.max())
     for axis, (_, unit) in zip(axes.ravel(), units.iterrows()):
         code = unit[config.AREA_CODE_COL]
         _shade_held(axis, provenance)
+        indexed = {}
         for variant in variants:
             block = _block(table, variant, actor, day_type)
             series = block[block[config.AREA_CODE_COL] == code].set_index(config.YEAR_COL)[
                 SERIES_COLUMN
             ].sort_index()
-            indexed = 100 * series / series[base_year]
-            colour = (
-                config.EXPOSURE_PROVENANCE_COLORS[config.IMPLIED_FROM_RISK_EXPOSURE]
-                if variant == config.PANDEMIC_PATCHED_VARIANT
-                else config.EXPOSURE_PROVENANCE_COLORS[config.INTERPOLATED_EXPOSURE]
+            indexed[variant] = 100 * series / series[base_year]
+        base = indexed[config.INTERPOLATED_VARIANT]
+
+        # The patched line is drawn ONLY over the years it changes, plus one either
+        # side so the segment joins the curve. Drawn over the whole window it would
+        # sit under the blue for fifteen of the eighteen years and show as a halo,
+        # and what this sheet is read for is the trajectory D40 builds.
+        after = indexed.get(config.PANDEMIC_PATCHED_VARIANT)
+        if after is not None:
+            differs = [
+                year for year in after.index if not np.isclose(after[year], base[year])
+            ]
+            if differs:
+                span = [
+                    year for year in after.index
+                    if min(differs) - 1 <= year <= max(differs) + 1
+                ]
+                axis.plot(
+                    span, after.loc[span].to_numpy(),
+                    color=config.EXPOSURE_PROVENANCE_COLORS[config.IMPLIED_FROM_RISK_EXPOSURE],
+                    linewidth=1.6, zorder=2,
+                )
+        axis.plot(
+            base.index, base.to_numpy(),
+            color=config.EXPOSURE_PROVENANCE_COLORS[config.INTERPOLATED_EXPOSURE],
+            linewidth=1.5, zorder=3,
+        )
+        if base is not None:
+            axis.plot(
+                anchors, base.loc[anchors].to_numpy(), linestyle="none", marker="o",
+                markersize=3.5,
+                color=config.EXPOSURE_PROVENANCE_COLORS[config.MEASURED_EXPOSURE], zorder=4,
             )
-            axis.plot(indexed.index, indexed.to_numpy(), color=colour, linewidth=1.2,
-                      zorder=3 if variant == config.PANDEMIC_PATCHED_VARIANT else 2)
+            for year in outside_years:
+                block = _block(table, config.INTERPOLATED_VARIANT, actor, day_type)
+                anchor_value = measured_table[
+                    (measured_table[config.AREA_CODE_COL] == code)
+                    & (measured_table[config.ACTOR_TYPE_COL] == actor)
+                    & (measured_table[config.DAY_TYPE_COL] == day_type)
+                    & (measured_table[config.YEAR_COL] == year)
+                ][SERIES_COLUMN]
+                if anchor_value.empty:
+                    continue
+                value = 100 * float(anchor_value.iloc[0]) / float(
+                    block[block[config.AREA_CODE_COL] == code].set_index(config.YEAR_COL)[
+                        SERIES_COLUMN
+                    ][base_year]
+                )
+                axis.plot(
+                    [year, int(provenance.index.min())], [value, float(base.iloc[0])],
+                    linestyle=":", linewidth=1.1,
+                    color=config.EXPOSURE_PROVENANCE_COLORS[config.INTERPOLATED_EXPOSURE],
+                    zorder=3,
+                )
+                axis.plot(
+                    [year], [value], linestyle="none", marker="o", markersize=3.5,
+                    color=config.EXPOSURE_PROVENANCE_COLORS[config.MEASURED_EXPOSURE], zorder=4,
+                )
         axis.axhline(100, color="#cccccc", linewidth=0.7, zorder=1)
-        axis.set_xlim(int(provenance.index.min()), int(provenance.index.max()))
+        axis.set_xlim(first, last)
         axis.xaxis.set_major_locator(matplotlib.ticker.MultipleLocator(5))
         axis.xaxis.set_major_formatter(plt.FuncFormatter(lambda value, _: f"{int(value)}"))
-        axis.set_title(
-            f"{code} {unit[config.AREA_NAME_COL]}"[:26], fontsize=7,
-        )
-        axis.tick_params(labelsize=6)
+        axis.set_title(f"{code} {unit[config.AREA_NAME_COL]}"[:30], fontsize=9)
+        axis.tick_params(labelsize=8)
         for side in ("top", "right"):
             axis.spines[side].set_visible(False)
     for axis in axes.ravel()[len(units):]:
@@ -522,11 +709,20 @@ def _unit_series_sheet(
 
     fig.suptitle(
         f"{config.ROAD_USER_LABELS_ES[actor]} — {config.DAY_TYPE_LABELS_ES[day_type]}, "
-        f"cada unidad contra su propio {base_year} = 100\n"
-        f"azul sin parche, naranja con el parche de pandemia; gris, años sostenidos",
+        f"cada unidad contra su propio {base_year} = 100,\n"
+        "que es el primer año medido dentro de la ventana\n"
+        "azul sin parche y naranja con el parche de pandemia; puntos negros, años de encuesta; "
+        "bandas grises, años sostenidos"
+        + (
+            "\n"
+            + ", ".join(str(year) for year in outside.index)
+            + " es ancla de la interpolación y no tiene fila en el panel, por eso su tramo va "
+            "punteado"
+            if len(outside) else ""
+        ),
         fontsize=11,
     )
-    fig.tight_layout(rect=(0, 0, 1, 0.93))
+    fig.tight_layout(rect=(0, 0, 1, 0.92))
     _stamp(fig, log)
     fig.savefig(path, dpi=config.FIGURE_DPI)
     plt.close(fig)
@@ -568,9 +764,14 @@ def _draw_heatmap(
         cmap = config.SEQUENTIAL_COLORMAP
     clipped = int(np.nansum((values < low) | (values > high)))
 
+    # A year the matrix has no value for is drawn in a grey that belongs to no part
+    # of the ramp. White would not do: the centre of a diverging ramp is white, so a
+    # missing year and a year sitting exactly on the base year would look the same,
+    # and one of the two is a value.
+    ramp = matplotlib.colormaps[cmap].with_extremes(bad="#e8e8e8")
     image = axis.imshow(
         np.clip(values, low, high),
-        aspect="auto", cmap=cmap, norm=norm, interpolation="nearest",
+        aspect="auto", cmap=ramp, norm=norm, interpolation="nearest",
     )
     axis.set_xticks(range(len(matrix.columns)))
     axis.set_xticklabels([str(column) for column in matrix.columns], fontsize=7, rotation=90)
@@ -611,14 +812,29 @@ def _unit_label(code: str, name: str) -> str:
 
 
 def _unit_heatmap(
-    table: pd.DataFrame, actor: str, day_type: str, path: Path, log: RunLog
+    table: pd.DataFrame,
+    actor: str,
+    day_type: str,
+    path: Path,
+    log: RunLog,
+    measured_table: pd.DataFrame | None = None,
 ) -> None:
     """The thirty trajectories as a block, ordered by size.
 
-    Diverging around the anchor: blue is below what that unit measured, red is
-    above. Ordered by the last year's level so that the big units are together,
-    which is what makes a band of colour crossing the whole block legible as
-    something the city did rather than something one unit did.
+    Diverging around the base year `base_year_of` picks — the first measured year
+    inside the window, which for the weekday is 2011 — so blue is below what that
+    unit measured and red is above. **Why that year and not another is a choice a
+    reader has to be told about**, and it is in the title of the figure as well as
+    in that function's docstring, because an index is only as meaningful as its
+    base.
+
+    Ordered by the last year's level so that the big units are together, which is
+    what makes a band of colour crossing the whole block legible as something the
+    city did rather than something one unit did.
+
+    A measured year outside the window gets a column of its own, and the years
+    between it and the window are left blank, because the panel holds no value
+    for them.
     """
     variant = review_variant(table)
     block = _block(table, variant, actor, day_type)
@@ -629,7 +845,27 @@ def _unit_heatmap(
     )
     provenance = _provenance_by_year(table, variant, actor, day_type)
     anchors = [year for year, value in provenance.items() if value == config.MEASURED_EXPOSURE]
-    base_year = anchors[0] if anchors else wide.columns[0]
+    base_year = base_year_of(provenance)
+
+    outside = _outside_the_window(measured_table, wide.columns, actor, day_type)
+    if not outside.empty:
+        earlier = measured_table[
+            (measured_table[config.ACTOR_TYPE_COL] == actor)
+            & (measured_table[config.DAY_TYPE_COL] == day_type)
+            & (measured_table[config.YEAR_COL].isin(list(outside.index)))
+        ].pivot_table(
+            index=[config.AREA_CODE_COL, config.AREA_NAME_COL],
+            columns=config.YEAR_COL,
+            values=SERIES_COLUMN,
+        )
+        wide = earlier.join(wide, how="right")
+        anchors = sorted(set(anchors) | set(outside.index))
+        # Every year between the anchor and the window, so that the gap the panel
+        # has is a gap on the figure too.
+        wide = wide.reindex(
+            columns=range(int(min(anchors)), int(max(wide.columns)) + 1)
+        )
+
     indexed = wide.div(wide[base_year], axis=0)
     indexed = indexed.loc[wide[wide.columns[-1]].sort_values(ascending=False).index]
     indexed.index = [_unit_label(code, name) for code, name in indexed.index]
@@ -643,11 +879,13 @@ def _unit_heatmap(
     fig.suptitle(
         f"{config.ROAD_USER_LABELS_ES[actor]} — {config.DAY_TYPE_LABELS_ES[day_type]}, "
         f"variante {variant}\n"
-        f"cada fila es una UPL contra su propio {base_year}; las líneas negras son años de "
-        f"encuesta" + (f"; {clipped} celda(s) fuera de la escala" if clipped else ""),
+        f"cada fila es una UPL contra su propio {base_year},\n"
+        "que es el primer año medido dentro de la ventana\n"
+        "líneas negras, años de encuesta; gris, año sin fila en el panel"
+        + (f"; {clipped} celda(s) fuera de la escala" if clipped else ""),
         fontsize=11,
     )
-    fig.tight_layout(rect=(0, 0, 1, 0.93))
+    fig.tight_layout(rect=(0, 0, 1, 0.90))
     _stamp(fig, log)
     fig.savefig(path, dpi=config.FIGURE_DPI)
     plt.close(fig)
@@ -1097,6 +1335,7 @@ def draw(
     patch=None,
     diagnostic: pd.DataFrame | None = None,
     steps: pd.DataFrame | None = None,
+    measured_table: pd.DataFrame | None = None,
 ) -> dict[str, Path]:
     """Every figure, in the six numbered groups.
 
@@ -1114,7 +1353,7 @@ def draw(
     summary = root / config.INTERPOLATION_FIGURE_GROUPS["summary"]
     summary.mkdir(parents=True, exist_ok=True)
     path = summary / f"summary__city_series.{suffix}"
-    _summary_sheet(table, path, log)
+    _summary_sheet(table, path, log, measured_table=measured_table)
     written[path.stem] = path
     path = summary / f"summary__provenance.{suffix}"
     _provenance_sheet(table, path, log)
@@ -1125,7 +1364,7 @@ def draw(
         city.mkdir(parents=True, exist_ok=True)
         for day in _day_types(table):
             path = city / f"city__{_slug(actor)}_{_slug(day)}.{suffix}"
-            _city_figure(table, actor, day, path, log)
+            _city_figure(table, actor, day, path, log, measured_table=measured_table)
             written[path.stem] = path
 
         units = root / config.INTERPOLATION_FIGURE_GROUPS["units"] / _slug(actor)
@@ -1134,10 +1373,10 @@ def draw(
         # day the models take, the Sunday rests on a single anchor, and ninety
         # sheets of thirty panels would be read by nobody.
         path = units / f"units__{_slug(actor)}_{_slug(day_type)}_series.{suffix}"
-        _unit_series_sheet(table, actor, day_type, path, log)
+        _unit_series_sheet(table, actor, day_type, path, log, measured_table=measured_table)
         written[path.stem] = path
         path = units / f"units__{_slug(actor)}_{_slug(day_type)}_heatmap.{suffix}"
-        _unit_heatmap(table, actor, day_type, path, log)
+        _unit_heatmap(table, actor, day_type, path, log, measured_table=measured_table)
         written[path.stem] = path
 
     groups = 3

@@ -195,7 +195,10 @@ def run_interpolation(log: RunLog) -> None:
     # The last three groups of figures draw the three tables above rather than the
     # panel, which is why they are handed over rather than rebuilt.
     interpolation_figures.wide_tables(both, log)
-    interpolation_figures.draw(both, log, patch=patch, diagnostic=diagnostic, steps=steps)
+    interpolation_figures.draw(
+        both, log, patch=patch, diagnostic=diagnostic, steps=steps,
+        measured_table=measured.table,
+    )
 
 
 def run_rho(log: RunLog) -> None:
