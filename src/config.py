@@ -332,6 +332,36 @@ PERSONS_KILLED_COL = "PERSONS_KILLED"
 CRASH_CLASS_COL = "CRASH_CLASS"
 YEAR_COL = "YEAR"
 
+# When the crash happened inside its year, and where it happened, both resolved
+# once per crash and carried on every party of it.
+#
+# **The month does not come from MES_OCURRE.** That column is named as though it
+# held it and is null in every row of both sources — 8,592 of 8,592 and 268,921 of
+# 268,921 — while FECHA_OCUR parses in 100 % of them and agrees with ANO_OCURRE in
+# 100 % of them. Measured on 2026-09-11; it is the same trap as len_km, and the
+# reason DATE_SOURCE_COL is what both the completeness audit and the party stage
+# read.
+MONTH_COL = "MONTH"
+
+# The coordinate of the crash, in SOURCE_CRS, which is degrees. Anything that
+# measures a distance or bins a surface projects to PROJECTED_CRS first; these two
+# columns exist to carry the position through the tables, not to be subtracted.
+POINT_X_COL = "POINT_X"
+POINT_Y_COL = "POINT_Y"
+
+# How far apart two records of one crash may be written and still count as the
+# same place. The check is a distance in metres rather than a comparison of
+# rounded degrees, because a rounding has an edge and real values sit on it: five
+# crashes of 2024 carry a coordinate that differs between the fatality layer and
+# the injury layer in the seventh decimal of a degree, about a centimetre, which a
+# rounding at seven decimals reports as a disagreement and a rounding at six does
+# not. Neither answer is about the data.
+#
+# One metre is three orders of magnitude above that noise and three below the
+# finest thing any figure of this study resolves, so a crash exceeding it is a
+# crash the sources genuinely place in two spots.
+CRASH_POINT_TOLERANCE_M = 1.0
+
 # Counterpart of a party in a crash where no other party was recorded, such as a
 # motorcycle hitting a lamp post. The study being replicated counts these too.
 SELF_COUNTERPART = "SELF"
@@ -523,6 +553,11 @@ INTERMEDIATE_SUBDIR = "intermediate"
 ANALYSIS_PREFIX = "analysis"
 PRESENTATION_PREFIX = "presentation"
 REFERENCE_PREFIX = "reference"
+
+# The figure folder of the aggregate over the whole span, beside the folders named
+# for a single year. It is a word rather than "2007-2024" so that the span can
+# change without the tree changing shape.
+ALL_YEARS_FOLDER = "all_years"
 
 # ---------------------------------------------------------------------------
 # rho(t): share of two-party crashes in which both parties suffered casualties
@@ -4436,6 +4471,60 @@ HEATMAP_COLORMAP = "viridis"
 # of the colour ramp, so that a true zero cannot be mistaken for a small value on
 # a logarithmic scale.
 HEATMAP_EMPTY_COLOR = "#eeeeee"
+# And the zero printed on such a cell, in a grey that reads on that flat colour
+# without competing with the cells that carry a count. It is set apart from the
+# two below because those answer to the ramp and this one answers to a colour
+# that is deliberately not on it.
+HEATMAP_EMPTY_TEXT_COLOR = "#999999"
+
+# The number printed inside a shaded cell, in whichever of the two colours reads
+# against the colour that cell was actually painted.
+#
+# The threshold is on the luminance of the fill and never on where the value sits
+# along the ramp. A position says nothing about how dark a colour is: viridis is
+# darkest at its bottom and brightest at its top, so a rule phrased as "light text
+# high up the ramp" puts white on the palest cell and black on the darkest one,
+# getting both ends wrong at once. Reading the luminance back off the cell works
+# for any colormap and cannot be inverted by changing one. See D43.
+FIGURE_LIGHT_TEXT_COLOR = "#ffffff"
+FIGURE_DARK_TEXT_COLOR = "#1a1a1a"
+FIGURE_LIGHT_TEXT_BELOW_LUMINANCE = 0.55
+
+# -- the master table of casualties, by unit and month -----------------------
+# Thirty units down the side and the twelve months across the top, every cell
+# printed and shaded. It answers what the matrix cannot: how many events of each
+# kind happened in a place and when, with no pair attached.
+#
+# It takes the matrix's ramp and not the predictors' master table's, although it
+# borrows that figure's shape. The two sit in the same folder as the matrix of
+# their own count and year, and a reader moving between them should not have to
+# re-learn what dark means; the predictors' table shades each column on its own
+# scale because a share and a density have nothing to say to each other, while
+# every cell here is the same quantity in the same unit and takes one ramp.
+CASUALTY_TABLE_COLORMAP = HEATMAP_COLORMAP
+
+# Counts per unit and month span three orders of magnitude — a month of Kennedy
+# against a month of Torca — so the ramp is logarithmic, as every other count
+# figure of this pipeline is (D12). A linear ramp would leave one dark row and
+# twenty-nine indistinguishable ones.
+CASUALTY_TABLE_LOG_SCALE = True
+
+# The totals sit on a neutral ground and outside the ramp. A row total is an
+# order of magnitude above the cells it sums, so putting it on the same scale
+# would push the ramp's ceiling up by that much and flatten the body it exists to
+# show. The note under the title says so, because a reader cannot see a scale
+# something was left out of.
+CASUALTY_TABLE_TOTAL_COLOR = "#f2f0eb"
+CASUALTY_TABLE_TOTAL_TEXT_COLOR = "#1a1a1a"
+CASUALTY_TABLE_TOTAL_LABEL = "TOTAL"
+
+# Width follows the number of columns, which is twelve months in a year's figure
+# and eighteen years in the aggregate one. The height does not: the rows are the
+# thirty units plus their total in every one of them.
+CASUALTY_TABLE_WIDTH_BASE_IN = 4.2
+CASUALTY_TABLE_WIDTH_PER_COLUMN_IN = 0.72
+CASUALTY_TABLE_HEIGHT_IN = 13.5
+CASUALTY_TABLE_CELL_FONT_PT = 7.0
 
 # ---------------------------------------------------------------------------
 # Tables compiled as LaTeX rather than drawn

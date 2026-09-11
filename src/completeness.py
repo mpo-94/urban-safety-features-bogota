@@ -57,7 +57,7 @@ def monthly_counts(log: RunLog) -> pd.DataFrame:
             {
                 config.CASUALTY_SOURCE_COL: label,
                 config.YEAR_COL: layer[config.YEAR_SOURCE_COL].astype("Int64"),
-                "MONTH": dates.dt.month.astype("Int64"),
+                config.MONTH_COL: dates.dt.month.astype("Int64"),
             }
         )
         disagreeing = int((frame[config.YEAR_COL] != dates.dt.year.astype("Int64")).sum())
@@ -80,7 +80,7 @@ def monthly_counts(log: RunLog) -> pd.DataFrame:
 
     observed = (
         pd.concat(frames, ignore_index=True)
-        .groupby([config.CASUALTY_SOURCE_COL, config.YEAR_COL, "MONTH"], dropna=True)
+        .groupby([config.CASUALTY_SOURCE_COL, config.YEAR_COL, config.MONTH_COL], dropna=True)
         .size()
         .reset_index(name="RECORDS")
     )
@@ -93,10 +93,10 @@ def monthly_counts(log: RunLog) -> pd.DataFrame:
             list(config.STUDY_YEARS),
             range(1, 13),
         ],
-        names=[config.CASUALTY_SOURCE_COL, config.YEAR_COL, "MONTH"],
+        names=[config.CASUALTY_SOURCE_COL, config.YEAR_COL, config.MONTH_COL],
     ).to_frame(index=False)
     grid[config.YEAR_COL] = grid[config.YEAR_COL].astype("Int64")
-    grid["MONTH"] = grid["MONTH"].astype("Int64")
+    grid[config.MONTH_COL] = grid[config.MONTH_COL].astype("Int64")
 
     table = grid.merge(observed, on=list(grid.columns), how="left")
     table["RECORDS"] = table["RECORDS"].fillna(0).astype(int)
@@ -132,7 +132,7 @@ def export(table: pd.DataFrame, log: RunLog) -> Path:
 def report(table: pd.DataFrame, log: RunLog) -> None:
     for label in (config.FATALITY_SOURCE, config.INJURY_SOURCE):
         layer = table[table[config.CASUALTY_SOURCE_COL] == label]
-        wide = layer.pivot(index=config.YEAR_COL, columns="MONTH", values="RECORDS")
+        wide = layer.pivot(index=config.YEAR_COL, columns=config.MONTH_COL, values="RECORDS")
         lines = [
             f"{'year':>6}  " + "  ".join(f"{month:>5}" for month in range(1, 13)) + f"  {'total':>7}",
             f"{'-' * 6}  " + "  ".join("-" * 5 for _ in range(12)) + f"  {'-' * 7}",
@@ -143,7 +143,7 @@ def report(table: pd.DataFrame, log: RunLog) -> None:
         log.table(f"records per month [{label}]:", "\n".join(lines))
 
     flagged = table[table["THIN"] | table["EMPTY"]].sort_values(
-        [config.CASUALTY_SOURCE_COL, config.YEAR_COL, "MONTH"]
+        [config.CASUALTY_SOURCE_COL, config.YEAR_COL, config.MONTH_COL]
     )
     lines = [
         f"{'layer':<10}  {'year':>6}  {'month':>6}  {'records':>8}  {'year median':>12}  {'share':>7}",
@@ -153,7 +153,7 @@ def report(table: pd.DataFrame, log: RunLog) -> None:
         share = "-" if pd.isna(row["SHARE_OF_MEDIAN"]) else f"{100 * float(row['SHARE_OF_MEDIAN']):.1f}%"
         lines.append(
             f"{row[config.CASUALTY_SOURCE_COL]:<10}  {int(row[config.YEAR_COL]):>6}  "
-            f"{int(row['MONTH']):>6}  {int(row['RECORDS']):>8,}  {int(row['YEAR_MEDIAN']):>12,}  {share:>7}"
+            f"{int(row[config.MONTH_COL]):>6}  {int(row['RECORDS']):>8,}  {int(row['YEAR_MEDIAN']):>12,}  {share:>7}"
         )
     if flagged.empty:
         lines.append(
@@ -172,7 +172,7 @@ def report(table: pd.DataFrame, log: RunLog) -> None:
     for label in (config.FATALITY_SOURCE, config.INJURY_SOURCE):
         layer = table[table[config.CASUALTY_SOURCE_COL] == label]
         for year in config.STUDY_YEARS:
-            months = layer[layer[config.YEAR_COL] == year].sort_values("MONTH")
+            months = layer[layer[config.YEAR_COL] == year].sort_values(config.MONTH_COL)
             empty = months["EMPTY"].to_numpy()
             trailing = 0
             for value in empty[::-1]:

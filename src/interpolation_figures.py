@@ -50,10 +50,11 @@ from matplotlib.colors import TwoSlopeNorm
 from matplotlib.patches import Patch
 
 try:  # regular package import
-    from src import config
+    from src import config, figures
     from src.provenance import RunLog
 except ImportError:  # executed as a plain script from inside src/
     import config  # type: ignore[no-redef]
+    import figures  # type: ignore[no-redef]
     from provenance import RunLog  # type: ignore[no-redef]
 
 
@@ -799,13 +800,13 @@ def _draw_heatmap(
                     continue
                 # Black on the pale end of the ramp and white on the dark end.
                 # The cells worth annotating are exactly the dark ones, so a
-                # fixed colour would hide the figures that matter most.
-                red, green, blue, _ = image.cmap(image.norm(min(value, high)))
-                luminance = 0.299 * red + 0.587 * green + 0.114 * blue
+                # fixed colour would hide the figures that matter most. Clipped
+                # to the top of the ramp, because that is the colour the cell was
+                # painted when the value ran past it.
                 axis.text(
                     column, row, f"{value:.1f}".replace(".", ","),
                     ha="center", va="center", fontsize=6,
-                    color="#ffffff" if luminance < 0.55 else "#1a1a1a",
+                    color=figures.text_color_on(image, min(value, high)),
                 )
     return image, clipped
 

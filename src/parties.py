@@ -308,29 +308,139 @@ def resolve_pairs(parties: pd.DataFrame, log: RunLog) -> pd.DataFrame:
     return kept
 
 
+def _crash_month(casualties: pd.DataFrame) -> pd.Series:
+    """The month of each casualty record, taken from the date and never from MES_OCURRE.
+
+    MES_OCURRE is null in every row of both sources. FECHA_OCUR parses in all of
+    them and its year agrees with ANO_OCURRE in all of them, so the date is the
+    only thing in the sources that says which month a crash happened in.
+    """
+    return pd.to_datetime(casualties[config.DATE_SOURCE_COL], errors="coerce").dt.month.astype("Int64")
+
+
 def crash_attributes(casualties: pd.DataFrame) -> pd.DataFrame:
-    """Year, crash type and territorial unit, once per crash.
+    """Year, month, crash type, territorial unit and point, once per crash.
 
     They were verified to agree across a crash's victims, except where one victim
     could not be located, so sorting the null unit last and taking the first
-    non-null gives the crash a unit whenever any of its victims has one.
+    non-null gives the crash a unit whenever any of its victims has one. The month
+    and the point were measured to agree with no exception at all — zero crashes of
+    182,426 carry two of either — so they need no such rule; `check_crash_attributes`
+    is what keeps that true as the sources are updated.
 
     Shared by everything that needs to place a crash in space and time, so that
-    the matrix and rho put the same crash in the same cell by construction rather
-    than by two implementations agreeing.
+    the matrix, rho, the master table and the maps put the same crash in the same
+    cell and at the same point by construction rather than by four implementations
+    agreeing.
     """
+    # The coordinate leaves the geometry here and travels as two plain columns.
+    # Carrying a geometry through party resolution would put a spatial type into
+    # every merge and groupby of a stage that has nothing to do with space, and
+    # the point is of the crash, which is exactly what this frame is keyed on.
+    prepared = casualties.assign(**{
+        config.MONTH_COL: _crash_month(casualties),
+        config.POINT_X_COL: casualties.geometry.x,
+        config.POINT_Y_COL: casualties.geometry.y,
+    })
     return (
-        casualties.sort_values(config.AREA_CODE_COL, na_position="last")
+        prepared.sort_values(config.AREA_CODE_COL, na_position="last")
         .groupby(config.CRASH_ID_COL, as_index=False)
         .agg(
             **{
                 config.YEAR_COL: (config.YEAR_SOURCE_COL, "first"),
+                config.MONTH_COL: (config.MONTH_COL, "first"),
                 config.CRASH_CLASS_COL: (config.CRASH_CLASS_SOURCE_COL, "first"),
                 config.AREA_CODE_COL: (config.AREA_CODE_COL, "first"),
                 config.AREA_NAME_COL: (config.AREA_NAME_COL, "first"),
+                config.POINT_X_COL: (config.POINT_X_COL, "first"),
+                config.POINT_Y_COL: (config.POINT_Y_COL, "first"),
             }
         )
     )
+
+
+def check_crash_attributes(casualties: pd.DataFrame, log: RunLog) -> bool:
+    """A crash has exactly one month and exactly one coordinate.
+
+    `crash_attributes` takes both with a plain `first`, which is only honest if
+    a crash's records never disagree about them. Measured at zero exceptions over
+    182,426 crashes on 2026-09-11, and measured again on every run from here on:
+    an extract that starts recording one crash at two points would otherwise move
+    casualties on the map and change a month in the master table with nothing
+    saying it had.
+
+    The coordinate is compared as a **distance in metres**, not as two strings of
+    rounded degrees. Five crashes of 2024 are written a centimetre apart between
+    the fatality layer and the injury layer — the seventh decimal of a degree,
+    which is float noise from the round trip and not a second location — and a
+    rounding either calls that a disagreement or does not depending on which
+    decimal it stops at. A distance says what the check means and has no edge for
+    a value to sit on. See `config.CRASH_POINT_TOLERANCE_M`.
+
+    Reported whether it passes or fails. A check that only speaks up when it
+    breaks leaves no evidence that it ran.
+    """
+    months = _crash_month(casualties)
+    projected = casualties.geometry.to_crs(epsg=config.PROJECTED_CRS)
+    prepared = pd.DataFrame({
+        config.CRASH_ID_COL: casualties[config.CRASH_ID_COL].to_numpy(),
+        config.MONTH_COL: months.to_numpy(),
+        "_x": projected.x.to_numpy(),
+        "_y": projected.y.to_numpy(),
+    })
+
+    grouped = prepared.groupby(config.CRASH_ID_COL)
+    spans = grouped.agg(
+        months=(config.MONTH_COL, "nunique"),
+        x_min=("_x", "min"), x_max=("_x", "max"),
+        y_min=("_y", "min"), y_max=("_y", "max"),
+    )
+    # The diagonal of the box a crash's points fall in. It is an upper bound on
+    # how far any two of them are apart, which is the conservative direction for
+    # a check: it can never call a real disagreement acceptable.
+    separation = np.hypot(spans["x_max"] - spans["x_min"], spans["y_max"] - spans["y_min"])
+
+    crashes = len(spans)
+    two_months = int((spans["months"] > 1).sum())
+    scattered = int((separation > config.CRASH_POINT_TOLERANCE_M).sum())
+    widest = float(separation.max()) if crashes else 0.0
+    no_month = int((spans["months"] == 0).sum())
+    undated = int(months.isna().sum())
+
+    log.record(
+        "crash month and point agree within a crash",
+        rows_in=len(casualties),
+        rows_out=crashes,
+        changes=[(crashes - len(casualties), "casualty records collapsed into the crash they share")],
+        notes=[
+            f"{two_months} crash(es) of {crashes:,} carry more than one month, and {scattered} place "
+            f"their records more than {config.CRASH_POINT_TOLERANCE_M:.0f} m apart; both must be zero "
+            f"for `first` to be the right aggregation",
+            f"widest separation inside a crash: {widest:.3f} m",
+            f"{undated} casualty record(s) have no usable date, leaving {no_month} crash(es) "
+            f"with no month at all",
+            f"month read from {config.DATE_SOURCE_COL}; MES_OCURRE is null in every row of both sources",
+        ],
+    )
+
+    passed = two_months == 0 and scattered == 0
+    if not passed:
+        log.warn(
+            "%d crash(es) disagree about their month and %d place their records more than %.0f m "
+            "apart; crash_attributes takes the first of each and is now choosing between real "
+            "alternatives",
+            two_months,
+            scattered,
+            config.CRASH_POINT_TOLERANCE_M,
+        )
+    else:
+        log.info(
+            "check passed: each of the %d crashes carries one month and one coordinate, "
+            "the widest spread inside a crash being %.3f m",
+            crashes,
+            widest,
+        )
+    return passed
 
 
 def party_universe(casualties: pd.DataFrame, vehicles: pd.DataFrame, log: RunLog) -> pd.DataFrame:
@@ -435,6 +545,10 @@ def emit_rows(
     result[config.AFFECTED_PARTIES_COL] = 1
     result[config.YEAR_COL] = result[config.YEAR_COL].astype("Int64")
 
+    # The month and the point are of the crash and repeat on every party of it.
+    # That is what makes the master table and the map count parties rather than
+    # crashes: two parties hurt in one crash are two rows at one coordinate, and
+    # summing the count column over them is the count the folder is about.
     columns = [
         config.CRASH_ID_COL,
         config.PARTY_ID_COL,
@@ -446,7 +560,10 @@ def emit_rows(
         config.AREA_CODE_COL,
         config.AREA_NAME_COL,
         config.YEAR_COL,
+        config.MONTH_COL,
         config.CRASH_CLASS_COL,
+        config.POINT_X_COL,
+        config.POINT_Y_COL,
     ]
     return result[columns].sort_values([config.CRASH_ID_COL, config.PARTY_ID_COL]).reset_index(drop=True)
 
@@ -570,6 +687,7 @@ def divergence_report(result: pd.DataFrame) -> str:
 def resolve(casualties: pd.DataFrame, vehicles: pd.DataFrame, log: RunLog) -> pd.DataFrame:
     """Full stage: one row per affected party, with its counterpart."""
     check_cross_layer_duplication(casualties, log)
+    check_crash_attributes(casualties, log)
     parties = build_parties(casualties, vehicles, log)
     kept = resolve_pairs(parties, log)
     result = emit_rows(kept, casualties, log)

@@ -346,17 +346,23 @@ def run_matrix(log: RunLog) -> None:
     units, casualties, vehicles = load_sources(log)
     affected = parties.resolve(casualties, vehicles, log)
     long_table = matrix.build(affected, units, log)
+    master = matrix.build_master(affected, units, log)
 
     paths = matrix.export(long_table, log)
+    master_path = matrix.export_master_table([master], log)
     matrix.render_heatmaps(paths, log)
+    matrix.render_master_tables(master_path, log)
     latex.export_matrices(long_table, config.OBSERVED_DATASET, log)
 
     log.table("record funnel:", log.funnel())
     if not matrix.verify(long_table, affected, units, log):
         raise RouteFailed("the matrix does not agree with what entered it")
+    if not matrix.verify_master_table(master, long_table, units, log, path=master_path):
+        raise RouteFailed("the master table does not agree with the matrix of the same events")
     if not latex.verify_matrix_table(long_table, config.OBSERVED_DATASET, log):
         raise RouteFailed("the emitted LaTeX matrices do not add up to the long table")
     matrix.report(long_table, log)
+    matrix.report_master_table(master, log)
 
 
 def run_corrected(log: RunLog) -> None:
@@ -378,6 +384,7 @@ def run_corrected(log: RunLog) -> None:
     # The universe before the parties without casualties are dropped. Both
     # datasets are built from it, so they differ by the correction and by nothing
     # else — not by a second reading of the sources.
+    parties.check_crash_attributes(casualties, log)
     universe = parties.party_universe(casualties, vehicles, log)
     crash_attrs = parties.crash_attributes(casualties)
 
@@ -385,6 +392,7 @@ def run_corrected(log: RunLog) -> None:
         parties.to_internal(universe), casualties, log, label=config.OBSERVED_DATASET.lower()
     )
     observed = matrix.build(observed_affected, units, log)
+    observed_master = matrix.build_master(observed_affected, units, log)
     observed_paths = matrix.export(observed, log)
     matrix.render_heatmaps(observed_paths, log)
     latex.export_matrices(observed, config.OBSERVED_DATASET, log)
@@ -416,9 +424,24 @@ def run_corrected(log: RunLog) -> None:
         kept, units, log, years=years, dataset=config.CORRECTED_DATASET,
         dump_name="08_matrix_long_corrected",
     )
+    corrected_master = matrix.build_master(
+        kept, units, log, years=years, dataset=config.CORRECTED_DATASET,
+        dump_name="08_casualties_by_unit_month_corrected",
+    )
     corrected_paths = matrix.export(corrected, log, years=years, suffix=config.CORRECTION_FILE_SUFFIX)
     matrix.render_heatmaps(corrected_paths, log, years=years, suffix=config.CORRECTION_FILE_SUFFIX)
     latex.export_matrices(corrected, config.CORRECTED_DATASET, log)
+
+    # One file holding both datasets, written once the two exist. The corrected
+    # set gets the master table and the matrices and no map: the correction
+    # promotes parties of crashes that already happened, so it adds no coordinate
+    # and a corrected map would be the same points at slightly different weights.
+    master_path = matrix.export_master_table([observed_master, corrected_master], log)
+    matrix.render_master_tables(master_path, log)
+    matrix.render_master_tables(
+        master_path, log, years=years,
+        dataset=config.CORRECTED_DATASET, suffix=config.CORRECTION_FILE_SUFFIX,
+    )
 
     correction.export(tables["plan"], tables["city"], tables["reference"], tables["persons"], log)
 
@@ -428,6 +451,17 @@ def run_corrected(log: RunLog) -> None:
         raise RouteFailed("the observed matrix does not agree with what entered it")
     if not matrix.verify(corrected, kept, units, log, years=years):
         raise RouteFailed("the corrected matrix does not agree with what entered it")
+
+    # Both master tables against their own matrix, read back from the one file
+    # that holds them, so the check is on what was written and not on what was
+    # built.
+    if not matrix.verify_master_table(observed_master, observed, units, log, path=master_path):
+        raise RouteFailed("the observed master table does not agree with its matrix")
+    if not matrix.verify_master_table(
+        corrected_master, corrected, units, log, years=years,
+        dataset=config.CORRECTED_DATASET, path=master_path,
+    ):
+        raise RouteFailed("the corrected master table does not agree with its matrix")
 
     # Both sets of emitted tables, checked the same way, because the whole point
     # of producing them in one run is that the two are comparable cell by cell.
@@ -447,6 +481,7 @@ def run_corrected(log: RunLog) -> None:
 
     correction.report(tables["city"], tables["plan"], tables["promotions"], log)
     matrix.report(corrected, log)
+    matrix.report_master_table(corrected_master, log)
 
 
 # ---------------------------------------------------------------------------
