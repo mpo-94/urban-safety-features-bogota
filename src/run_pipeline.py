@@ -39,6 +39,7 @@ from src import (
     exposure,
     integration,
     interpolation,
+    interpolation_figures,
     latex,
     loading,
     maps,
@@ -186,6 +187,12 @@ def run_interpolation(log: RunLog) -> None:
         diagnostic = interpolation.build_diagnostic(table, casualties, measured, log)
         interpolation.export_diagnostic(diagnostic, log)
         interpolation.report_diagnostic(diagnostic, log)
+
+    # And the panel in a shape a person can read. Nothing downstream reads any of
+    # it: the tables are for a spreadsheet and the figures answer the one question
+    # no check can, which is whether the panel looks like the city it describes.
+    interpolation_figures.wide_tables(both, log)
+    interpolation_figures.draw(both, log)
 
 
 def run_rho(log: RunLog) -> None:

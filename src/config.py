@@ -4335,6 +4335,74 @@ check_declared_columns()
 
 
 # ---------------------------------------------------------------------------
+# Reading the interpolated panel: the wide tables and the figures
+# ---------------------------------------------------------------------------
+# The panel is 12,960 rows in a long table, which is the right shape for joining
+# it to the casualty matrix and the predictors and the wrong shape for looking at
+# it. These declare the second shape: tables wide enough to read in a
+# spreadsheet, and figures ordered so that a reader meets them in the order the
+# argument is made.
+#
+# They are a REVIEW artefact and not a deliverable. Nothing downstream reads
+# them, no figure here is cited by a document yet, and anything that reaches the
+# thesis is redrawn to the document's own conventions. What they are for is the
+# one question that cannot be answered by a check: does this panel look like the
+# city it claims to describe.
+REVIEW_SUBDIR = "review"
+INTERPOLATION_FIGURES_SUBDIR = "interpolation"
+
+# PNG rather than PDF, which is the opposite of the exposure maps. These are read
+# on a screen, pasted into a message and looked at side by side; the maps are
+# vector because they carry fine geometry and may reach the document. A figure
+# whose purpose is to be opened quickly should open quickly.
+INTERPOLATION_FIGURE_FORMAT = "png"
+
+# Numbered so that a directory listing is a reading order: the summary first,
+# then the city, then the units, then the three groups that justify a decision.
+# The keys are what the code says and the values are what the folder is called.
+INTERPOLATION_FIGURE_GROUPS: dict[str, str] = {
+    "summary": "00_summary",
+    "city": "01_city",
+    "units": "02_units",
+    "pandemic": "03_pandemic",
+    "diagnostic": "04_diagnostic",
+    "volatility": "05_volatility",
+}
+
+# One colour per kind of cell, declared once so that the provenance means the
+# same thing in a series, in a strip and in a legend. Measured is nearly black
+# because it is the only thing in the panel that was observed; held is grey
+# because it carries no behavioural information; the patch is the one warm colour
+# in the set, because it is the one place the casualties construct an exposure.
+EXPOSURE_PROVENANCE_COLORS: dict[str, str] = {
+    MEASURED_EXPOSURE: "#1a1a1a",
+    INTERPOLATED_EXPOSURE: "#1b6ca8",
+    HELD_EXPOSURE: "#9e9e9e",
+    IMPLIED_FROM_RISK_EXPOSURE: "#d95f02",
+}
+
+# What each of them is called in a figure. The figures are read by my advisor and
+# by me, so they are in Spanish, exactly as the exposure choropleths are.
+EXPOSURE_PROVENANCE_LABELS_ES: dict[str, str] = {
+    MEASURED_EXPOSURE: "Medido",
+    INTERPOLATED_EXPOSURE: "Interpolado",
+    HELD_EXPOSURE: "Sostenido",
+    IMPLIED_FROM_RISK_EXPOSURE: "Implicado por el riesgo",
+}
+
+EXPOSURE_VARIANT_LABELS_ES: dict[str, str] = {
+    INTERPOLATED_VARIANT: "Sin parche (D40)",
+    PANDEMIC_PATCHED_VARIANT: "Con parche de pandemia (D42)",
+}
+
+# The diverging ramp for a figure whose centre is one: an index against a
+# measured year, or a ratio between two constructions. Centred rather than
+# stretched, because the question those figures answer is which side of the
+# anchor a cell falls on.
+DIVERGING_COLORMAP = "RdBu_r"
+
+
+# ---------------------------------------------------------------------------
 # Figures
 # ---------------------------------------------------------------------------
 FIGURE_DPI = 150
