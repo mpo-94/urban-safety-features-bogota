@@ -297,6 +297,31 @@ def _support_of(rests_on: tuple[int, ...], support_by_year: dict[int, str]) -> s
 # ---------------------------------------------------------------------------
 
 
+def series_window(anchors: tuple[int, ...], window: range) -> range:
+    """The years one kind of day is built over: the study window, and back to its anchor.
+
+    **The window and the span are two different things.** The window opens in 2007
+    because that is where the casualty series opens, and a year with no casualties
+    has no rate for a model to fit. The span of a series opens at its earliest
+    survey, because a year that was *measured* is worth carrying whether or not a
+    model can use it, and because the years between that survey and the window are
+    exactly as constructible as any other year between two anchors — 2006 sits
+    between 2005 and 2011 the same way 2008 does.
+
+    Per day type and not once for the table, which is what keeps it honest: the
+    weekday has an anchor at 2005 and runs 2005-2024, while the Saturday and the
+    Sunday have none before 2011 and run 2007-2024 exactly as before. **No Saturday
+    is invented for a year whose survey never measured one**, which is the thing
+    that would have been wrong about moving the window itself.
+
+    A model reads 2007-2024 by filtering on the year, the same way it chooses
+    between the two casualty datasets and between the two variants. See D40.
+    """
+    if not anchors:
+        return window
+    return range(min([window.start, *anchors]), window.stop)
+
+
 def build(
     measured: MeasuredExposure,
     panel: pd.DataFrame,
@@ -304,7 +329,7 @@ def build(
     log: RunLog,
     window: range | None = None,
 ) -> pd.DataFrame:
-    """One row per unit, year, actor type and day type, over the whole window.
+    """One row per unit, year, actor type and day type, over each series' own span.
 
     The measured years are in it unchanged — their level is carried straight
     through rather than recomputed from a rate, so an observation cannot be moved
@@ -314,7 +339,10 @@ def build(
     The window is the study's whole 2007-2024 rather than the corrected set's
     2008-2024, because which casualty set the models take is not this stage's
     decision (D31 says both exist) and building the wider one keeps the choice a
-    filter.
+    filter. **A series reaches further back than the window when it has a survey
+    there**, which is `series_window`: the weekday runs 2005-2024 because 2005
+    measured one, and the other two day types run 2007-2024 because no survey
+    before 2011 measured them.
     """
     window = window or config.STUDY_YEARS
     table = measured.table
@@ -331,7 +359,8 @@ def build(
         for year in measured.anchors_of(day_type)
     }
     populations = {
-        year: population.for_year(panel, year) for year in sorted(set(window) | anchor_years)
+        year: population.for_year(panel, year)
+        for year in range(min([window.start, *anchor_years]), window.stop)
     }
     support_by_year = {
         (row[config.AREA_CODE_COL], row[config.ACTOR_TYPE_COL], row[config.DAY_TYPE_COL], row[config.YEAR_COL]):
@@ -341,6 +370,10 @@ def build(
 
     day_types = [day for day in config.DAY_TYPES if day in set(table[config.DAY_TYPE_COL])]
     anchors_by_day = {day: measured.anchors_of(day) for day in day_types}
+    # One span per kind of day, because only the weekday has a survey before the
+    # window opens and the other two must not be extended into years no survey of
+    # theirs ever reached.
+    span_by_day = {day: series_window(anchors_by_day[day], window) for day in day_types}
     # One set of anchors per level, because a year may measure a column without
     # being comparable on it. The provenance and the distance to the nearest survey
     # follow the column the series is read on, which is D39's: a row says how its
@@ -402,7 +435,8 @@ def build(
                             rates[level][year] = float(cell[level]) / residents
 
                 filled = {
-                    level: fill_series(rates[level], window) for level in _SERIES
+                    level: fill_series(rates[level], span_by_day[day_type])
+                    for level in _SERIES
                 }
                 for level in _SERIES:
                     linear_cells[level] += sum(
@@ -410,7 +444,7 @@ def build(
                     )
 
                 shape = filled[series_level]
-                for year in window:
+                for year in span_by_day[day_type]:
                     residents = float(populations[year][area_code])
                     at = shape[year]
                     row: dict[str, object] = {
@@ -431,18 +465,28 @@ def build(
                     }
                     for level, rate_column in _SERIES.items():
                         value = filled[level][year]
-                        row[rate_column] = value.rate
-                        # On a measured year the level is the survey's own number,
-                        # carried through rather than recovered from the rate. The
-                        # round trip through a division and a multiplication is
-                        # correct to a part in 1e16 and this table has to reproduce
-                        # the measured one exactly, so the arithmetic is not done at
-                        # all where there is nothing to compute.
-                        row[level] = (
-                            levels[level][year]
-                            if value.provenance == config.MEASURED_EXPOSURE
-                            else value.rate * residents
-                        )
+                        if year in levels[level]:
+                            # A measured year: the survey's own number, carried
+                            # through rather than recovered from the rate. The round
+                            # trip through a division and a multiplication is correct
+                            # to a part in 1e16 and this table has to reproduce the
+                            # measured one exactly, so the arithmetic is not done at
+                            # all where there is nothing to compute.
+                            #
+                            # **On every column the survey measured, including one it
+                            # is not comparable on.** 2005's full pedestrian column
+                            # holds long walking, so it anchors nothing and the
+                            # constructed years around it are held from 2011 — but
+                            # the year itself measured that number and the panel says
+                            # so, exactly as the measured table does. Recovering it
+                            # from the held rate instead would put a value in a
+                            # measured row that no survey ever reported, which is the
+                            # one thing this stage may not do.
+                            row[level] = levels[level][year]
+                            row[rate_column] = levels[level][year] / residents
+                        else:
+                            row[rate_column] = value.rate
+                            row[level] = value.rate * residents
                     rows.append(row)
 
     built = pd.DataFrame(rows)
@@ -474,17 +518,20 @@ def build(
         changes=[
             (
                 len(built) - len(table),
-                f"rows for the {len(window) - len(measured.survey_years)} year(s) of "
-                f"{window.start}-{window.stop - 1} that no survey covers, constructed from the "
-                "rate of the years that do",
+                "rows for the years no survey covers, constructed from the rate of the years "
+                "that do, over each kind of day's own span",
             ),
         ],
         notes=[
             f"source run={measured.source_run}",
-            "day types and their anchors: " + "; ".join(
-                f"{day} {'/'.join(str(year) for year in anchors_by_day[day])}"
+            "day types, their anchors and the span each is built over: " + "; ".join(
+                f"{day} {'/'.join(str(year) for year in anchors_by_day[day])} over "
+                f"{span_by_day[day].start}-{span_by_day[day].stop - 1}"
                 for day in day_types
             ),
+            f"the study window is {window.start}-{window.stop - 1}, which is where the casualty "
+            "series opens; a series reaches further back when a survey measured it there, and "
+            "a model chooses by filtering on the year",
             ", ".join(
                 f"{provenance} {int(census.get(provenance, 0)):,}"
                 for provenance in config.EXPOSURE_PROVENANCES
@@ -785,20 +832,24 @@ def verify(
         f"{int(table.duplicated(subset=key).sum())} duplicated",
     ))
 
-    # The grid, per day type. A day type covers the whole window or it is not in
-    # the table at all: what is never allowed is a year of it missing without a
-    # word, which is D10 applied to a dimension ragged by construction.
+    # The grid, per day type. A day type covers its whole span or it is not in the
+    # table at all: what is never allowed is a year of it missing without a word,
+    # which is D10 applied to a dimension ragged by construction. The span is the
+    # study window extended back to that day type's earliest survey, so the weekday
+    # carries 2005 and 2006 and the other two do not.
     for day_type in sorted(table[day_col := config.DAY_TYPE_COL].unique()):
         block = table[table[day_col] == day_type]
         actors = measured.table.loc[
             measured.table[day_col] == day_type, config.ACTOR_TYPE_COL
         ].nunique()
-        expected_rows = len(expected_units) * actors * len(window)
+        span = series_window(measured.anchors_of(day_type), window)
+        expected_rows = len(expected_units) * actors * len(span)
         checks.append((
-            f"{day_type}: the grid of unit, actor type and year is complete over the window",
+            f"{day_type}: the grid of unit, actor type and year is complete over its span",
             len(block) == expected_rows,
             f"{len(block)} rows against {expected_rows} expected "
-            f"({len(expected_units)} units x {actors} modes x {len(window)} years)",
+            f"({len(expected_units)} units x {actors} modes x {len(span)} years, "
+            f"{span.start}-{span.stop - 1})",
         ))
 
     # **The interpolation must not move an observation.** Every measured year, on
@@ -811,10 +862,19 @@ def verify(
         config.TRIPS_PER_DAY_OF_TYPE_OVER_15MIN_COL,
         config.SAMPLE_SUPPORT_COL,
     ]
-    # Only the measured years the window contains. 2005 is measured and is not in
-    # the panel, because the casualty series starts in 2007 and the window follows
-    # it; an anchor outside the window shapes the curve and has no row of its own.
-    inside = measured.table[measured.table[config.YEAR_COL].isin(list(window))]
+    # Every measured year the panel holds a row for, which is now all of them: a
+    # survey year outside the study window is still inside its own series' span.
+    # The pairing is by year AND day type, because a year measured on one kind of
+    # day is not measured on the others.
+    held = set(zip(table[config.YEAR_COL], table[config.DAY_TYPE_COL]))
+    inside = measured.table[
+        [
+            (year, day) in held
+            for year, day in zip(
+                measured.table[config.YEAR_COL], measured.table[config.DAY_TYPE_COL]
+            )
+        ]
+    ]
     left = inside.set_index(key)[shared].sort_index()
     right = table[table[config.EXPOSURE_PROVENANCE_COL] == config.MEASURED_EXPOSURE]
     right = right.set_index(key)[shared].sort_index()
@@ -869,10 +929,11 @@ def verify(
     per_series_ok = True
     detail = []
     for day_type in sorted(table[config.DAY_TYPE_COL].unique()):
-        # The anchors the window contains, which is what can carry a MEASURED row.
-        anchors = [
-            year for year in measured.anchors_of(day_type) if year in set(window)
-        ]
+        # The anchors the series' span contains, which is what can carry a MEASURED
+        # row. Every anchor is inside its own span by construction, so this is a
+        # check that the span was built from the anchors it says it was.
+        span = series_window(measured.anchors_of(day_type), window)
+        anchors = [year for year in measured.anchors_of(day_type) if year in set(span)]
         outside = len(measured.anchors_of(day_type)) - len(anchors)
         block = table[table[config.DAY_TYPE_COL] == day_type]
         counted = block[block[config.EXPOSURE_PROVENANCE_COL] == config.MEASURED_EXPOSURE]
@@ -882,8 +943,8 @@ def verify(
         ).ngroups
         per_series_ok = per_series_ok and ok
         detail.append(
-            f"{day_type} {len(anchors)} per series"
-            + (f" and {outside} outside the window" if outside else "")
+            f"{day_type} {len(anchors)} per series over {span.start}-{span.stop - 1}"
+            + (f" and {outside} outside its span" if outside else "")
         )
     checks.append((
         "each series has exactly as many measured years as surveys measured that day type",
@@ -1712,6 +1773,9 @@ def build_diagnostic(
         )
 
     weekday_rows = len(weekday)
+    # What the first dataset matched, which separates "a day type that cannot be
+    # paired" from "a year that has no casualties" in the balance below.
+    observed_rows = len(table[table[config.DATASET_COL] == config.OBSERVED_DATASET])
     log.record(
         "compare the panel against the casualty series",
         rows_in=len(panel),
@@ -1723,7 +1787,13 @@ def build_diagnostic(
                 f"being annual and carrying no kind of day; only {config.WEEKDAY_TYPE} is kept",
             ),
             (
-                len(table) - weekday_rows,
+                observed_rows - weekday_rows,
+                "rows of a year the casualty series does not cover: the panel reaches back to "
+                "the earliest survey and the casualties begin in "
+                f"{config.FIRST_YEAR}, so those years have an exposure and no numerator",
+            ),
+            (
+                len(table) - observed_rows,
                 "a second row per unit, year and actor type for the corrected casualty dataset, "
                 "over the years D30 leaves it",
             ),

@@ -224,17 +224,26 @@ def population_years() -> tuple[int, ...]:
     """Every year the population panel has to cover, which is not only the study's.
 
     The denominator is needed wherever a rate is formed, and a rate is formed at
-    every survey year as well as at every year of the window. Four of the five
+    every year the exposure panel holds — which reaches back past the study window
+    to the earliest survey, and fills the years between the two. Four of the five
     surveys sit inside 2007-2024 and 2005 does not, so a panel built over the
-    window alone would have nothing to divide that year's trips by — and it would
-    fail at the moment of forming the rate rather than at the moment of building
-    the panel, which is far from where the cause is.
+    window alone would have nothing to divide 2005's or 2006's trips by, and it
+    would fail at the moment of forming the rate rather than at the moment of
+    building the panel, which is far from where the cause is.
+
+    **The window and the panel are not the same span and that is deliberate.** The
+    window opens in 2007 because that is where the casualty series opens and a year
+    with no casualties has no rate to model; the panel reaches further back because
+    a measured survey year is worth carrying whether or not a model can use it, and
+    because the choice of where to start then stays a filter rather than a re-run.
+    See D40.
 
     The census file covers 2005-2035, so every year this returns is in it. Declared
     as a function rather than a constant because it depends on which surveys are
     declared, and a fifth one was added after the window was fixed.
     """
-    return tuple(sorted(set(STUDY_YEARS) | {survey.year for survey in MOBILITY_SURVEYS}))
+    earliest = min([FIRST_YEAR, *(survey.year for survey in MOBILITY_SURVEYS)])
+    return tuple(range(earliest, LAST_YEAR + 1))
 
 # ---------------------------------------------------------------------------
 # Coordinate reference systems

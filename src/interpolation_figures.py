@@ -130,25 +130,28 @@ def review_variant(table: pd.DataFrame) -> str:
 def base_year_of(provenance: pd.Series) -> int:
     """The year every index and every heatmap in this module is read against.
 
-    **The first measured year the panel window contains**, which for the weekday
-    is 2011 and for the Saturday is 2011 as well. The reason it is a measured year
-    and not the first year of the window is that the first year of the window is
-    itself a construction: indexing against 2007 would compare every cell to a
-    number the interpolation invented, and a unit whose 2007 was badly built would
-    look like a unit that changed.
+    **The first measured year inside the study window**, which is 2011 for every
+    kind of day. Three things decide it and each rules out an alternative.
 
-    The reason it is the *first* of them rather than the last is that the panel is
-    read forwards — what a reader asks of these figures is what happened to a unit
-    over the eighteen years, and the answer reads better from the earliest
-    observation.
+    It is a *measured* year, because the first year of the window is itself a
+    construction: indexing against 2007 would compare every cell to a number the
+    interpolation invented, and a unit whose 2007 came out badly would read as a
+    unit that changed.
 
-    **2005 is not it**, even though it is measured and earlier: it lies outside the
-    window, has no row in the panel, and three of the four day types have no 2005
-    at all. It is drawn as the anchor it is, and `_outside_the_window` is what puts
-    it on a figure.
+    It is the *first* of them rather than the last, because the panel is read
+    forwards — what a reader asks of these figures is what happened to a unit over
+    the study period, and that reads better from the earliest observation in it.
+
+    And it is inside the *window*, which is what keeps 2005 out of the role even
+    though the panel now holds it. 2005 is a weekday and nothing else, so taking
+    the earliest measured year of each series would index the weekday against 2005
+    and the Saturday against 2011, and the four heatmaps would stop being
+    comparable with one another. 2005 keeps its column and shows as the departure
+    it is.
     """
     measured = [year for year, value in provenance.items() if value == config.MEASURED_EXPOSURE]
-    return int(measured[0] if measured else provenance.index[0])
+    inside = [year for year in measured if year >= config.FIRST_YEAR]
+    return int((inside or measured or list(provenance.index))[0])
 
 
 def _outside_the_window(
@@ -876,13 +879,18 @@ def _unit_heatmap(
     bar.set_label(f"contra el {base_year} de la misma unidad", fontsize=8)
     bar.ax.tick_params(labelsize=7)
 
+    notes = ["líneas negras, años de encuesta"]
+    if bool(indexed.isna().to_numpy().any()):
+        notes.append("gris, año sin fila en el panel")
+    if clipped:
+        notes.append(f"{clipped} celda(s) fuera de la escala")
     fig.suptitle(
         f"{config.ROAD_USER_LABELS_ES[actor]} — {config.DAY_TYPE_LABELS_ES[day_type]}, "
         f"variante {variant}\n"
         f"cada fila es una UPL contra su propio {base_year},\n"
-        "que es el primer año medido dentro de la ventana\n"
-        "líneas negras, años de encuesta; gris, año sin fila en el panel"
-        + (f"; {clipped} celda(s) fuera de la escala" if clipped else ""),
+        f"que es el primer año medido dentro de la ventana del estudio "
+        f"({config.FIRST_YEAR}-{config.LAST_YEAR})\n"
+        + "; ".join(notes),
         fontsize=11,
     )
     fig.tight_layout(rect=(0, 0, 1, 0.90))
