@@ -14,14 +14,24 @@ The figures are in Spanish and the files that hold data are in English, which is
 the split the rest of the pipeline already uses: the exposure choropleths are
 labelled in Spanish and written to `figures/exposure/2023/pedestrian/`.
 
-Three groups are drawn here and they describe the panel:
+Six groups, numbered so that a directory listing is a reading order. The first
+three describe the panel:
 
     00_summary  the four modes on one sheet, and where every cell comes from
     01_city     one mode and one kind of day at a time, level and rate
     02_units    the thirty units, as thirty small series and as a heatmap
 
-Three more justify a decision — the pandemic patch, the casualty diagnostic and
-the volatility of the per-unit steps — and they are not here yet.
+and the last three are the evidence behind a decision that was taken or is still
+open:
+
+    03_pandemic    the twelve factors of D42, what they do, and why at the city
+    04_diagnostic  D41's ratio, which says where the panel is least believable
+    05_volatility  how far a unit's rate moves between two surveys, which is the
+                   price of interpolating per unit and D40's open question
+
+The last three read tables this module does not build — the patch factors, the
+casualty diagnostic and the step table — and each is skipped, with a word in the
+log, when the run did not produce the table it needs.
 
 See D40 and D42, and `docs/interpolating-the-exposure.md`.
 """
@@ -522,10 +532,88 @@ def _unit_series_sheet(
     plt.close(fig)
 
 
+def _draw_heatmap(
+    axis,
+    matrix: pd.DataFrame,
+    *,
+    centre: float | None = 1.0,
+    mark_columns: tuple = (),
+    annotate_above: float | None = None,
+    percentile: float = 95.0,
+) -> tuple:
+    """A block of unit-by-something, on a ramp one outlier cannot flatten.
+
+    **The ramp is set by the 95th percentile of the departures and not by the
+    largest of them**, and the rest is clipped with the colour bar saying so. One
+    unit reaching five times its anchor — Torca's walking does — would otherwise
+    leave the other twenty-nine in two shades of white.
+
+    `centre` of 1.0 gives a diverging ramp around it, which is what an index or a
+    ratio wants; None gives a sequential one from the bottom of the data, which is
+    what a quantity with a floor wants, such as a step factor that is at least one
+    by construction. Returns the image and how many cells were clipped.
+    """
+    values = matrix.to_numpy(dtype=float)
+    if centre is not None:
+        with np.errstate(divide="ignore", invalid="ignore"):
+            departures = np.abs(np.log2(values / centre))
+        span = max(float(np.nanpercentile(departures, percentile)), 0.2)
+        low, high = centre * 2 ** -span, centre * 2 ** span
+        norm = TwoSlopeNorm(vmin=low, vcenter=centre, vmax=high)
+        cmap = config.DIVERGING_COLORMAP
+    else:
+        low = float(np.nanmin(values))
+        high = max(float(np.nanpercentile(values, percentile)), low * 1.01)
+        norm = matplotlib.colors.Normalize(vmin=low, vmax=high)
+        cmap = config.SEQUENTIAL_COLORMAP
+    clipped = int(np.nansum((values < low) | (values > high)))
+
+    image = axis.imshow(
+        np.clip(values, low, high),
+        aspect="auto", cmap=cmap, norm=norm, interpolation="nearest",
+    )
+    axis.set_xticks(range(len(matrix.columns)))
+    axis.set_xticklabels([str(column) for column in matrix.columns], fontsize=7, rotation=90)
+    axis.set_yticks(range(len(matrix)))
+    axis.set_yticklabels([str(label)[:28] for label in matrix.index], fontsize=7)
+    axis.tick_params(length=0)
+    for spine in axis.spines.values():
+        spine.set_visible(False)
+
+    # The columns that are true by construction, marked on the axis rather than in
+    # the cells: an anchor year is exactly 1.00 everywhere and a reader should be
+    # able to see which columns those are without counting.
+    for position, column in enumerate(matrix.columns):
+        if column in mark_columns:
+            axis.axvline(position, color="#1a1a1a", linewidth=0.8, alpha=0.55)
+
+    if annotate_above is not None:
+        for row in range(values.shape[0]):
+            for column in range(values.shape[1]):
+                value = values[row, column]
+                if not (np.isfinite(value) and value > annotate_above):
+                    continue
+                # Black on the pale end of the ramp and white on the dark end.
+                # The cells worth annotating are exactly the dark ones, so a
+                # fixed colour would hide the figures that matter most.
+                red, green, blue, _ = image.cmap(image.norm(min(value, high)))
+                luminance = 0.299 * red + 0.587 * green + 0.114 * blue
+                axis.text(
+                    column, row, f"{value:.1f}".replace(".", ","),
+                    ha="center", va="center", fontsize=6,
+                    color="#ffffff" if luminance < 0.55 else "#1a1a1a",
+                )
+    return image, clipped
+
+
+def _unit_label(code: str, name: str) -> str:
+    return f"{code} {name}"
+
+
 def _unit_heatmap(
     table: pd.DataFrame, actor: str, day_type: str, path: Path, log: RunLog
 ) -> None:
-    """The same thirty trajectories as a block, ordered by size.
+    """The thirty trajectories as a block, ordered by size.
 
     Diverging around the anchor: blue is below what that unit measured, red is
     above. Ordered by the last year's level so that the big units are together,
@@ -544,38 +632,10 @@ def _unit_heatmap(
     base_year = anchors[0] if anchors else wide.columns[0]
     indexed = wide.div(wide[base_year], axis=0)
     indexed = indexed.loc[wide[wide.columns[-1]].sort_values(ascending=False).index]
-
-    # The ramp is set by the 95th percentile of the departures and not by the
-    # largest of them, and the rest is clipped. One unit reaching five times its
-    # anchor — Torca's walking does — would otherwise leave the other twenty-nine
-    # in two shades of white. The colour bar says the ends are open.
-    values = indexed.to_numpy()
-    span = max(float(np.nanpercentile(np.abs(np.log2(values)), 95)), 0.2)
-    norm = TwoSlopeNorm(vmin=2 ** -span, vcenter=1.0, vmax=2 ** span)
-    clipped = int((np.abs(np.log2(values)) > span).sum())
+    indexed.index = [_unit_label(code, name) for code, name in indexed.index]
 
     fig, axis = plt.subplots(figsize=(10, 8))
-    image = axis.imshow(
-        np.clip(values, 2 ** -span, 2 ** span),
-        aspect="auto", cmap=config.DIVERGING_COLORMAP, norm=norm, interpolation="nearest",
-    )
-    axis.set_xticks(range(len(indexed.columns)))
-    axis.set_xticklabels([str(year) for year in indexed.columns], fontsize=7, rotation=90)
-    axis.set_yticks(range(len(indexed)))
-    axis.set_yticklabels(
-        [f"{code} {name}"[:28] for code, name in indexed.index], fontsize=7
-    )
-    axis.tick_params(length=0)
-    for spine in axis.spines.values():
-        spine.set_visible(False)
-
-    # The anchors, marked on the axis rather than in the cells: every one of them
-    # is exactly 1.00 by construction and a reader should be able to see which
-    # columns those are without counting.
-    for column, year in enumerate(indexed.columns):
-        if year in anchors:
-            axis.axvline(column, color="#1a1a1a", linewidth=0.8, alpha=0.55)
-
+    image, clipped = _draw_heatmap(axis, indexed, centre=1.0, mark_columns=tuple(anchors))
     bar = fig.colorbar(image, ax=axis, fraction=0.03, pad=0.02, extend="both")
     bar.set_label(f"contra el {base_year} de la misma unidad", fontsize=8)
     bar.ax.tick_params(labelsize=7)
@@ -594,16 +654,457 @@ def _unit_heatmap(
 
 
 # ---------------------------------------------------------------------------
+# 03_pandemic
+# ---------------------------------------------------------------------------
+
+
+def _pandemic_factors(patch, path: Path, log: RunLog) -> None:
+    """The twelve numbers D42 rests on, and the twelve the other dataset gives.
+
+    The bars are the declared series and the dashes are the sensitivity. What the
+    figure is for is the comparison between them: where a dash sits on its bar the
+    patch does not depend on the rho question at all, and where it does not the
+    difference is the recording change, which is the car and the motorcycle and
+    nothing else.
+    """
+    table = patch.table
+    modes = [actor for actor in config.ROAD_USER_TYPES if actor in set(table[config.ACTOR_TYPE_COL])]
+    years = list(config.PANDEMIC_PATCH_YEARS)
+    declared = table[table[config.DATASET_COL] == patch.dataset].set_index(
+        [config.ACTOR_TYPE_COL, config.YEAR_COL]
+    )[config.PANDEMIC_PATCH_FACTOR_COL]
+    others = [name for name in sorted(table[config.DATASET_COL].unique()) if name != patch.dataset]
+
+    fig, axis = plt.subplots(figsize=(10, 5.2))
+    positions, labels, heights = [], [], []
+    position = 0.0
+    for actor in modes:
+        for year in years:
+            positions.append(position)
+            labels.append(str(year))
+            heights.append(float(declared.loc[(actor, year)]))
+            position += 1.0
+        position += 0.8
+
+    bars = axis.bar(
+        positions, heights,
+        color=config.EXPOSURE_PROVENANCE_COLORS[config.IMPLIED_FROM_RISK_EXPOSURE],
+        width=0.8, zorder=3,
+    )
+
+    sensitivities = []
+    for name in others:
+        sensitivity = table[table[config.DATASET_COL] == name].set_index(
+            [config.ACTOR_TYPE_COL, config.YEAR_COL]
+        )[config.PANDEMIC_PATCH_FACTOR_COL]
+        values = [float(sensitivity.loc[(actor, year)]) for actor in modes for year in years]
+        sensitivities.append(values)
+        axis.plot(
+            positions, values, linestyle="none", marker="_", markersize=16, markeredgewidth=2,
+            color="#1a1a1a", zorder=4, label=f"mismo factor sobre {name}",
+        )
+
+    # Above whichever of the two marks is higher, or the label of a bar whose
+    # sensitivity sits above it lands on top of the dash.
+    tops = [
+        max([height] + [values[index] for values in sensitivities])
+        for index, height in enumerate(heights)
+    ]
+    for bar, height, top in zip(bars, heights, tops):
+        axis.text(
+            bar.get_x() + bar.get_width() / 2, top + 0.025, f"{height:.3f}".replace(".", ","),
+            ha="center", va="bottom", fontsize=7,
+        )
+
+    axis.axhline(1.0, color="#1a1a1a", linewidth=1.0, zorder=2)
+    axis.set_xticks(positions)
+    axis.set_xticklabels(labels, fontsize=8)
+    axis.set_ylabel("factor aplicado a la exposición", fontsize=9)
+    axis.set_ylim(0, max(tops) * 1.18)
+    axis.grid(True, axis="y", color="#e4e4e4", linewidth=0.6, zorder=0)
+    axis.set_axisbelow(True)
+    for side in ("top", "right"):
+        axis.spines[side].set_visible(False)
+
+    # The mode under its three years, once, instead of on every bar.
+    for index, actor in enumerate(modes):
+        centre = float(np.mean(positions[index * len(years):(index + 1) * len(years)]))
+        axis.text(
+            centre, -0.09, config.ROAD_USER_LABELS_ES[actor], ha="center", va="top",
+            fontsize=10, transform=axis.get_xaxis_transform(),
+        )
+    if others:
+        axis.legend(fontsize=8, frameon=False, loc="upper left")
+
+    fig.suptitle(
+        f"El parche de pandemia: qué multiplica cada modo y año (D42)\n"
+        f"derivado de {patch.dataset}; por encima de 1 el parche dice que hubo más viaje "
+        "que la línea recta",
+        fontsize=11,
+    )
+    fig.tight_layout(rect=(0, 0.05, 1, 0.90))
+    _stamp(fig, log)
+    fig.savefig(path, dpi=config.FIGURE_DPI)
+    plt.close(fig)
+
+
+def _pandemic_before_after(table: pd.DataFrame, path: Path, log: RunLog) -> None:
+    """The four modes through the pandemic, each against its own 2019.
+
+    Indexed and on one pair of axes rather than four, because the argument for the
+    patch is that the four modes agree: everything collapses in 2020 except
+    cycling, which holds and then peaks in 2021. Four panels would show four
+    plausible series; one shows the agreement.
+    """
+    day_type = config.PANDEMIC_PATCH_DAY_TYPE
+    years = list(config.PANDEMIC_PATCH_YEARS)
+    span = [years[0] - 1, *years, years[-1] + 1]
+    modes = _modes(table)
+    styles = dict(zip(modes, ("-", "--", "-.", ":")))
+
+    fig, (left, right) = plt.subplots(1, 2, figsize=(11, 4.6), sharey=True)
+    for axis, variant in zip(
+        (left, right), (config.INTERPOLATED_VARIANT, config.PANDEMIC_PATCHED_VARIANT)
+    ):
+        for actor in modes:
+            series = _city_series(table, variant, actor, day_type)
+            if not set(span) <= set(series.index):
+                continue
+            indexed = 100 * series.loc[span] / series[span[0]]
+            axis.plot(
+                span, indexed.to_numpy(), linestyle=styles[actor], linewidth=1.8,
+                color=(
+                    config.EXPOSURE_PROVENANCE_COLORS[config.IMPLIED_FROM_RISK_EXPOSURE]
+                    if variant == config.PANDEMIC_PATCHED_VARIANT
+                    else config.EXPOSURE_PROVENANCE_COLORS[config.INTERPOLATED_EXPOSURE]
+                ),
+                label=config.ROAD_USER_LABELS_ES[actor],
+            )
+        axis.axhline(100, color="#cccccc", linewidth=0.8)
+        axis.set_title(config.EXPOSURE_VARIANT_LABELS_ES[variant], fontsize=10)
+        axis.set_xticks(span)
+        axis.set_xticklabels([str(year) for year in span], fontsize=8)
+        axis.tick_params(labelsize=8)
+        for side in ("top", "right"):
+            axis.spines[side].set_visible(False)
+    left.set_ylabel(f"índice, {span[0]} = 100", fontsize=9)
+    left.legend(fontsize=8, frameon=False, ncol=2)
+
+    fig.suptitle(
+        "Lo que el parche le hace a la pandemia, por modo\n"
+        "la línea recta de la izquierda dice que caminar creció 4 % en 2020",
+        fontsize=11,
+    )
+    fig.tight_layout(rect=(0, 0, 1, 0.88))
+    _stamp(fig, log)
+    fig.savefig(path, dpi=config.FIGURE_DPI)
+    plt.close(fig)
+
+
+def _pandemic_dispersion(diagnostic: pd.DataFrame, patch, path: Path, log: RunLog) -> None:
+    """Why the factor is one number for the city and not thirty.
+
+    Every dot is a unit's own factor, which is what a per-unit patch would have
+    applied; the bar is the factor D42 applies instead. The median casualty count
+    printed under each mode is the reason the dots scatter: at fifty casualties a
+    cell, Poisson noise alone is worth about fourteen per cent, so most of the
+    spread is counting error and would have been written into the exposure of
+    thirty places for three years.
+    """
+    rows = diagnostic[
+        (diagnostic[config.DATASET_COL] == patch.dataset)
+        & diagnostic[config.YEAR_COL].isin(list(config.PANDEMIC_PATCH_YEARS))
+    ]
+    modes = [actor for actor in config.ROAD_USER_TYPES if actor in set(rows[config.ACTOR_TYPE_COL])]
+    years = list(config.PANDEMIC_PATCH_YEARS)
+
+    fig, axes = plt.subplots(1, len(years), figsize=(3.6 * len(years), 4.8), sharey=True)
+    generator = np.random.default_rng(0)  # the jitter is cosmetic and has to repeat
+    for axis, year in zip(np.atleast_1d(axes), years):
+        for position, actor in enumerate(modes):
+            cell = rows[(rows[config.ACTOR_TYPE_COL] == actor) & (rows[config.YEAR_COL] == year)]
+            values = cell[config.EXPOSURE_RATIO_COL].to_numpy(dtype=float)
+            axis.plot(
+                position + generator.uniform(-0.16, 0.16, len(values)), values,
+                linestyle="none", marker="o", markersize=3.5, alpha=0.55,
+                color=config.EXPOSURE_PROVENANCE_COLORS[config.INTERPOLATED_EXPOSURE], zorder=2,
+            )
+            city = patch.factors[(actor, year)]
+            axis.plot(
+                [position - 0.3, position + 0.3], [city, city], linewidth=2.4,
+                color=config.EXPOSURE_PROVENANCE_COLORS[config.IMPLIED_FROM_RISK_EXPOSURE],
+                zorder=3,
+            )
+        axis.axhline(1.0, color="#cccccc", linewidth=0.8, zorder=1)
+        axis.set_yscale("log", base=2)
+        axis.set_yticks([0.25, 0.5, 1, 2, 4])
+        axis.set_yticklabels(["0,25", "0,5", "1", "2", "4"], fontsize=8)
+        axis.set_xticks(range(len(modes)))
+        axis.set_xticklabels(
+            [
+                f"{config.ROAD_USER_LABELS_ES[actor]}\n({int(rows[(rows[config.ACTOR_TYPE_COL] == actor) & (rows[config.YEAR_COL] == year)][config.AFFECTED_PARTIES_COL].median())})"
+                for actor in modes
+            ],
+            fontsize=8,
+        )
+        axis.set_title(str(year), fontsize=10)
+        for side in ("top", "right"):
+            axis.spines[side].set_visible(False)
+    np.atleast_1d(axes)[0].set_ylabel("factor que implicaría cada unidad", fontsize=9)
+
+    fig.suptitle(
+        "Por qué el factor se calcula en la ciudad y no en la unidad (D42)\n"
+        "cada punto es una UPL y la barra naranja es el factor que se aplicó; entre "
+        "paréntesis, la mediana de siniestros por unidad",
+        fontsize=11,
+    )
+    fig.tight_layout(rect=(0, 0, 1, 0.88))
+    _stamp(fig, log)
+    fig.savefig(path, dpi=config.FIGURE_DPI)
+    plt.close(fig)
+
+
+# ---------------------------------------------------------------------------
+# 04_diagnostic
+# ---------------------------------------------------------------------------
+
+
+def _diagnostic_city(diagnostic: pd.DataFrame, path: Path, log: RunLog) -> None:
+    """D41's ratio at the scale of the city, both casualty datasets.
+
+    One at every survey year by construction, and its distance from one is how
+    much of the movement the panel is putting into the risk rather than into the
+    exposure. Read at the city first and at a unit afterwards: the per-unit
+    version of this number carries Poisson noise that the city's does not.
+    """
+    modes = [actor for actor in config.ROAD_USER_TYPES if actor in set(diagnostic[config.ACTOR_TYPE_COL])]
+    datasets = sorted(diagnostic[config.DATASET_COL].unique())
+    styles = dict(zip(datasets, ("-", "--")))
+    colours = dict(zip(datasets, (
+        config.EXPOSURE_PROVENANCE_COLORS[config.INTERPOLATED_EXPOSURE],
+        config.EXPOSURE_PROVENANCE_COLORS[config.MEASURED_EXPOSURE],
+    )))
+
+    fig, axes = plt.subplots(2, 2, figsize=(11, 6.8), sharex=True, sharey=True)
+    for axis, actor in zip(axes.ravel(), modes):
+        for dataset in datasets:
+            rows = diagnostic[
+                (diagnostic[config.ACTOR_TYPE_COL] == actor)
+                & (diagnostic[config.DATASET_COL] == dataset)
+            ]
+            totals = rows.groupby(config.YEAR_COL)[
+                [config.IMPLIED_EXPOSURE_COL, SERIES_COLUMN]
+            ].sum(min_count=1)
+            ratio = totals[config.IMPLIED_EXPOSURE_COL] / totals[SERIES_COLUMN]
+            axis.plot(
+                ratio.index, ratio.to_numpy(), linestyle=styles[dataset], linewidth=1.5,
+                color=colours[dataset], label=dataset,
+            )
+        anchors = sorted(
+            diagnostic.loc[
+                (diagnostic[config.ACTOR_TYPE_COL] == actor)
+                & (diagnostic[config.EXPOSURE_PROVENANCE_COL] == config.MEASURED_EXPOSURE),
+                config.YEAR_COL,
+            ].unique()
+        )
+        for year in anchors:
+            axis.axvline(year, color="#dddddd", linewidth=0.9, zorder=0)
+        axis.axhline(1.0, color="#1a1a1a", linewidth=0.9, zorder=1)
+        axis.set_title(config.ROAD_USER_LABELS_ES[actor], fontsize=10)
+        axis.set_yscale("log", base=2)
+        axis.set_yticks([0.5, 0.75, 1, 1.5, 2])
+        axis.set_yticklabels(["0,5", "0,75", "1", "1,5", "2"], fontsize=8)
+        axis.xaxis.set_major_locator(matplotlib.ticker.MultipleLocator(3))
+        axis.xaxis.set_major_formatter(plt.FuncFormatter(lambda value, _: f"{int(value)}"))
+        axis.tick_params(labelsize=8)
+        for side in ("top", "right"):
+            axis.spines[side].set_visible(False)
+    axes.ravel()[0].legend(fontsize=8, frameon=False)
+
+    fig.suptitle(
+        "D41: la exposición que implicaría un riesgo suave, sobre la que lleva el panel\n"
+        "vale 1 en cada año de encuesta por construcción; las líneas grises son esos años",
+        fontsize=11,
+    )
+    fig.tight_layout(rect=(0, 0, 1, 0.89))
+    _stamp(fig, log)
+    fig.savefig(path, dpi=config.FIGURE_DPI)
+    plt.close(fig)
+
+
+def _diagnostic_heatmap(
+    diagnostic: pd.DataFrame, actor: str, dataset: str, path: Path, log: RunLog
+) -> None:
+    """The same ratio, unit by unit, which is where it gets noisy and where it gets read."""
+    rows = diagnostic[
+        (diagnostic[config.ACTOR_TYPE_COL] == actor) & (diagnostic[config.DATASET_COL] == dataset)
+    ]
+    matrix = rows.pivot_table(
+        index=[config.AREA_CODE_COL, config.AREA_NAME_COL],
+        columns=config.YEAR_COL,
+        values=config.EXPOSURE_RATIO_COL,
+    )
+    order = rows.groupby([config.AREA_CODE_COL, config.AREA_NAME_COL])[
+        config.AFFECTED_PARTIES_COL
+    ].sum().sort_values(ascending=False).index
+    matrix = matrix.loc[order]
+    matrix.index = [_unit_label(code, name) for code, name in matrix.index]
+    anchors = tuple(sorted(
+        rows.loc[
+            rows[config.EXPOSURE_PROVENANCE_COL] == config.MEASURED_EXPOSURE, config.YEAR_COL
+        ].unique()
+    ))
+
+    fig, axis = plt.subplots(figsize=(10, 8))
+    image, clipped = _draw_heatmap(axis, matrix, centre=1.0, mark_columns=anchors)
+    bar = fig.colorbar(image, ax=axis, fraction=0.03, pad=0.02, extend="both")
+    bar.set_label("implicada por el riesgo ÷ la del panel", fontsize=8)
+    bar.ax.tick_params(labelsize=7)
+
+    fig.suptitle(
+        f"{config.ROAD_USER_LABELS_ES[actor]} — D41 por unidad, conjunto {dataset}\n"
+        "las unidades van de más a menos siniestros, que es de menos a más ruido"
+        + (f"; {clipped} celda(s) fuera de la escala" if clipped else ""),
+        fontsize=11,
+    )
+    fig.tight_layout(rect=(0, 0, 1, 0.93))
+    _stamp(fig, log)
+    fig.savefig(path, dpi=config.FIGURE_DPI)
+    plt.close(fig)
+
+
+# ---------------------------------------------------------------------------
+# 05_volatility
+# ---------------------------------------------------------------------------
+
+
+def _volatility_heatmap(steps: pd.DataFrame, path: Path, log: RunLog) -> None:
+    """How far every unit's rate moves between two adjacent surveys, all of it at once.
+
+    The price of interpolating per unit, and the table D40's open question is
+    asked with: whether the per-unit trajectories need shrinking toward the city's
+    is a decision for a person, and this is what it is taken in front of. The
+    figures printed in the cells are the ones past the declared factor, which is
+    the set the question is about.
+    """
+    modes = [actor for actor in config.ROAD_USER_TYPES if actor in set(steps[config.ACTOR_TYPE_COL])]
+    order = sorted({
+        _unit_label(code, name)
+        for code, name in zip(steps[config.AREA_CODE_COL], steps[config.AREA_NAME_COL])
+    })
+
+    # Not `sharey`: the four panels carry the same thirty units in the same order
+    # by construction, and sharing the axis makes blanking the second panel's
+    # labels blank the first panel's as well.
+    fig, axes = plt.subplots(1, len(modes), figsize=(3.0 * len(modes), 8.4))
+    image = None
+    for position, (axis, actor) in enumerate(zip(np.atleast_1d(axes), modes)):
+        rows = steps[steps[config.ACTOR_TYPE_COL] == actor].copy()
+        rows["_LABEL"] = [
+            _unit_label(code, name)
+            for code, name in zip(rows[config.AREA_CODE_COL], rows[config.AREA_NAME_COL])
+        ]
+        matrix = rows.pivot_table(index="_LABEL", columns="STEP", values="FACTOR").reindex(order)
+        image, _ = _draw_heatmap(
+            axis, matrix, centre=None, annotate_above=config.EXPOSURE_STEP_FACTOR
+        )
+        axis.set_title(config.ROAD_USER_LABELS_ES[actor], fontsize=10)
+        if position:
+            axis.set_yticklabels([])
+
+    if image is not None:
+        bar = fig.colorbar(
+            image, ax=np.atleast_1d(axes).tolist(), fraction=0.02, pad=0.02, extend="max"
+        )
+        bar.set_label("factor entre encuestas contiguas", fontsize=8)
+        bar.ax.tick_params(labelsize=7)
+
+    fig.suptitle(
+        "Cuánto se mueve la tasa de cada unidad entre dos encuestas contiguas\n"
+        f"el número escrito es el factor cuando pasa de {config.EXPOSURE_STEP_FACTOR:.0f}; "
+        "es el precio de interpolar por unidad (D40)",
+        fontsize=11,
+    )
+    _stamp(fig, log)
+    fig.savefig(path, dpi=config.FIGURE_DPI, bbox_inches="tight")
+    plt.close(fig)
+
+
+def _volatility_distribution(steps: pd.DataFrame, path: Path, log: RunLog) -> None:
+    """The same thing as thirty dots a step, which is where the outliers show.
+
+    A heatmap says which cells are extreme and this says how extreme, on a scale
+    where a factor of two and a factor of nine are not the same colour. The line
+    is the threshold the run reports on.
+    """
+    modes = [actor for actor in config.ROAD_USER_TYPES if actor in set(steps[config.ACTOR_TYPE_COL])]
+    order = sorted(steps["STEP"].unique())
+
+    fig, axes = plt.subplots(1, len(modes), figsize=(3.0 * len(modes), 5.0), sharey=True)
+    generator = np.random.default_rng(0)
+    for position, (axis, actor) in enumerate(zip(np.atleast_1d(axes), modes)):
+        for index, step in enumerate(order):
+            values = steps.loc[
+                (steps[config.ACTOR_TYPE_COL] == actor) & (steps["STEP"] == step), "FACTOR"
+            ].to_numpy(dtype=float)
+            values = values[np.isfinite(values)]
+            axis.plot(
+                index + generator.uniform(-0.16, 0.16, len(values)), values,
+                linestyle="none", marker="o", markersize=3.5, alpha=0.5,
+                color=config.EXPOSURE_PROVENANCE_COLORS[config.INTERPOLATED_EXPOSURE], zorder=2,
+            )
+            if len(values):
+                median = float(np.median(values))
+                axis.plot(
+                    [index - 0.3, index + 0.3], [median, median], linewidth=2.0,
+                    color=config.EXPOSURE_PROVENANCE_COLORS[config.MEASURED_EXPOSURE], zorder=3,
+                )
+        axis.axhline(
+            config.EXPOSURE_STEP_FACTOR,
+            color=config.EXPOSURE_PROVENANCE_COLORS[config.IMPLIED_FROM_RISK_EXPOSURE],
+            linewidth=1.2, zorder=1,
+        )
+        axis.set_yscale("log", base=2)
+        axis.set_xticks(range(len(order)))
+        axis.set_xticklabels([step.replace("-", "\n") for step in order], fontsize=7)
+        axis.set_title(config.ROAD_USER_LABELS_ES[actor], fontsize=10)
+        axis.tick_params(labelsize=8)
+        for side in ("top", "right"):
+            axis.spines[side].set_visible(False)
+        if position == 0:
+            axis.set_ylabel("factor entre encuestas contiguas", fontsize=9)
+
+    fig.suptitle(
+        "La misma tabla como distribución: treinta unidades por tramo\n"
+        f"la raya negra es la mediana y la naranja el factor de {config.EXPOSURE_STEP_FACTOR:.0f} "
+        "que la corrida reporta",
+        fontsize=11,
+    )
+    fig.tight_layout(rect=(0, 0, 1, 0.88))
+    _stamp(fig, log)
+    fig.savefig(path, dpi=config.FIGURE_DPI)
+    plt.close(fig)
+
+
+# ---------------------------------------------------------------------------
 # Drawing all of it
 # ---------------------------------------------------------------------------
 
 
-def draw(table: pd.DataFrame, log: RunLog) -> dict[str, Path]:
-    """Every figure of the three groups that describe the panel.
+def draw(
+    table: pd.DataFrame,
+    log: RunLog,
+    patch=None,
+    diagnostic: pd.DataFrame | None = None,
+    steps: pd.DataFrame | None = None,
+) -> dict[str, Path]:
+    """Every figure, in the six numbered groups.
 
-    The groups that justify a decision — the patch, the diagnostic and the
-    volatility — are not drawn here yet, and the numbered folders leave room for
-    them in reading order.
+    The first three are drawn from the panel alone. The last three read a table
+    this module does not build — the patch factors, the casualty diagnostic and
+    the step table — and each is skipped with a word in the log when the run did
+    not produce what it needs, because a run with no casualty matrix to read is a
+    legitimate run and not a failure.
     """
     root = log.run_dir / config.FIGURES_SUBDIR / config.INTERPOLATION_FIGURES_SUBDIR
     suffix = config.INTERPOLATION_FIGURE_FORMAT
@@ -639,11 +1140,68 @@ def draw(table: pd.DataFrame, log: RunLog) -> dict[str, Path]:
         _unit_heatmap(table, actor, day_type, path, log)
         written[path.stem] = path
 
+    groups = 3
+
+    if patch is not None:
+        pandemic = root / config.INTERPOLATION_FIGURE_GROUPS["pandemic"]
+        pandemic.mkdir(parents=True, exist_ok=True)
+        path = pandemic / f"pandemic__factors.{suffix}"
+        _pandemic_factors(patch, path, log)
+        written[path.stem] = path
+        path = pandemic / f"pandemic__before_after.{suffix}"
+        _pandemic_before_after(table, path, log)
+        written[path.stem] = path
+        if diagnostic is not None:
+            path = pandemic / f"pandemic__unit_dispersion.{suffix}"
+            _pandemic_dispersion(diagnostic, patch, path, log)
+            written[path.stem] = path
+        groups += 1
+    else:
+        log.info(
+            "the pandemic figures are not drawn: this run built no patch, so there are no "
+            "factors to show. See D42"
+        )
+
+    if diagnostic is not None and not diagnostic.empty:
+        folder = root / config.INTERPOLATION_FIGURE_GROUPS["diagnostic"]
+        folder.mkdir(parents=True, exist_ok=True)
+        path = folder / f"diagnostic__city.{suffix}"
+        _diagnostic_city(diagnostic, path, log)
+        written[path.stem] = path
+        dataset = (
+            config.PANDEMIC_PATCH_DATASET
+            if config.PANDEMIC_PATCH_DATASET in set(diagnostic[config.DATASET_COL])
+            else sorted(diagnostic[config.DATASET_COL].unique())[0]
+        )
+        for actor in _modes(diagnostic):
+            by_mode = folder / _slug(actor)
+            by_mode.mkdir(parents=True, exist_ok=True)
+            path = by_mode / f"diagnostic__{_slug(actor)}_heatmap.{suffix}"
+            _diagnostic_heatmap(diagnostic, actor, dataset, path, log)
+            written[path.stem] = path
+        groups += 1
+    else:
+        log.info(
+            "the diagnostic figures are not drawn: this run read no casualty matrix, so there "
+            "is nothing to compare the panel against. See D41"
+        )
+
+    if steps is not None and not steps.empty:
+        folder = root / config.INTERPOLATION_FIGURE_GROUPS["volatility"]
+        folder.mkdir(parents=True, exist_ok=True)
+        path = folder / f"volatility__steps.{suffix}"
+        _volatility_heatmap(steps, path, log)
+        written[path.stem] = path
+        path = folder / f"volatility__distribution.{suffix}"
+        _volatility_distribution(steps, path, log)
+        written[path.stem] = path
+        groups += 1
+
     log.info(
         "wrote %d figure(s) under %s/%s/, in %d group(s)",
         len(written),
         config.FIGURES_SUBDIR,
         config.INTERPOLATION_FIGURES_SUBDIR,
-        3,
+        groups,
     )
     return written

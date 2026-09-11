@@ -4401,6 +4401,11 @@ EXPOSURE_VARIANT_LABELS_ES: dict[str, str] = {
 # anchor a cell falls on.
 DIVERGING_COLORMAP = "RdBu_r"
 
+# And the ramp for a figure with a floor rather than a centre: a step factor is
+# at least one by construction, so drawing it diverging would give half the
+# colours to values that cannot occur.
+SEQUENTIAL_COLORMAP = "OrRd"
+
 
 # ---------------------------------------------------------------------------
 # Figures

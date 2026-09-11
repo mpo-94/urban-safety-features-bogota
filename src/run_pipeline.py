@@ -174,7 +174,7 @@ def run_interpolation(log: RunLog) -> None:
     # — the volatility of the per-unit steps and the comparison against 2005 — would
     # be measuring D42 if they were handed the patched rows.
     interpolation.report(table, measured, log)
-    interpolation.step_volatility(measured, panel, log)
+    steps = interpolation.step_volatility(measured, panel, log)
     interpolation.compare_with_2005(measured, table, panel, log)
     if patch is not None:
         interpolation.report_patch(patch, both, log)
@@ -183,6 +183,7 @@ def run_interpolation(log: RunLog) -> None:
     # be checked against: the study's own casualty count. It is a diagnostic and it
     # can fail nothing, so a run with no casualty matrix to read says so and carries
     # on rather than refusing to interpolate an exposure.
+    diagnostic = None
     if casualties is not None:
         diagnostic = interpolation.build_diagnostic(table, casualties, measured, log)
         interpolation.export_diagnostic(diagnostic, log)
@@ -191,8 +192,10 @@ def run_interpolation(log: RunLog) -> None:
     # And the panel in a shape a person can read. Nothing downstream reads any of
     # it: the tables are for a spreadsheet and the figures answer the one question
     # no check can, which is whether the panel looks like the city it describes.
+    # The last three groups of figures draw the three tables above rather than the
+    # panel, which is why they are handed over rather than rebuilt.
     interpolation_figures.wide_tables(both, log)
-    interpolation_figures.draw(both, log)
+    interpolation_figures.draw(both, log, patch=patch, diagnostic=diagnostic, steps=steps)
 
 
 def run_rho(log: RunLog) -> None:
