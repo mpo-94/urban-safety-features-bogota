@@ -3920,7 +3920,16 @@ EXPOSURE_PROVENANCE_COL = "EXPOSURE_PROVENANCE"
 MEASURED_EXPOSURE = "MEASURED"          # a survey year: the value is the survey's
 INTERPOLATED_EXPOSURE = "INTERPOLATED"  # between two surveys
 HELD_EXPOSURE = "HELD"                  # before the first survey or after the last
-EXPOSURE_PROVENANCES = (MEASURED_EXPOSURE, INTERPOLATED_EXPOSURE, HELD_EXPOSURE)
+# And the fourth, which only the patched variant of the panel ever carries: the
+# value is the one a smooth risk implies rather than the one a smooth exposure
+# does. See D42 and the pandemic block further down.
+IMPLIED_FROM_RISK_EXPOSURE = "IMPLIED_FROM_RISK"
+EXPOSURE_PROVENANCES = (
+    MEASURED_EXPOSURE,
+    INTERPOLATED_EXPOSURE,
+    HELD_EXPOSURE,
+    IMPLIED_FROM_RISK_EXPOSURE,
+)
 
 # How far the row is from the nearest year that measured it. Zero on a survey year
 # and nowhere else. It is in the table so a model can weight by it or drop the held
@@ -4183,6 +4192,77 @@ EXPOSURE_RATIO_COL = "IMPLIED_OVER_INTERPOLATED"
 EXPOSURE_DIAGNOSTIC_FACTOR = 1.5
 
 
+# ---------------------------------------------------------------------------
+# The pandemic years (D42)
+# ---------------------------------------------------------------------------
+# D40 draws a smooth line between 2019 and 2023 and the line says walking grew
+# four per cent in 2020 and kept growing. It is not a defect of the
+# interpolation: the information that 2020 happened is not in the two anchors,
+# and no care inside D40's own terms can put it there.
+#
+# So for three named years the degree of freedom is spent on the other factor.
+# The risk is assumed smooth, and the exposure is whatever the casualties imply
+# given that risk — D41's mirror, applied as a declared exception on dated years
+# rather than as a method. What makes it an exception and not a preference: the
+# cause is known and external to the data, it is dated, and its direction is
+# checkable.
+#
+# The four modes are computed independently of one another and they agree:
+# everything collapses in 2020 except cycling, which holds and then peaks in
+# 2021. That they agree is the evidence for the patch.
+#
+# Read D42 before changing anything here, and in particular before widening the
+# years: what keeps this from being a fitted correction is that the rule is
+# stated first and applied to every cell it names.
+PANDEMIC_PATCH_YEARS = (2020, 2021, 2022)
+
+# Which casualty dataset the factor is derived from. The corrected one, because
+# where the two differ is exactly the population rho exists to repair — a car
+# occupant recorded as unhurt where a pedestrian never is. The choice barely
+# matters where it matters most: rho does not touch the pedestrian in any year,
+# so the 2020 walking factor is the same number under either set. The observed
+# factors are computed and printed beside it on every run as a sensitivity.
+PANDEMIC_PATCH_DATASET = CORRECTED_DATASET
+
+# One kind of day. A casualty count is annual and carries no kind of day, the
+# factor is derived on the weekday pairing D41 declares, and the Sunday rests on
+# a single anchor — patching it from a weekday ratio would be a much larger
+# claim than this decision makes. The Saturday and Sunday cells of those years
+# keep their own provenance and a factor of exactly one.
+PANDEMIC_PATCH_DAY_TYPE = WEEKDAY_TYPE
+
+# The patched years are a VARIANT of the panel and never a replacement of it,
+# for the same reason the corrected casualty set sits beside the observed one
+# (D31) and the two pedestrian definitions sit beside each other (D39): what
+# chooses between them downstream is a filter rather than a re-run, and a study
+# that cannot show the unpatched panel cannot be argued with.
+#
+# It costs fifteen of the eighteen years being carried twice. The alternative
+# was a parallel column, rejected because in those fifteen years it would be one
+# number written under two names — the failure D38 records about
+# TRIPS_PER_AVERAGE_DAY.
+#
+# **The variant is part of the key.** Every join and every sum has to carry it,
+# the dictionary says so, and a check enforces it, because a table that can be
+# summed across variants will eventually be summed across variants.
+EXPOSURE_VARIANT_COL = "EXPOSURE_VARIANT"
+INTERPOLATED_VARIANT = "INTERPOLATED"        # D40 alone: the panel as built
+PANDEMIC_PATCHED_VARIANT = "PANDEMIC_PATCHED"  # D40, with D42 over three years
+EXPOSURE_VARIANTS = (INTERPOLATED_VARIANT, PANDEMIC_PATCHED_VARIANT)
+
+# What each row was multiplied by. Exactly 1.0 everywhere except the patched
+# years of the patched variant, so the column is also the record of what the
+# patch did: a reader recovers the unpatched level by dividing, and the twelve
+# numbers that do the work are visible without reading any code.
+PANDEMIC_PATCH_FACTOR_COL = "PANDEMIC_PATCH_FACTOR"
+
+# The factors themselves, exported as a table of their own so that the twelve
+# numbers the patch rests on can be read, cited and recomputed without opening
+# the panel. It carries both casualty datasets: the declared one and the
+# sensitivity.
+PANDEMIC_PATCH_FILENAME = f"{REFERENCE_PREFIX}__pandemic_patch_factors"
+
+
 def exposure_diagnostic_columns() -> tuple[str, ...]:
     """The diagnostic table's columns, in order.
 
@@ -4223,6 +4303,11 @@ def interpolated_exposure_columns() -> tuple[str, ...]:
     constructed — which is `EXPOSURE_PROVENANCE`. Carrying a column that is
     `MEASURED` on all 6,480 rows beside a column that is `MEASURED` on 1,440 of
     them would be two words for two different things one letter apart.
+
+    `EXPOSURE_VARIANT` is part of the identity and not of the description, which
+    is why it sits with the key columns: two rows that differ only in it are the
+    same unit, year, mode and day answered under two assumptions, and summing
+    across them is always a mistake (D42).
     """
     return (
         SCALE_COL,
@@ -4232,10 +4317,15 @@ def interpolated_exposure_columns() -> tuple[str, ...]:
         YEAR_COL,
         ACTOR_TYPE_COL,
         DAY_TYPE_COL,
+        # The fifth key column, which completes the identity rather than
+        # qualifying it: two rows differing only here are two answers to the
+        # same question and never two quantities to be added. See D42.
+        EXPOSURE_VARIANT_COL,
         POPULATION_COL,
         *(quantity.name for quantity in INTERPOLATED_EXPOSURE_QUANTITIES),
         EXPOSURE_PROVENANCE_COL,
         YEARS_TO_NEAREST_SURVEY_COL,
+        PANDEMIC_PATCH_FACTOR_COL,
         # Carried through from the survey year the value rests on, so a row built
         # on top of 2011's Saturday says so as loudly as 2011's Saturday does.
         SAMPLE_SUPPORT_COL,

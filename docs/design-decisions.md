@@ -68,7 +68,7 @@ carried, so the second is larger for the same underlying records.
 | D39 | The pedestrian mode is measured twice, and the series is read on the fifteen-minute one | Methodological | Closed | Yes |
 | D40 | Exposure between survey years is interpolated as a rate, not as a level | Methodological | Closed on the method; 2005 joined the series on 2026-09-10 and the weekday held block is gone | Yes |
 | D41 | The panel is compared against the casualty series, and that comparison is a diagnostic and never a constructor | Methodological | Closed on the diagnostic; the pandemic patch it left open is decided by D42 | Yes |
-| D42 | The pandemic years are patched by the mirror assumption, at the city level, in a variant of their own | Methodological | Decided on 2026-09-10; not built yet | Not yet |
+| D42 | The pandemic years are patched by the mirror assumption, at the city level, in a variant of their own | Methodological | Decided and built on 2026-09-10 | Yes |
 
 Methodological decisions: D1-D7, D9, D10, D11, D15, D17, D18, D19, D21, D22, D32, D35,
 D38, D39, D40.
@@ -5113,9 +5113,12 @@ rather than merely uncertain.
 the only place in this study where the casualty series constructs an exposure
 instead of checking one.
 
-**Built:** Not yet. **The decision is written before any of it exists on purpose.**
-It is a methodological choice a jury will read, and arguing about the argument is
-cheaper than arguing about an implementation of the argument.
+**Built:** Yes, on 2026-09-10, in the run that follows the one this decision was
+written against. `src/interpolation.py`, route `interpolation`, run
+`run_20260910_192902`: 12,960 rows over two variants, **23 checks, none failed**,
+and the six the section at the end asks for are among them. The decision was
+written before any of it existed, which is what let the argument be settled apart
+from the implementation of the argument.
 
 ### What the panel asserts about the pandemic today, and why it cannot stand
 
@@ -5178,7 +5181,7 @@ And what they do to the series, on the same index as above:
 
 | Mode | 2019 | 2020 | 2021 | 2022 | 2023 |
 |---|---:|---:|---:|---:|---:|
-| `PEDESTRIAN` | 100 | **61** | **80** | 107 | 116 |
+| `PEDESTRIAN` | 100 | **60** | **80** | 107 | 116 |
 | `BICYCLE` | 100 | 100 | **112** | 104 | 98 |
 | `MOTORCYCLE` | 100 | **76** | 102 | 115 | 120 |
 | `CAR` | 100 | **69** | 94 | 95 | 88 |

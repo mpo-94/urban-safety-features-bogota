@@ -33,7 +33,16 @@ and writes one more table. **It never reads a survey and never touches
 and this one is a construction that sits beside it, exactly as the corrected
 casualty set sits beside the observed one (D31).
 
-See D39, D40 and `docs/interpolating-the-exposure.md`.
+**Three of the eighteen years are patched, and they say so.** D40's line through
+2020 says walking grew four per cent that year and kept growing, which is not a
+defect of the interpolation — the information that 2020 happened is not in the two
+anchors. For those three years the degree of freedom is spent on the other factor:
+the risk is assumed smooth and the exposure is what the casualties imply given that
+risk. It is a declared exception on dated years and not a method, it lives in a
+variant of the panel rather than in place of it, and every cell of it is marked
+`IMPLIED_FROM_RISK`. See D42.
+
+See D39, D40, D41, D42 and `docs/interpolating-the-exposure.md`.
 
 Run it:
 
@@ -437,6 +446,13 @@ def build(
                     rows.append(row)
 
     built = pd.DataFrame(rows)
+    # What comes out of here is D40 alone, which is one of the two variants the
+    # table carries. The other is appended by `apply_pandemic_patch`, and stamping
+    # the column here rather than there means the panel conforms to its declared
+    # columns from the moment it exists — including on a run with no casualty
+    # matrix to read, where the patched variant never gets built at all.
+    built[config.EXPOSURE_VARIANT_COL] = config.INTERPOLATED_VARIANT
+    built[config.PANDEMIC_PATCH_FACTOR_COL] = 1.0
 
     geometry = units[[config.AREA_CODE_COL, config.AREA_NAME_COL, config.AREA_UNIT_KM2_COL]]
     built = built.merge(geometry, on=config.AREA_CODE_COL, how="left")
@@ -580,7 +596,10 @@ def dictionary_table(measured: MeasuredExposure) -> pd.DataFrame:
                 f"the survey's own; {config.INTERPOLATED_EXPOSURE} where it was built "
                 f"log-linearly from the rate of the two surveys either side of it; "
                 f"{config.HELD_EXPOSURE} where it is outside the measured range and the rate "
-                "was held flat while the population moved. READ THIS BEFORE READING A LEVEL: "
+                f"was held flat while the population moved; and "
+                f"{config.IMPLIED_FROM_RISK_EXPOSURE} on the patched variant's pandemic years, "
+                "where the value is what the casualties imply under a smooth risk rather than "
+                "what a smooth exposure implies (D42). READ THIS BEFORE READING A LEVEL: "
                 "fourteen of the eighteen years are constructed"
             ),
             "IS_ALTERNATIVE_ALLOCATION": False,
@@ -595,6 +614,39 @@ def dictionary_table(measured: MeasuredExposure) -> pd.DataFrame:
                 "distance in years to the nearest year that measured this series. Zero on a "
                 "survey year and nowhere else. It is here so a model can weight by it, or drop "
                 "the held block, without re-running anything"
+            ),
+            "IS_ALTERNATIVE_ALLOCATION": False,
+            "SOURCE": "",
+        }
+    )
+    rows.append(
+        {
+            "COLUMN": config.EXPOSURE_VARIANT_COL,
+            "UNIT": "",
+            "MEANS": (
+                f"which assumption the row was built under, and it is PART OF THE KEY: "
+                f"{config.INTERPOLATED_VARIANT} is D40 alone, the exposure interpolated as a "
+                f"rate between survey years; {config.PANDEMIC_PATCHED_VARIANT} is the same "
+                f"panel with {'-'.join(str(year) for year in (config.PANDEMIC_PATCH_YEARS[0], config.PANDEMIC_PATCH_YEARS[-1]))} "
+                "rebuilt from what the casualties imply under a smooth risk (D42). Two rows "
+                "differing only here are one question answered twice and must never be added "
+                "together; every join carries this column"
+            ),
+            "IS_ALTERNATIVE_ALLOCATION": False,
+            "SOURCE": "",
+        }
+    )
+    rows.append(
+        {
+            "COLUMN": config.PANDEMIC_PATCH_FACTOR_COL,
+            "UNIT": "",
+            "MEANS": (
+                "what this row's levels and rates were multiplied by. Exactly 1.0 everywhere "
+                f"except the {config.PANDEMIC_PATCH_DAY_TYPE} rows of "
+                f"{', '.join(str(year) for year in config.PANDEMIC_PATCH_YEARS)} in the "
+                f"{config.PANDEMIC_PATCHED_VARIANT} variant, where it is one factor per mode "
+                "and year computed at the scale of the city, so that each unit keeps the share "
+                "of the city the survey gave it. Dividing by it recovers the unpatched value"
             ),
             "IS_ALTERNATIVE_ALLOCATION": False,
             "SOURCE": "",
@@ -617,8 +669,19 @@ def dictionary_table(measured: MeasuredExposure) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def export(table: pd.DataFrame, measured: MeasuredExposure, log: RunLog) -> dict[str, Path]:
-    """Write the interpolated panel and the dictionary that reads it."""
+def export(
+    table: pd.DataFrame,
+    measured: MeasuredExposure,
+    log: RunLog,
+    patch: PandemicPatch | None = None,
+) -> dict[str, Path]:
+    """Write the interpolated panel, the dictionary that reads it, and the factors.
+
+    The twelve numbers the pandemic patch rests on go out as a table of their own as
+    well as into the panel, so that they can be read, cited and recomputed without
+    opening 12,960 rows — and so that the sensitivity, the same factors derived from
+    the other casualty dataset, sits beside them rather than only in the log.
+    """
     data_dir = log.run_dir / config.DATA_SUBDIR
     data_dir.mkdir(parents=True, exist_ok=True)
 
@@ -633,6 +696,12 @@ def export(table: pd.DataFrame, measured: MeasuredExposure, log: RunLog) -> dict
     )
     dictionary_table(measured).to_csv(dictionary_path, index=False, encoding="utf-8")
     paths["interpolated_dictionary"] = dictionary_path
+
+    if patch is not None:
+        factors_path = data_dir / f"{config.PANDEMIC_PATCH_FILENAME}.csv"
+        patch.table.to_csv(factors_path, index=False, encoding="utf-8")
+        patch.table.to_parquet(factors_path.with_suffix(".parquet"))
+        paths["pandemic_patch_factors"] = factors_path
 
     log.info(
         "exported the interpolated exposure panel (%d rows) and its dictionary to %s/",
@@ -655,6 +724,7 @@ def verify(
     log: RunLog,
     paths: dict[str, Path] | None = None,
     window: range | None = None,
+    patch: PandemicPatch | None = None,
 ) -> bool:
     """Check the panel against the table it was built from, and against arithmetic.
 
@@ -683,6 +753,32 @@ def verify(
     ))
 
     key = [config.YEAR_COL, config.AREA_CODE_COL, config.ACTOR_TYPE_COL, config.DAY_TYPE_COL]
+
+    # **The variant is part of the key**, and the two checks that say so come before
+    # everything else, because every count below depends on which rows are one
+    # panel and which are the other. From here on `both` is the whole table and
+    # `table` is the panel as D40 builds it: checking the patched variant as though
+    # it were a second panel would double every count and say nothing new, and what
+    # has to be checked about it is what the patch did, which is the block at the
+    # end. See D42.
+    both = table
+    variants = sorted(both[config.EXPOSURE_VARIANT_COL].unique())
+    undeclared_variants = sorted(set(variants) - set(config.EXPOSURE_VARIANTS))
+    checks.append((
+        "every row names a declared variant of the panel",
+        not undeclared_variants,
+        ", ".join(
+            f"{variant} {int((both[config.EXPOSURE_VARIANT_COL] == variant).sum()):,}"
+            for variant in variants
+        ) + (f"; undeclared: {', '.join(undeclared_variants)}" if undeclared_variants else ""),
+    ))
+    keyed = key + [config.EXPOSURE_VARIANT_COL]
+    checks.append((
+        "unit, year, actor type, day type and variant identify a row uniquely",
+        not both.duplicated(subset=keyed).any(),
+        f"{int(both.duplicated(subset=keyed).sum())} duplicated over {len(both):,} row(s)",
+    ))
+    table = both[both[config.EXPOSURE_VARIANT_COL] == config.INTERPOLATED_VARIANT]
     checks.append((
         "no combination of unit, year, actor type and day type appears twice",
         not table.duplicated(subset=key).any(),
@@ -741,16 +837,16 @@ def verify(
         checks.append((
             f"{level} is {rate_column} times the population of the same unit and year",
             bool(np.allclose(
-                (table[rate_column] * table[config.POPULATION_COL]).to_numpy(),
-                table[level].to_numpy(),
+                (both[rate_column] * both[config.POPULATION_COL]).to_numpy(),
+                both[level].to_numpy(),
                 rtol=1e-12,
             )),
-            f"compared to 1e-12 over {len(table)} row(s)",
+            f"compared to 1e-12 over {len(both)} row(s) of every variant",
         ))
 
     quantities = [config.POPULATION_COL] + [q.name for q in config.INTERPOLATED_EXPOSURE_QUANTITIES]
-    nulls = int(table[quantities].isna().to_numpy().sum())
-    negatives = int((table[quantities] < 0).to_numpy().sum())
+    nulls = int(both[quantities].isna().to_numpy().sum())
+    negatives = int((both[quantities] < 0).to_numpy().sum())
     checks.append((
         "no null and no negative anywhere a number is required",
         nulls == 0 and negatives == 0,
@@ -760,12 +856,12 @@ def verify(
     # Provenance is a closed vocabulary, and the number of measured years of a
     # series is the number of survey years that measured that kind of day: four
     # for the weekday, three for the Saturday, one for the Sunday.
-    undeclared = sorted(set(table[config.EXPOSURE_PROVENANCE_COL]) - set(config.EXPOSURE_PROVENANCES))
+    undeclared = sorted(set(both[config.EXPOSURE_PROVENANCE_COL]) - set(config.EXPOSURE_PROVENANCES))
     checks.append((
-        "every row's provenance is one of the declared three",
+        "every row's provenance is one of the declared values",
         not undeclared,
         ", ".join(
-            f"{provenance} {int((table[config.EXPOSURE_PROVENANCE_COL] == provenance).sum()):,}"
+            f"{provenance} {int((both[config.EXPOSURE_PROVENANCE_COL] == provenance).sum()):,}"
             for provenance in config.EXPOSURE_PROVENANCES
         ) + (f"; undeclared: {', '.join(undeclared)}" if undeclared else ""),
     ))
@@ -812,7 +908,7 @@ def verify(
     # two log-linear curves is log-linear between two ratios that are both at most
     # one — but the linear branch a zero rate forces does not have to, and that is
     # exactly why this is checked rather than argued.
-    others = table[table[config.ACTOR_TYPE_COL] != config.PEDESTRIAN]
+    others = both[both[config.ACTOR_TYPE_COL] != config.PEDESTRIAN]
     checks.append((
         "the fifteen-minute column equals the full one on the modes with one definition",
         bool(np.allclose(
@@ -820,9 +916,10 @@ def verify(
             others[config.TRIPS_PER_DAY_OF_TYPE_OVER_15MIN_COL].to_numpy(),
             rtol=1e-12,
         )),
-        f"{len(others)} row(s) of {config.BICYCLE}, {config.MOTORCYCLE} and {config.CAR}",
+        f"{len(others)} row(s) of {config.BICYCLE}, {config.MOTORCYCLE} and {config.CAR}, "
+        "over every variant",
     ))
-    walking = table[table[config.ACTOR_TYPE_COL] == config.PEDESTRIAN]
+    walking = both[both[config.ACTOR_TYPE_COL] == config.PEDESTRIAN]
     over_the_whole = int((
         walking[config.TRIPS_PER_DAY_OF_TYPE_OVER_15MIN_COL]
         > walking[config.TRIPS_PER_DAY_OF_TYPE_COL] * (1 + 1e-9)
@@ -836,13 +933,104 @@ def verify(
 
     # The denominator is the panel's and not a number this module made up.
     from_panel = panel.set_index([config.AREA_CODE_COL, config.YEAR_COL])[config.POPULATION_COL]
-    joined = table.set_index([config.AREA_CODE_COL, config.YEAR_COL])[config.POPULATION_COL]
+    joined = both.set_index([config.AREA_CODE_COL, config.YEAR_COL])[config.POPULATION_COL]
     aligned = from_panel.reindex(joined.index)
     checks.append((
         "the population of every row is the population panel's for that unit and year",
         bool(np.allclose(joined.to_numpy(), aligned.to_numpy(), rtol=0, atol=0)),
         f"{int(aligned.isna().sum())} row(s) the panel does not cover",
     ))
+
+    # What the patch has to prove, and the first of these is the one that matters:
+    # **it may change nothing it did not declare it would change.** See D42.
+    if config.PANDEMIC_PATCHED_VARIANT in variants:
+        values = list(_SERIES) + list(_SERIES.values())
+        base = table.set_index(key)[values].sort_index()
+        after = both[
+            both[config.EXPOSURE_VARIANT_COL] == config.PANDEMIC_PATCHED_VARIANT
+        ].set_index(key)[values].sort_index()
+        aligned = list(base.index) == list(after.index)
+        moved = (
+            ~np.isclose(base.to_numpy(), after.to_numpy(), rtol=1e-12, atol=0.0)
+        ).any(axis=1) if aligned else np.array([], dtype=bool)
+        differing = base.index[moved]
+        in_block = {
+            (year, area, actor, day)
+            for year, area, actor, day in differing
+            if day == config.PANDEMIC_PATCH_DAY_TYPE and year in config.PANDEMIC_PATCH_YEARS
+        }
+        checks.append((
+            "the patch moves nothing outside the pandemic years of one kind of day",
+            aligned and len(in_block) == len(differing),
+            f"{len(differing)} row(s) differ between the two variants and {len(in_block)} of "
+            f"them are {config.PANDEMIC_PATCH_DAY_TYPE} "
+            f"{config.PANDEMIC_PATCH_YEARS[0]}-{config.PANDEMIC_PATCH_YEARS[-1]}",
+        ))
+        combinations = {(actor, year) for year, _, actor, _ in differing}
+        expected = set(patch.factors) if patch else set()
+        checks.append((
+            "the mode-year combinations that differ are exactly the ones the patch declares",
+            combinations == expected,
+            f"{len(combinations)} combination(s) against {len(expected)} declared"
+            + (f"; unexpected: {sorted(combinations - expected)}" if combinations - expected else "")
+            + (f"; missing: {sorted(expected - combinations)}" if expected - combinations else ""),
+        ))
+
+        marked = both[config.EXPOSURE_PROVENANCE_COL] == config.IMPLIED_FROM_RISK_EXPOSURE
+        should_be = (
+            (both[config.EXPOSURE_VARIANT_COL] == config.PANDEMIC_PATCHED_VARIANT)
+            & (both[config.DAY_TYPE_COL] == config.PANDEMIC_PATCH_DAY_TYPE)
+            & both[config.YEAR_COL].isin(list(config.PANDEMIC_PATCH_YEARS))
+        )
+        checks.append((
+            f"{config.IMPLIED_FROM_RISK_EXPOSURE} marks the patched block and nothing else",
+            bool((marked == should_be).all()),
+            f"{int(marked.sum()):,} row(s) marked against {int(should_be.sum()):,} in the block",
+        ))
+
+        factor = both[config.PANDEMIC_PATCH_FACTOR_COL]
+        checks.append((
+            "the factor is exactly one everywhere outside that block",
+            bool((factor[~should_be] == 1.0).all()),
+            f"{int((factor[~should_be] != 1.0).sum())} row(s) outside the block carry a factor "
+            f"other than one, over {int((~should_be).sum()):,}",
+        ))
+
+        # Every patched value is its unpatched value times the row's own factor, on
+        # all four columns at once. This is what keeps D39's invariants alive
+        # through the patch rather than by luck.
+        applied = both[
+            both[config.EXPOSURE_VARIANT_COL] == config.PANDEMIC_PATCHED_VARIANT
+        ].set_index(key)[config.PANDEMIC_PATCH_FACTOR_COL].sort_index()
+        scaled = base.to_numpy() * applied.to_numpy()[:, None]
+        checks.append((
+            "every patched value is its unpatched value times that row's factor",
+            bool(np.allclose(scaled, after.to_numpy(), rtol=1e-12, atol=0.0)),
+            f"{after.shape[0]:,} row(s) x {len(values)} column(s)",
+        ))
+
+        if patch is not None:
+            declared = patch.table[patch.table[config.DATASET_COL] == patch.dataset]
+            city = (
+                both[
+                    (both[config.EXPOSURE_VARIANT_COL] == config.PANDEMIC_PATCHED_VARIANT)
+                    & (both[config.DAY_TYPE_COL] == config.PANDEMIC_PATCH_DAY_TYPE)
+                ]
+                .groupby([config.ACTOR_TYPE_COL, config.YEAR_COL])[
+                    config.TRIPS_PER_DAY_OF_TYPE_OVER_15MIN_COL
+                ]
+                .sum()
+            )
+            implied = declared.set_index([config.ACTOR_TYPE_COL, config.YEAR_COL])[
+                config.IMPLIED_EXPOSURE_COL
+            ]
+            got = city.reindex(implied.index)
+            checks.append((
+                "the patched city total is the casualties over the smoothed risk, per mode and year",
+                bool(np.allclose(got.to_numpy(), implied.to_numpy(), rtol=1e-9, atol=0.0)),
+                f"{len(implied)} combination(s), largest relative gap "
+                f"{float(((got - implied).abs() / implied).max()):.2e}",
+            ))
 
     if paths:
         written = [path for path in paths.values() if path.exists() and path.stat().st_size > 0]
@@ -1648,4 +1836,357 @@ def report_diagnostic(table: pd.DataFrame, log: RunLog) -> None:
         thin,
         len(constructed),
         empty,
+    )
+
+
+# ---------------------------------------------------------------------------
+# The pandemic patch (D42)
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class PandemicPatch:
+    """The twelve factors the patch rests on, and the sensitivity beside them.
+
+    `factors` is what gets applied — one number per mode and year, from the
+    declared casualty dataset. `table` carries the same computation for every
+    dataset read, because the choice of dataset is a decision D42 had to defend
+    and the way to keep defending it is to publish what the other one gives.
+    """
+
+    factors: dict[tuple[str, int], float]
+    table: pd.DataFrame
+    dataset: str
+    casualty_source_run: str
+
+
+def pandemic_factors(
+    panel: pd.DataFrame,
+    casualties: Casualties,
+    measured: MeasuredExposure,
+    log: RunLog,
+) -> PandemicPatch | None:
+    """What the casualties imply about 2020-2022, if the risk of those years is smooth.
+
+    **The factor is computed at the city and not at the unit, and that is the
+    decision rather than a convenience.** The mirror can be inverted cell by cell —
+    `build_diagnostic` does exactly that — but a unit sees around fifty casualties
+    of a mode in a year, where Poisson noise alone is worth about fourteen per cent,
+    and the bicycle's per-unit factors for 2020 run from 0.68 to 1.74. Writing that
+    into the exposure of thirty places for three years would be manufacturing
+    geography out of counting error. One factor per mode and year leaves each unit
+    the share of the city its survey gave it.
+
+    The arithmetic is D40's own, used on the other factor. The city's implied risk
+    is measured at the survey years, carried across the constructed ones by
+    `fill_series`, and the exposure that smooth risk implies is the year's
+    casualties divided by it. The factor is that exposure over the one the panel
+    carries.
+
+    Returns None when the casualty series cannot support the patch — a patch year
+    outside it, or a smoothed risk of zero — because a patch that silently did
+    nothing for one mode would be worse than no patch at all. See D42.
+    """
+    series_column = config.TRIPS_PER_DAY_OF_TYPE_OVER_15MIN_COL
+    day_type = config.PANDEMIC_PATCH_DAY_TYPE
+    years = list(config.PANDEMIC_PATCH_YEARS)
+
+    weekday = panel[panel[config.DAY_TYPE_COL] == day_type]
+    if weekday.empty:
+        log.warn(
+            "the panel has no %s, which is the kind of day the pandemic patch is derived on, "
+            "so the patch is not applied. See D42",
+            day_type,
+        )
+        return None
+
+    units_in_panel = set(weekday[config.AREA_CODE_COL])
+    modes = sorted(weekday[config.ACTOR_TYPE_COL].unique())
+    exposure = weekday.groupby([config.ACTOR_TYPE_COL, config.YEAR_COL])[series_column].sum()
+    anchors = measured.anchors_of(day_type)
+
+    rows: list[dict[str, object]] = []
+    for dataset, matrix in casualties.by_dataset.items():
+        counted = matrix[
+            matrix[config.AREA_CODE_COL].isin(units_in_panel)
+            & matrix[config.PARTY_TYPE_COL].isin(modes)
+        ]
+        city = counted.groupby([config.PARTY_TYPE_COL, config.YEAR_COL])[
+            config.AFFECTED_PARTIES_COL
+        ].sum()
+        covered = range(
+            int(counted[config.YEAR_COL].min()), int(counted[config.YEAR_COL].max()) + 1
+        )
+        for actor in modes:
+            observed_years = city.loc[actor]
+            risk = observed_years / exposure.loc[actor].reindex(observed_years.index)
+            # Only the survey years this dataset actually covers can anchor the
+            # risk. 2005 anchors the exposure and never this: the casualty series
+            # starts in 2007, and the corrected one in 2008 (D30).
+            at_anchors = {
+                year: float(risk[year]) for year in anchors if year in risk.index
+            }
+            smoothed = fill_series(at_anchors, covered)
+            for year in years:
+                if year not in covered or year not in observed_years.index:
+                    log.warn(
+                        "the %s casualty series does not cover %d, so the pandemic patch cannot "
+                        "be derived from it and is not applied. See D42",
+                        dataset,
+                        year,
+                    )
+                    return None
+                smooth_risk = smoothed[year].rate
+                if not smooth_risk > 0:
+                    log.warn(
+                        "the smoothed %s risk of %s in %d is zero, so no exposure can be implied "
+                        "from it and the pandemic patch is not applied. See D42",
+                        actor,
+                        dataset,
+                        year,
+                    )
+                    return None
+                carried = float(exposure.loc[(actor, year)])
+                implied = float(observed_years[year]) / smooth_risk
+                rows.append({
+                    config.DATASET_COL: dataset,
+                    config.ACTOR_TYPE_COL: actor,
+                    config.YEAR_COL: year,
+                    config.AFFECTED_PARTIES_COL: float(observed_years[year]),
+                    series_column: carried,
+                    config.IMPLIED_RISK_COL: float(risk[year]),
+                    config.SMOOTH_RISK_COL: smooth_risk,
+                    config.IMPLIED_EXPOSURE_COL: implied,
+                    config.PANDEMIC_PATCH_FACTOR_COL: implied / carried,
+                })
+
+    table = pd.DataFrame(rows).sort_values(
+        [config.DATASET_COL, config.ACTOR_TYPE_COL, config.YEAR_COL], kind="stable"
+    ).reset_index(drop=True)
+
+    declared = table[table[config.DATASET_COL] == config.PANDEMIC_PATCH_DATASET]
+    if declared.empty:
+        log.warn(
+            "the declared casualty dataset for the pandemic patch is %s and this run read %s, "
+            "so the patch is not applied. See D42",
+            config.PANDEMIC_PATCH_DATASET,
+            ", ".join(sorted(casualties.by_dataset)),
+        )
+        return None
+
+    factors = {
+        (str(row[config.ACTOR_TYPE_COL]), int(row[config.YEAR_COL])):
+            float(row[config.PANDEMIC_PATCH_FACTOR_COL])
+        for _, row in declared.iterrows()
+    }
+    log.info(
+        "the pandemic patch rests on %d factor(s) from the %s casualty series of run %s, one per "
+        "mode and year, computed over the whole study area on %s exposure",
+        len(factors),
+        config.PANDEMIC_PATCH_DATASET,
+        casualties.source_run,
+        day_type,
+    )
+    return PandemicPatch(
+        factors=factors,
+        table=table,
+        dataset=config.PANDEMIC_PATCH_DATASET,
+        casualty_source_run=casualties.source_run,
+    )
+
+
+def apply_pandemic_patch(
+    panel: pd.DataFrame, patch: PandemicPatch | None, log: RunLog
+) -> pd.DataFrame:
+    """The panel as built, and the panel with the pandemic years rebuilt, as two variants.
+
+    **Both levels and both rates are multiplied by the same factor**, which is what
+    keeps D39's two invariants alive through the patch: the fifteen-minute column
+    stays a part of the full one, and the two stay equal on the three modes that
+    have a single definition. Multiplying the levels alone would have broken the
+    relation between a level and its rate; patching the two pedestrian columns
+    separately would have let them drift apart in exactly the years nobody can check.
+
+    A run with no casualty matrix to read gets the unpatched variant alone and says
+    so. The panel is complete without the patch; what is not acceptable is a table
+    that quietly holds one variant where a reader expects two.
+    """
+    ordered = list(config.interpolated_exposure_columns())
+    if patch is None:
+        log.warn(
+            "the panel carries only the %s variant: the pandemic patch needs a casualty matrix "
+            "and this run had none to read. Run `python -m src.run_pipeline corrected` and this "
+            "route again. See D42",
+            config.INTERPOLATED_VARIANT,
+        )
+        return panel[ordered].reset_index(drop=True)
+
+    patched = panel.copy()
+    patched[config.EXPOSURE_VARIANT_COL] = config.PANDEMIC_PATCHED_VARIANT
+    in_patch = (
+        (patched[config.DAY_TYPE_COL] == config.PANDEMIC_PATCH_DAY_TYPE)
+        & patched[config.YEAR_COL].isin(list(config.PANDEMIC_PATCH_YEARS))
+    )
+
+    # A survey year inside the patched window would mean multiplying an observation,
+    # which no part of this study is allowed to do. It cannot happen while the
+    # surveys sit where they sit, and it is refused rather than trusted.
+    measured_inside = patched.loc[
+        in_patch & (patched[config.EXPOSURE_PROVENANCE_COL] == config.MEASURED_EXPOSURE)
+    ]
+    if not measured_inside.empty:
+        raise ValueError(
+            f"{len(measured_inside)} measured row(s) fall inside the pandemic patch years "
+            f"{config.PANDEMIC_PATCH_YEARS}, and an interpolation may not move an observation. "
+            "Either a survey year was added inside the window or PANDEMIC_PATCH_YEARS was "
+            "widened; both are decisions for a person. See D42"
+        )
+
+    keys = list(
+        zip(patched[config.ACTOR_TYPE_COL], patched[config.YEAR_COL].astype(int))
+    )
+    missing = sorted({key for key, inside in zip(keys, in_patch) if inside} - set(patch.factors))
+    if missing:
+        raise ValueError(
+            f"the pandemic patch has no factor for {missing}, so part of the block would be "
+            "left unpatched inside a variant that says it is patched. See D42"
+        )
+    patched[config.PANDEMIC_PATCH_FACTOR_COL] = [
+        patch.factors[key] if inside else 1.0 for key, inside in zip(keys, in_patch)
+    ]
+    for column in (*_SERIES, *_SERIES.values()):
+        patched[column] = patched[column] * patched[config.PANDEMIC_PATCH_FACTOR_COL]
+    patched.loc[in_patch, config.EXPOSURE_PROVENANCE_COL] = config.IMPLIED_FROM_RISK_EXPOSURE
+
+    both = pd.concat([panel, patched], ignore_index=True)
+    both = (
+        both[ordered]
+        .sort_values(
+            [
+                config.YEAR_COL,
+                config.AREA_CODE_COL,
+                config.ACTOR_TYPE_COL,
+                config.DAY_TYPE_COL,
+                config.EXPOSURE_VARIANT_COL,
+            ],
+            kind="stable",
+        )
+        .reset_index(drop=True)
+    )
+
+    log.record(
+        "add the variant with the pandemic years rebuilt from the casualties",
+        rows_in=len(panel),
+        rows_out=len(both),
+        changes=[
+            (
+                len(patched),
+                f"a second row for every cell, under {config.PANDEMIC_PATCHED_VARIANT}, in which "
+                f"the {len(patch.factors)} mode-year combinations of {config.PANDEMIC_PATCH_DAY_TYPE} "
+                f"{config.PANDEMIC_PATCH_YEARS[0]}-{config.PANDEMIC_PATCH_YEARS[-1]} carry what "
+                "the casualties imply under a smooth risk and every other cell is unchanged",
+            ),
+        ],
+        notes=[
+            f"casualty source run={patch.casualty_source_run}, dataset={patch.dataset}",
+            f"{int(in_patch.sum())} row(s) marked {config.IMPLIED_FROM_RISK_EXPOSURE}",
+            "the variant is part of the key: two rows differing only in it are one question "
+            "answered twice and are never added together (D42)",
+        ],
+    )
+    return both
+
+
+def report_patch(patch: PandemicPatch, both: pd.DataFrame, log: RunLog) -> None:
+    """The twelve numbers, the sensitivity, and what they do to the series.
+
+    Printed on every run and failing nothing. The patch is the one place where the
+    study's own casualties construct an exposure, so what it did has to be legible
+    in the log of the run that did it rather than only in a document.
+    """
+    series_column = config.TRIPS_PER_DAY_OF_TYPE_OVER_15MIN_COL
+    table = patch.table
+    modes = [actor for actor in config.ROAD_USER_TYPES if actor in set(table[config.ACTOR_TYPE_COL])]
+    years = list(config.PANDEMIC_PATCH_YEARS)
+    other = [name for name in sorted(table[config.DATASET_COL].unique()) if name != patch.dataset]
+
+    lines = [
+        f"{'mode':>11}  {'year':>4}  {'casualties':>10}  {'panel':>12}  {'implied risk':>12}  "
+        f"{'smooth risk':>11}  {'implied':>12}  {'factor':>6}" + (f"  {'other set':>9}" if other else ""),
+        f"{'-' * 11}  {'-' * 4}  {'-' * 10}  {'-' * 12}  {'-' * 12}  {'-' * 11}  {'-' * 12}  "
+        f"{'-' * 6}" + (f"  {'-' * 9}" if other else ""),
+    ]
+    declared = table[table[config.DATASET_COL] == patch.dataset].set_index(
+        [config.ACTOR_TYPE_COL, config.YEAR_COL]
+    )
+    others = {
+        name: table[table[config.DATASET_COL] == name].set_index(
+            [config.ACTOR_TYPE_COL, config.YEAR_COL]
+        )
+        for name in other
+    }
+    for actor in modes:
+        for year in years:
+            row = declared.loc[(actor, year)]
+            line = (
+                f"{actor:>11}  {year:>4}  {row[config.AFFECTED_PARTIES_COL]:>10,.0f}  "
+                f"{row[series_column]:>12,.0f}  {row[config.IMPLIED_RISK_COL] * 1e6:>12.1f}  "
+                f"{row[config.SMOOTH_RISK_COL] * 1e6:>11.1f}  "
+                f"{row[config.IMPLIED_EXPOSURE_COL]:>12,.0f}  "
+                f"{row[config.PANDEMIC_PATCH_FACTOR_COL]:>6.3f}"
+            )
+            for name, frame in others.items():
+                line += f"  {frame.loc[(actor, year), config.PANDEMIC_PATCH_FACTOR_COL]:>9.3f}"
+            lines.append(line)
+    log.table(
+        f"the pandemic patch, from the {patch.dataset} casualty series of run "
+        f"{patch.casualty_source_run}. The risk is per million trips a weekday; the factor is "
+        "what every unit's exposure was multiplied by"
+        + (f", and the last column is the same factor from the {', '.join(other)} series"
+           if other else "")
+        + ":",
+        "\n".join(lines),
+    )
+
+    # What it did to the shape, which is the thing a reader actually judges.
+    weekday = both[both[config.DAY_TYPE_COL] == config.PANDEMIC_PATCH_DAY_TYPE]
+    span = range(years[0] - 1, years[-1] + 2)
+    lines = [
+        f"{'mode':>11}  {'variant':>17}  " + "  ".join(f"{year:>6}" for year in span),
+        f"{'-' * 11}  {'-' * 17}  " + "  ".join("-" * 6 for _ in span),
+    ]
+    for actor in modes:
+        for variant in config.EXPOSURE_VARIANTS:
+            block = weekday[
+                (weekday[config.ACTOR_TYPE_COL] == actor)
+                & (weekday[config.EXPOSURE_VARIANT_COL] == variant)
+            ]
+            by_year = block.groupby(config.YEAR_COL)[series_column].sum()
+            if not set(span) <= set(by_year.index):
+                continue
+            base = float(by_year[span[0]])
+            lines.append(
+                f"{actor:>11}  {variant:>17}  "
+                + "  ".join(f"{100 * float(by_year[year]) / base:>6.0f}" for year in span)
+            )
+    log.table(
+        f"and what that does to the shape of the series, inside the study units, indexed to "
+        f"{span[0]} = 100:",
+        "\n".join(lines),
+    )
+
+    log.warn(
+        "in the %s variant the risk of %s is not measurable: it is the log-linear path between "
+        "%d and %d by construction, so no model fitted on that variant can be read as having "
+        "measured how risk moved in those years. Two more things go with it. The pandemic "
+        "literature reports that risk per trip ROSE on emptied streets, so if it did, this patch "
+        "attributes that rise to a fall in travel and overstates how far travel fell — the error "
+        "has a known sign and the patched series is the lower end of what those years could have "
+        "been. And the factor is one number for the whole city, so it moves the level of every "
+        "unit and none of the geography: the spatial structure D41 found in 2020 is still in "
+        "there. See D42",
+        config.PANDEMIC_PATCHED_VARIANT,
+        ", ".join(str(year) for year in years),
+        years[0] - 1,
+        years[-1] + 1,
     )

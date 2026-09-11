@@ -149,21 +149,39 @@ def run_interpolation(log: RunLog) -> None:
 
     measured = interpolation.read_measured(log)
     table = interpolation.build(measured, panel, predictors.prepare_units(units), log)
-    paths = interpolation.export(table, measured, log)
+
+    # The casualty matrix is read before the panel is exported, because D42 builds a
+    # second variant of it out of the pandemic years and the factors come from
+    # there. A run with none to read gets the unpatched variant alone and says so:
+    # the panel is complete without it, and forcing a matrix run in order to
+    # interpolate an exposure would be the wrong coupling.
+    casualties = interpolation.read_casualties(log)
+    patch = (
+        interpolation.pandemic_factors(table, casualties, measured, log)
+        if casualties is not None
+        else None
+    )
+    both = interpolation.apply_pandemic_patch(table, patch, log)
+    paths = interpolation.export(both, measured, log, patch=patch)
 
     log.table("record funnel:", log.funnel())
-    if not interpolation.verify(table, measured, panel, units, log, paths=paths):
+    if not interpolation.verify(both, measured, panel, units, log, paths=paths, patch=patch):
         raise RouteFailed("the interpolated exposure panel does not agree with what it was built from")
 
+    # Everything below reads the panel as D40 builds it. The patched variant is
+    # reported on by itself, and the two things that measure D40's own construction
+    # — the volatility of the per-unit steps and the comparison against 2005 — would
+    # be measuring D42 if they were handed the patched rows.
     interpolation.report(table, measured, log)
     interpolation.step_volatility(measured, panel, log)
     interpolation.compare_with_2005(measured, table, panel, log)
+    if patch is not None:
+        interpolation.report_patch(patch, both, log)
 
     # D40's third external check, and the only one of the three that has a series to
     # be checked against: the study's own casualty count. It is a diagnostic and it
     # can fail nothing, so a run with no casualty matrix to read says so and carries
     # on rather than refusing to interpolate an exposure.
-    casualties = interpolation.read_casualties(log)
     if casualties is not None:
         diagnostic = interpolation.build_diagnostic(table, casualties, measured, log)
         interpolation.export_diagnostic(diagnostic, log)
