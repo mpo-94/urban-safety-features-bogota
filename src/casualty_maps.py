@@ -33,6 +33,7 @@ whether they show the same territory.
 
 from __future__ import annotations
 
+import textwrap
 from pathlib import Path
 
 import geopandas as gpd
@@ -62,10 +63,18 @@ QUANTILE = "quantile"
 LOGARITHMIC = "log"
 
 
-def _class_colours(colours, classes: int):
-    """The colormap cut into as many steps as the ramp has classes."""
+def _class_colours(colours, classes: int, span=None):
+    """The colormap cut into as many steps as the ramp has classes.
+
+    `span` is which stretch of the colormap the classes are taken from, as two
+    fractions. It is not the whole of it: the palest end is too close to the
+    ground the city is drawn on to read as a class, and the darkest end swallows
+    the points drawn over it, which on a map of a few hundred deaths are the
+    figure rather than the texture. See CASUALTY_MAP_RAMP_COLOR_SPAN.
+    """
+    low, high = span if span is not None else config.CASUALTY_MAP_RAMP_COLOR_SPAN
     return matplotlib.colors.ListedColormap(
-        colours(np.linspace(0.08, 1.0, classes)), name=f"{colours.name}_{classes}"
+        colours(np.linspace(low, high, classes)), name=f"{colours.name}_{classes}"
     )
 
 
@@ -283,6 +292,7 @@ def render(
     colormap: str = config.CASUALTY_MAP_COLORMAP,
     ramp: str = config.CASUALTY_MAP_RAMP,
     classes: int = config.CASUALTY_MAP_RAMP_CLASSES,
+    colour_span: tuple[float, float] | None = None,
     cell_m: float = config.CASUALTY_MAP_HEX_CELL_M,
     bandwidth_m: float = config.CASUALTY_MAP_KERNEL_BANDWIDTH_M,
     raster_cell_m: float = config.CASUALTY_MAP_KERNEL_CELL_M,
@@ -346,7 +356,7 @@ def render(
     positive = values[values > 0]
     norm, breaks = build_ramp(positive, breaks, ramp=ramp, classes=classes, colours=colours)
     if ramp == QUANTILE:
-        colours = _class_colours(colours, len(breaks) - 1)
+        colours = _class_colours(colours, len(breaks) - 1, colour_span)
     # Anything under the floor takes no colour at all and lets the flat city
     # through. Painting it the palest class would say there is something there.
     colours = colours.with_extremes(under=(0, 0, 0, 0))
@@ -434,16 +444,49 @@ def render(
     bar.outline.set_edgecolor(config.MAP_BOUNDARY_COLOR)
 
     axis.set_title(title, fontsize=config.MAP_LABEL_FONT_PT + 4, color=config.MAP_LABEL_COLOR, pad=10)
-    figure.text(
-        0.5, 0.005, "\n".join(notes),
-        ha="center", va="bottom",
-        fontsize=config.MAP_LABEL_FONT_PT, color=config.FIGURE_TECHNICAL_LABEL_COLOR,
-    )
+    _caption(figure, bar_axis, notes)
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
     figure.savefig(out_path, dpi=dpi, bbox_inches="tight", pad_inches=0.08)
     plt.close(figure)
     return measured
+
+
+def _caption(figure, bar_axis, notes: list[str]) -> None:
+    """The note under the colour bar, wrapped to the width of the map itself.
+
+    Set as one long line it decides how wide the figure is: `bbox_inches="tight"`
+    grows the saved image to fit whatever sticks out, so a sentence wider than the
+    city adds white space down both sides of every map. Wrapping it to the bar —
+    which is exactly as wide as the map — keeps the figure the size of its subject.
+
+    The wrap is measured after a first layout pass rather than guessed, because the
+    frame's width follows the footprint of the city and the type does not scale
+    with it.
+    """
+    figure.canvas.draw()
+    box = bar_axis.get_position()
+    # Below everything the bar occupies, which is not the bar itself: its ticks and
+    # its own label hang under the box, and anchoring to the box puts the caption
+    # on top of them.
+    occupied = bar_axis.get_tightbbox(figure.canvas.get_renderer()).transformed(
+        figure.transFigure.inverted()
+    )
+    width_in = box.width * figure.get_figwidth()
+
+    # Average character width of this face is about half its point size, which is
+    # close enough for a wrap: being a character out moves a word, not the margin.
+    per_line = max(int(width_in * 72 / (0.5 * config.MAP_LABEL_FONT_PT)), 20)
+    wrapped = "\n".join(textwrap.fill(note, per_line) for note in notes)
+
+    figure.text(
+        box.x0 + box.width / 2,
+        occupied.y0 - config.CASUALTY_MAP_CAPTION_GAP,
+        wrapped,
+        ha="center", va="top",
+        fontsize=config.MAP_LABEL_FONT_PT, color=config.FIGURE_TECHNICAL_LABEL_COLOR,
+        linespacing=1.35,
+    )
 
 
 def _break_label(value: float) -> str:

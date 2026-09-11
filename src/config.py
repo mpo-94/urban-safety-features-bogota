@@ -4694,12 +4694,27 @@ CASUALTY_MAP_HEX_CELL_M = 300.0
 # Standard deviation of the Gaussian, when the technique is the kernel, and the
 # raster it is computed on. The raster only has to be fine enough that the
 # smoothing is not limited by it; at a third of the bandwidth it is not.
-CASUALTY_MAP_KERNEL_BANDWIDTH_M = 300.0
-CASUALTY_MAP_KERNEL_CELL_M = 100.0
+# **This is the setting that decides how far each casualty spreads.** A larger one
+# merges neighbouring events into broad blobs and colours more of the map; a
+# smaller one keeps them apart and lets the arterial grid emerge, because that is
+# where the casualties actually are. At 200 m the corridors are legible as
+# corridors rather than as one continuous field over the built city.
+CASUALTY_MAP_KERNEL_BANDWIDTH_M = 200.0
 
-# A density over a light ground reads better on one of the heat ramps than on
-# viridis, which is built to be read as an ordered scale rather than as intensity.
-CASUALTY_MAP_COLORMAP = "inferno"
+# The raster the smoothing runs on. It only has to be fine enough not to limit the
+# bandwidth, which means no coarser than half of it; at a quarter it is safely
+# clear of that and the grid is still only a few hundred cells across.
+CASUALTY_MAP_KERNEL_CELL_M = 50.0
+
+# Light to dark, over the light ground the city is drawn on. The specification
+# suggested inferno or magma and drawing them settled it the other way: their low
+# end is near-black, so the empty north of the city becomes the heaviest thing in
+# the figure and the dense core, at the pale end, recedes. On a light ground the
+# ramp has to run from something close to the ground up to something saturated,
+# which is what YlOrRd does and what the exposure choropleths already do with
+# YlGnBu. It also keeps its order when printed in grey, because its lightness
+# falls monotonically.
+CASUALTY_MAP_COLORMAP = "YlOrRd"
 
 # A linear ramp is out either way: casualties per cell are extremely skewed, a few
 # intersections carry an enormous share, and a linear ramp shows one bright cell
@@ -4725,7 +4740,21 @@ CASUALTY_MAP_RAMP_CLASSES = 7
 # cell takes the ground colour: on a kernel the bottom percentiles are the faintest
 # tail the smoothing left in a corner of the city, and colouring them at all says
 # there is something there to see.
-CASUALTY_MAP_RAMP_FLOOR_PERCENTILE = 5.0
+#
+# **This is the setting that decides how much of the map is coloured at all.** At
+# 5 the surface reaches almost every corner of the city; raising it leaves the
+# thin edges bare and concentrates the colour where the casualties are. It changes
+# nothing about the values — only where the figure stops claiming to show one.
+CASUALTY_MAP_RAMP_FLOOR_PERCENTILE = 35.0
+
+# Which stretch of the colormap the classes are taken from, as two fractions of
+# it. Neither end of a colormap is usable here. The palest is too close to the
+# ground the city is drawn on, so the lowest class would read as "no data"; the
+# darkest swallows the points drawn over it, and those points are the only thing
+# carrying a map of a few hundred deaths. Stopping short of the dark end keeps the
+# top class a saturated red rather than a near-black, and the points stay visible
+# on it.
+CASUALTY_MAP_RAMP_COLOR_SPAN = (0.12, 0.86)
 
 # The city under the surface, so a unit with no casualty reads as a place the
 # study covers and found nothing rather than as a hole in the map.
@@ -4743,12 +4772,21 @@ CASUALTY_MAP_POINT_ALPHA = 0.22
 # and at 9 inches it is a line one pixel across.
 CASUALTY_MAP_HEIGHT_IN = 12.0
 
-# Raster rather than vector, unlike every other map here, and at a resolution to
-# match. A density surface is an image and a year of injuries is twenty thousand
-# overlapping dots; both defeat the point of a vector figure, which is that it has
-# few enough marks to be worth keeping as marks.
+# Vector, like every other map here. The two layers that are not vector by nature
+# are handled rather than allowed to decide the format: the density surface is an
+# image and is embedded as one, and the twenty thousand points of an injury year
+# are rasterised as a single layer inside the page. Everything a reader zooms into
+# — the unit boundaries, the numbers on the bar, the scale bar, the caption —
+# stays vector, which is the reason the rest of the study's maps are PDF.
+#
+# The dpi is what those two embedded layers are rendered at, not the whole figure.
 CASUALTY_MAP_DPI = 220
-CASUALTY_MAP_FORMAT = "png"
+CASUALTY_MAP_FORMAT = "pdf"
+
+# How far under the colour bar the caption sits, in figure fractions. The caption
+# is wrapped to the width of the bar so that it cannot decide how wide the saved
+# figure is; see `casualty_maps._caption`.
+CASUALTY_MAP_CAPTION_GAP = 0.035
 
 # A bar of a fixed five kilometres rather than a fraction of the frame, so that
 # every map of the set carries the same ruler and two can be compared without
