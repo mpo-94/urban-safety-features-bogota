@@ -77,9 +77,9 @@ drawn, and — where a route writes it — `review/` for tables shaped to be rea
 than joined.
 
 ```bash
-python -m src.run_pipeline            # full pipeline; announces the route it picked
-python -m src.run_pipeline matrix     # the same, named explicitly
-python -m src.run_pipeline corrected  # the observed and corrected matrices, side by side
+python -m src.run_pipeline            # both casualty datasets; announces the route it picked
+python -m src.run_pipeline corrected  # the same, named explicitly
+python -m src.run_pipeline matrix     # the observed dataset alone, on purpose
 python -m src.run_pipeline parties    # stop after party resolution
 python -m src.run_pipeline loading    # sources only: read, locate, verify
 python -m src.run_pipeline map        # the reference map of the thirty units
@@ -90,6 +90,16 @@ python -m src.run_pipeline interpolation  # the same, carried across the years n
 python -m src.run_pipeline rho        # the ρ(t) diagnostic, beside the pipeline
 python -m src.run_pipeline completeness   # does every month of every year have data?
 python -m src.run_pipeline integrate  # rebuild the layers from the updated extract
+```
+
+**Running with no route writes both casualty datasets**, the observed one and the
+one corrected for the change in recording practice. The corrected set never
+replaces the observed one — they go into the models side by side (D31) — so
+producing both is the default and asking for one is something a person does on
+purpose. Every run announces which datasets it writes, before the work starts and
+again when it ends, and a route that writes only one says so as a warning.
+
+```bash
 python -m src.run_pipeline --help     # the routes available, with a line each
 ```
 

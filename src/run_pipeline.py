@@ -5,9 +5,9 @@ gets its own timestamped run directory and its own log. Routes exist because the
 stages are expensive and rarely all needed at once — checking a change to party
 resolution should not have to rebuild fifty-seven figures first.
 
-    python -m src.run_pipeline                 # full pipeline, and says so
-    python -m src.run_pipeline matrix          # the same, named explicitly
-    python -m src.run_pipeline corrected       # the observed and corrected matrices, side by side
+    python -m src.run_pipeline                 # both casualty datasets, and says so
+    python -m src.run_pipeline corrected       # the same, named explicitly
+    python -m src.run_pipeline matrix          # the observed dataset alone, on purpose
     python -m src.run_pipeline parties         # stop after party resolution
     python -m src.run_pipeline loading         # sources only
     python -m src.run_pipeline rho             # the rho(t) diagnostic
@@ -513,17 +513,27 @@ class Route:
     name: str
     summary: str  # one line, shown in the help and when no route is given
     run: Callable[[RunLog], None]
+    # Which casualty datasets the route writes, if any. Declared rather than left
+    # to be inferred from which folders appear, because that is what it took to
+    # notice that the default route was writing only one of the two.
+    datasets: tuple[str, ...] = ()
 
 
 # The pipeline routes first, longest to shortest, then the analyses that sit
 # beside it, then the build step. The predictors with an annual series join the
 # predictors route as they are written, rather than adding a route of their own.
 ROUTES: tuple[Route, ...] = (
-    Route("matrix", "full pipeline up to the casualty matrix, with tables and figures", run_matrix),
     Route(
         "corrected",
-        "both datasets: the observed matrix and the one corrected for the recording change",
+        "both casualty datasets, observed and rho-corrected, with every table and figure",
         run_corrected,
+        datasets=(config.OBSERVED_DATASET, config.CORRECTED_DATASET),
+    ),
+    Route(
+        "matrix",
+        "the observed dataset alone, without the correction: faster, and half the study",
+        run_matrix,
+        datasets=(config.OBSERVED_DATASET,),
     ),
     Route("parties", "up to party resolution: one row per affected party", run_parties),
     Route("loading", "sources only: read them, locate them, verify the counts", run_loading),
@@ -543,7 +553,14 @@ ROUTES: tuple[Route, ...] = (
 
 # Running with no arguments does the whole thing rather than complaining, since
 # that is what a pipeline is for; which route ran is announced either way.
-DEFAULT_ROUTE = "matrix"
+#
+# **It is the route that writes both datasets.** It used to be `matrix`, which
+# writes only the observed one, so a plain `python -m src.run_pipeline` produced
+# half the study and said so nowhere a reader would look — the two sets are told
+# apart by which folders exist. The corrected set is never a replacement for the
+# observed one (D31); the default therefore produces both, and asking for one is
+# something a person does on purpose.
+DEFAULT_ROUTE = "corrected"
 
 ROUTES_BY_NAME: dict[str, Route] = {route.name: route for route in ROUTES}
 
@@ -555,7 +572,11 @@ ROUTES_BY_NAME: dict[str, Route] = {route.name: route for route in ROUTES}
 
 def _route_help() -> str:
     width = max(len(route.name) for route in ROUTES)
-    return "\n".join(f"  {route.name.ljust(width)}  {route.summary}" for route in ROUTES)
+    return "\n".join(
+        f"  {route.name.ljust(width)}  {route.summary}"
+        + ("  [default]" if route.name == DEFAULT_ROUTE else "")
+        for route in ROUTES
+    )
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -620,6 +641,20 @@ def main(argv: list[str] | None = None) -> int:
         "on" if log.dump_intermediates else "off",
         "" if args.dump_intermediates is None else " (from the command line)",
     )
+    # Said before the work starts as well as after it, because a run that writes
+    # one dataset when the reader expected two is cheapest to catch at the top.
+    log.info(
+        "casualty datasets this route writes: %s",
+        " + ".join(route.datasets) if route.datasets else "none (this route writes no casualty set)",
+    )
+    if route.datasets and config.CORRECTED_DATASET not in route.datasets:
+        log.warn(
+            "this route writes %s and not %s. `%s` is the route that writes both, and it is "
+            "what runs when no route is named",
+            " + ".join(route.datasets),
+            config.CORRECTED_DATASET,
+            DEFAULT_ROUTE,
+        )
 
     try:
         route.run(log)
@@ -627,7 +662,12 @@ def main(argv: list[str] | None = None) -> int:
         log.warn("stopping: %s", failure)
         return 1
 
-    log.info("route %s finished; output in %s", route.name, log.run_dir)
+    log.info(
+        "route %s finished; output in %s; casualty datasets written: %s",
+        route.name,
+        log.run_dir,
+        " + ".join(route.datasets) if route.datasets else "none",
+    )
     return 0
 
 
