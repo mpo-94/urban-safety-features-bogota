@@ -33,6 +33,7 @@ whether they show the same territory.
 
 from __future__ import annotations
 
+import math
 import textwrap
 from pathlib import Path
 
@@ -62,6 +63,9 @@ KERNEL = "kernel"
 QUANTILE = "quantile"
 LOGARITHMIC = "log"
 
+CONTOURS = "contour"
+PIXELS = "image"
+
 
 def bandwidth_for(count_name: str) -> float:
     """The kernel width this count is drawn at, the same in every one of its years.
@@ -73,17 +77,25 @@ def bandwidth_for(count_name: str) -> float:
     return config.CASUALTY_MAP_KERNEL_BANDWIDTH_M[count_name]
 
 
-def point_style(drawn: int) -> config.MapPointStyle:
-    """How to draw the event marks, given how many of them there are.
+def point_style(drawn: int) -> tuple[float, float]:
+    """The size and opacity of the event marks, given how many there are.
 
-    Keyed on the count of marks and not on the folder, because that is what
-    actually decides: a year of deaths and the aggregate of deaths sit in one
-    folder and differ by a factor of fifteen.
+    Interpolated between the two limit cases rather than chosen from bands, so
+    that two neighbouring years of one count cannot land either side of an edge
+    and come out visibly different for no reason in the data. Both follow a power
+    of the count, which is the curve that keeps the ratio constant: ten times the
+    marks multiplies each by the same factor wherever on the range that happens.
+
+    Clamped at both ends, so no figure is handed a mark too small to see or an
+    opacity that paints the city solid.
     """
-    for style in config.CASUALTY_MAP_POINT_STYLES:
-        if style.up_to is None or drawn <= style.up_to:
-            return style
-    return config.CASUALTY_MAP_POINT_STYLES[-1]
+    few, many = config.CASUALTY_MAP_POINTS_FEW, config.CASUALTY_MAP_POINTS_MANY
+    span = math.log(many.points / few.points)
+    position = math.log(max(drawn, 1) / few.points) / span
+    position = min(max(position, 0.0), 1.0)
+    size = few.size * (many.size / few.size) ** position
+    alpha = few.alpha * (many.alpha / few.alpha) ** position
+    return size, alpha
 
 
 def _class_colours(colours, classes: int, span=None):
@@ -248,7 +260,10 @@ def _hexbin_surface(axis, x, y, weights, bounds, cell_m: float, cmap, norm):
     return image, achieved
 
 
-def _kernel_surface(axis, x, y, weights, bounds, city, bandwidth_m: float, cell_m: float, cmap, norm):
+def _kernel_surface(
+    axis, x, y, weights, bounds, city, bandwidth_m: float, cell_m: float, cmap, norm,
+    breaks=None, render: str | None = None,
+):
     """A Gaussian density in casualties per square kilometre, clipped to the units.
 
     Built by binning onto a fine raster and convolving, rather than by evaluating a
@@ -284,15 +299,41 @@ def _kernel_surface(axis, x, y, weights, bounds, city, bandwidth_m: float, cell_
     inside = shapely.contains_xy(city, mesh_x, mesh_y)
 
     surface = np.ma.masked_where(~inside | (density <= 0), density)
-    image = axis.imshow(
-        surface.T,
-        origin="lower",
-        extent=(minx, maxx, miny, maxy),
-        cmap=cmap,
-        norm=norm,
-        interpolation="bilinear",
-        zorder=2,
-    )
+
+    render = render or config.CASUALTY_MAP_SURFACE_RENDER
+    if render == CONTOURS and breaks is not None and len(breaks) > 2:
+        # **The bands as polygons rather than as pixels.** The surface is already
+        # drawn as a handful of classes, so what separates two colours is a
+        # contour and not a gradient; marching squares finds that contour on the
+        # same grid the density was computed on and fills it as a shape. The
+        # result is the same classes at the same breaks, resolution-independent,
+        # and the edge between two bands is a smooth polyline instead of a
+        # staircase of cells.
+        #
+        # The mask is what clips it: contouring a masked array stops at the mask,
+        # and the mask is the thirty units, so the city's own outline bounds the
+        # surface with no separate clip path.
+        image = axis.contourf(
+            mesh_x, mesh_y, surface,
+            levels=breaks, cmap=cmap, norm=norm,
+            extend="max",  # a year drawn on pooled breaks may run past the top
+            zorder=2,
+        )
+        # Adjacent fills share an edge, and a renderer that antialiases each of
+        # them separately leaves a pale hairline along every boundary. Giving each
+        # band an edge of its own face colour closes the seam.
+        image.set_edgecolor("face")
+        image.set_linewidth(0.0)
+    else:
+        image = axis.imshow(
+            surface.T,
+            origin="lower",
+            extent=(minx, maxx, miny, maxy),
+            cmap=cmap,
+            norm=norm,
+            interpolation="bilinear",
+            zorder=2,
+        )
     return image, surface
 
 
@@ -323,7 +364,8 @@ def render(
     dpi: int = config.CASUALTY_MAP_DPI,
     breaks: np.ndarray | None = None,
     rasterize_points: bool | None = None,
-    style: config.MapPointStyle | None = None,
+    style: tuple[float, float] | None = None,
+    surface_render: str | None = None,
 ) -> dict[str, float]:
     """Draw one map and return what the figure had to decide, for the note.
 
@@ -399,23 +441,24 @@ def render(
         image.set_clip_path(clip)
     else:
         image, _ = _kernel_surface(
-            axis, x, y, weights, bounds, city, bandwidth_m, raster_cell_m, colours, norm
+            axis, x, y, weights, bounds, city, bandwidth_m, raster_cell_m, colours, norm,
+            breaks=breaks, render=surface_render,
         )
 
     # The points over the surface. They are what carries a map of four hundred
     # deaths, where a smoothed surface would be a picture of sampling noise.
-    marks = style if style is not None else point_style(len(x))
+    size, alpha = style if style is not None else point_style(len(x))
     axis.scatter(
         x, y,
-        s=marks.size,
+        s=size,
         c=config.CASUALTY_MAP_POINT_COLOR,
-        alpha=marks.alpha,
+        alpha=alpha,
         linewidths=0.0,
         zorder=3,
         rasterized=(config.CASUALTY_MAP_RASTERIZE_POINTS
                     if rasterize_points is None else rasterize_points),
     )
-    measured["point_size"], measured["point_alpha"] = marks.size, marks.alpha
+    measured["point_size"], measured["point_alpha"] = size, alpha
     measured["points"] = float(len(x))
 
     metric.plot(

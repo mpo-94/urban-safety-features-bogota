@@ -4708,10 +4708,24 @@ CASUALTY_MAP_HEX_CELL_M = 300.0
 # disc six hundred metres across. Narrowing the kernel for `killed` does not make
 # that disc mean anything — it is still σ and not a measurement — but it keeps one
 # death from covering a neighbourhood.
+# It is wider for `killed` and not narrower, which is the opposite of where this
+# started. Narrowing it to 120 m did stop one death covering six hundred metres,
+# and it left five hundred isolated dots with nothing to say about how they sit
+# together. At 300 m the discs of neighbouring deaths meet and the corridors show
+# as corridors — which is the thing worth seeing, and the thing the count is too
+# thin to show any other way.
+#
+# **What that buys is bought at a price and the price is declared.** Merging the
+# discs is exactly how a kernel manufactures connectedness: at 450 m the same five
+# hundred deaths join into one continuous field over half the city, which is not a
+# finding but an effect of the smoothing. 300 m is where the structure appears and
+# before it takes over, judged by drawing 120, 200, 300 and 450 on one year. No
+# map of this count may be read as saying that the coloured area is where deaths
+# occur — the black marks are where they occur — and D44 says so.
 CASUALTY_MAP_KERNEL_BANDWIDTH_M: dict[str, float] = {
     "parties": 200.0,
     "injured": 200.0,
-    "killed": 120.0,
+    "killed": 300.0,
 }
 
 # The raster the smoothing runs on. Two things bound it. It must be no coarser
@@ -4750,6 +4764,16 @@ CASUALTY_MAP_COLORMAP = "YlOrRd"
 # names: the number of colours has to survive being printed, and seven steps do
 # where a continuous gradient does not. The bar prints the value at every break,
 # so the classes stay checkable rather than decorative.
+# How the surface is put on the page. The classes are the same either way; what
+# differs is whether their boundaries are pixels or polygons.
+#
+# **Polygons.** The surface is drawn as seven classes, so what a reader sees as a
+# gradient is really seven contours, and a contour is a shape. Filling those shapes
+# makes the whole figure vector — there is then no raster in the file at all — and
+# the edge between two bands becomes a smooth polyline instead of a staircase of
+# cells that softens into a blur when a viewer resamples it.
+CASUALTY_MAP_SURFACE_RENDER = "contour"
+
 CASUALTY_MAP_RAMP = "quantile"
 CASUALTY_MAP_RAMP_CLASSES = 7
 
@@ -4808,30 +4832,43 @@ CASUALTY_MAP_RASTERIZE_POINTS = False
 # injuries are in different folders and are closer to each other.
 #
 # **The transparency is what makes stacking visible.** Two casualties at one
-# intersection are two marks at one point, and at 0.85 they read as a single
-# solid dot, while at 0.12 a place needs about eight of them before it is as dark
-# as a single isolated one. That is the right way round: where there are few
-# points each one has to be seen, and where there are two hundred thousand the
-# thing worth seeing is where they pile up.
+# intersection are two marks at one point, and at 0.80 they read as a single solid
+# dot, while at 0.13 a place needs about eight of them before it is as dark as a
+# single isolated one. That is the right way round: where there are few points each
+# one has to be seen, and where there are two hundred thousand the thing worth
+# seeing is where they pile up.
+#
+# **Interpolated between the two ends rather than stepped between bands.** The
+# figures run continuously from 491 marks to 196,386, and a band edge would make
+# two neighbouring years — 2009 with 8,766 injured and 2010 with 9,600 — come out
+# visibly different for no reason in the data. Size and opacity follow a power of
+# the count, which is the curve that holds a constant ratio: ten times the marks
+# multiplies each by the same factor wherever on the range it happens.
+#
+# The anchors are the two limit cases, measured by drawing them. Everything between
+# is interpolated and everything outside is clamped, so no figure can be handed a
+# mark too small to see or an opacity that paints the city solid.
+#
+# **What this trades away, stated because it is real:** two maps of one count no
+# longer draw their points at the same opacity, so the darkness of the point layer
+# is not comparable between them. Nothing is asked to be. The point layer says
+# where events are; every comparison of how many rests on the surface and its
+# shared breaks, which is why those are fixed per count and these are not.
 @dataclass(frozen=True)
-class MapPointStyle:
-    """How the event marks are drawn when a figure has at most `up_to` of them."""
+class MapPointAnchor:
+    """How the event marks are drawn at one end of the range of figure sizes."""
 
-    up_to: int | None  # None is the last band, which catches everything above
+    points: int
     size: float  # in points squared, as matplotlib sizes a scatter mark
     alpha: float
 
 
-CASUALTY_MAP_POINT_STYLES: tuple[MapPointStyle, ...] = (
-    # A year of deaths: about five hundred marks, and they carry the figure.
-    MapPointStyle(up_to=1_500, size=6.5, alpha=0.80),
-    # The aggregate of deaths, and the thinnest injury years.
-    MapPointStyle(up_to=40_000, size=1.8, alpha=0.38),
-    # The eighteen-year aggregates of parties and injuries, near two hundred
-    # thousand marks, where any one of them is texture and the pile-ups are the
-    # information.
-    MapPointStyle(up_to=None, size=0.8, alpha=0.13),
-)
+# A year of deaths, where the marks carry the figure.
+CASUALTY_MAP_POINTS_FEW = MapPointAnchor(points=500, size=6.5, alpha=0.80)
+# An eighteen-year aggregate of injuries, where any one mark is texture and the
+# pile-ups are the information.
+CASUALTY_MAP_POINTS_MANY = MapPointAnchor(points=200_000, size=0.8, alpha=0.16)
+
 
 # Taller than the choropleths. The thirty units are about 15 by 30 km, so a
 # corridor is a feature a few hundred metres wide on a map thirty kilometres long,
