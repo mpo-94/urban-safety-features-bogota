@@ -69,6 +69,7 @@ carried, so the second is larger for the same underlying records.
 | D40 | Exposure between survey years is interpolated as a rate, not as a level | Methodological | Closed on the method; 2005 joined the series on 2026-09-10 and the weekday held block is gone | Yes |
 | D41 | The panel is compared against the casualty series, and that comparison is a diagnostic and never a constructor | Methodological | Closed on the diagnostic; the pandemic patch it left open is decided by D42 | Yes |
 | D42 | The pandemic years are patched by the mirror assumption, at the city level, in a variant of their own | Methodological | Decided and built on 2026-09-10 | Yes |
+| D43 | The casualties get a map that places every one of them, and a master table by unit and month | Methodological | **Specified, not built** — see `mapping-the-casualties.md` | Not yet |
 
 Methodological decisions: D1-D7, D9, D10, D11, D15, D17, D18, D19, D21, D22, D32, D35,
 D38, D39, D40.
