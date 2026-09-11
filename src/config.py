@@ -4485,7 +4485,8 @@ HEATMAP_EMPTY_TEXT_COLOR = "#999999"
 # darkest at its bottom and brightest at its top, so a rule phrased as "light text
 # high up the ramp" puts white on the palest cell and black on the darkest one,
 # getting both ends wrong at once. Reading the luminance back off the cell works
-# for any colormap and cannot be inverted by changing one. See D43.
+# for any colormap and cannot be inverted by changing one. See D12, which this
+# amended, and `src/figures.py`, which is where the rule lives.
 FIGURE_LIGHT_TEXT_COLOR = "#ffffff"
 FIGURE_DARK_TEXT_COLOR = "#1a1a1a"
 FIGURE_LIGHT_TEXT_BELOW_LUMINANCE = 0.55
