@@ -4926,6 +4926,47 @@ CASUALTY_MAP_CAPTION_GAP = 0.035
 # reading two bars.
 CASUALTY_MAP_SCALEBAR_KM = 5
 
+# What each map is called, in the language of the documents these go into. The
+# matrices are in English because nothing outside this repository reads them; a
+# map is a figure of the thesis and is read by a Colombian jury, exactly like the
+# exposure choropleths it sits beside.
+CASUALTY_MAP_TITLES_ES: dict[str, str] = {
+    "parties": "Partes afectadas",
+    "injured": "Personas lesionadas",
+    "killed": "Personas fallecidas",
+}
+CASUALTY_MAP_LEGENDS_ES: dict[str, str] = {
+    "parties": "partes afectadas por km²",
+    "injured": "personas lesionadas por km²",
+    "killed": "personas fallecidas por km²",
+}
+
+# **On every single one of them, in the caption.** It is the misreading a reader
+# makes silently and the one a committee will make out loud: the corridors that
+# light up are the ones that carry the travel. The study has exposure per unit,
+# mode and year, so a rate map is possible and is a different figure with a
+# different caveat; these carry counts and say so. See D44.
+CASUALTY_MAP_CAVEAT_ES = (
+    "Un mapa de conteos no es un mapa de peligro: los corredores que se encienden son los que "
+    "concentran los viajes, no necesariamente donde un viaje es más peligroso."
+)
+
+# And the second caveat, which only the sparse count needs. Its kernel is wide
+# enough that the discs of neighbouring deaths meet, which is what makes the
+# corridors legible and is also how a kernel manufactures connectedness. The
+# black marks are where the deaths are; the colour is a smoothing of them.
+# `events` arrives already punctuated the Spanish way, because doing it here would
+# collide with the format specifier that would produce it.
+CASUALTY_MAP_SPARSE_CAVEAT_ES = (
+    "Con {events} eventos, el área coloreada es el suavizado y no el lugar de los hechos: "
+    "cada marca negra es un evento y el color a su alrededor mide σ = {sigma:.0f} m."
+)
+
+# Below this many events a map carries the second caveat as well. Set where the
+# count stops being dense enough for the surface to stand on its own, which is
+# between a year of deaths and a thin year of injuries.
+CASUALTY_MAP_SPARSE_BELOW = 2_000
+
 # Two polygons are neighbours if their boundaries come within this distance, in
 # the metric CRS. Exact touching would be the right test on a topologically
 # clean layer; a metre of tolerance costs nothing and survives the slivers a

@@ -51,10 +51,12 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 from scipy.ndimage import gaussian_filter
 
 try:  # regular package import
-    from src import config, maps
+    from src import config, figures
+    from src.provenance import RunLog
 except ImportError:  # executed as a plain script from inside src/
     import config  # type: ignore[no-redef]
-    import maps  # type: ignore[no-redef]
+    import figures  # type: ignore[no-redef]
+    from provenance import RunLog  # type: ignore[no-redef]
 
 
 HEXBIN = "hexbin"
@@ -302,11 +304,8 @@ def _hexbin_surface(axis, x, y, weights, bounds, cell_m: float, cmap, norm):
     return image, achieved
 
 
-def _kernel_surface(
-    axis, x, y, weights, bounds, city, bandwidth_m: float, cell_m: float, cmap, norm,
-    breaks=None, render: str | None = None,
-):
-    """A Gaussian density in casualties per square kilometre, clipped to the units.
+def density_surface(x, y, weights, bounds, city, bandwidth_m: float, cell_m: float):
+    """The Gaussian density in casualties per square kilometre, masked to the units.
 
     Built by binning onto a fine raster and convolving, rather than by evaluating a
     kernel at every point against every other. The two give the same surface and
@@ -319,6 +318,10 @@ def _kernel_surface(
     kernel does not know where the city stops, so without the mask the surface
     would spill over the Cerros and past the edge of the study area and invite a
     reader to look for casualties in places the study does not cover.
+
+    Returned rather than drawn, because the ramp has to be set from the values
+    before anything is painted with it, and a set of maps sharing one ramp needs
+    every year's values before it can draw the first of them.
     """
     minx, miny, maxx, maxy = bounds
     columns = max(int(round((maxx - minx) / cell_m)), 1)
@@ -332,8 +335,7 @@ def _kernel_surface(
     # From casualties in a cell to casualties per square kilometre, so the number
     # on the colour bar is a density a reader can carry to another figure rather
     # than an artefact of how fine the raster happens to be.
-    cell_km2 = (cell_m / 1000.0) ** 2
-    density = smoothed / cell_km2
+    density = smoothed / ((cell_m / 1000.0) ** 2)
 
     centres_x = 0.5 * (x_edges[:-1] + x_edges[1:])
     centres_y = 0.5 * (y_edges[:-1] + y_edges[1:])
@@ -341,6 +343,27 @@ def _kernel_surface(
     inside = shapely.contains_xy(city, mesh_x, mesh_y)
 
     surface = np.ma.masked_where(~inside | (density <= 0), density)
+    return surface, mesh_x, mesh_y
+
+
+def surface_values(units, x, y, weights, bandwidth_m: float, cell_m: float) -> np.ndarray:
+    """Just the positive densities a map of these points would hold.
+
+    What `quantile_breaks` needs to pool the years of one count into a single set
+    of class breaks, without drawing anything.
+    """
+    metric = units.to_crs(epsg=config.PROJECTED_CRS)
+    surface, _, _ = density_surface(
+        x, y, weights, tuple(metric.total_bounds), metric.geometry.union_all(), bandwidth_m, cell_m
+    )
+    return surface.compressed()
+
+
+def _kernel_surface(
+    axis, surface, mesh_x, mesh_y, bounds, cmap, norm, breaks=None, render: str | None = None,
+):
+    """Put a surface `density_surface` already built onto the axis."""
+    minx, miny, maxx, maxy = bounds
 
     render = render or config.CASUALTY_MAP_SURFACE_RENDER
     if render == CONTOURS and breaks is not None and len(breaks) > 2:
@@ -376,7 +399,7 @@ def _kernel_surface(
             interpolation="bilinear",
             zorder=2,
         )
-    return image, surface
+    return image
 
 
 # ---------------------------------------------------------------------------
@@ -433,10 +456,9 @@ def render(
     colours = matplotlib.colormaps[colormap]
     measured: dict[str, float] = {"classes": float(classes)}
 
-    # A first pass over the values the surface will hold, to set the ramp before
-    # anything is drawn with it. Counts per cell are extremely skewed — a few
-    # intersections carry an enormous share — so the ramp is logarithmic and a
-    # linear one would show one bright cell and nothing else.
+    # The surface is built before anything is painted, because the ramp is set from
+    # its values and the painting needs the ramp. One build, used twice.
+    surface = mesh_x = mesh_y = None
     if technique == HEXBIN:
         probe_figure, probe_axis = plt.subplots()
         probe, achieved = _hexbin_surface(
@@ -448,17 +470,10 @@ def render(
         plt.close(probe_figure)
         measured["cell_m"] = achieved
     elif technique == KERNEL:
-        columns = max(int(round((maxx - minx) / raster_cell_m)), 1)
-        rows = max(int(round((maxy - miny) / raster_cell_m)), 1)
-        binned, _, _ = np.histogram2d(
-            x, y, bins=[columns, rows], range=[[minx, maxx], [miny, maxy]], weights=weights
+        surface, mesh_x, mesh_y = density_surface(
+            x, y, weights, bounds, city, bandwidth_m, raster_cell_m
         )
-        smoothed = gaussian_filter(binned, sigma=bandwidth_m / raster_cell_m, mode="constant")
-        density = smoothed / ((raster_cell_m / 1000.0) ** 2)
-        centres_x = np.linspace(minx, maxx, columns, endpoint=False) + raster_cell_m / 2
-        centres_y = np.linspace(miny, maxy, rows, endpoint=False) + raster_cell_m / 2
-        mesh_x, mesh_y = np.meshgrid(centres_x, centres_y, indexing="ij")
-        values = density[shapely.contains_xy(city, mesh_x, mesh_y) & (density > 0)]
+        values = surface.compressed()
         measured["bandwidth_m"] = bandwidth_m
         measured["raster_cell_m"] = raster_cell_m
     else:
@@ -487,8 +502,8 @@ def render(
         axis.add_patch(clip)
         image.set_clip_path(clip)
     else:
-        image, _ = _kernel_surface(
-            axis, x, y, weights, bounds, city, bandwidth_m, raster_cell_m, colours, norm,
+        image = _kernel_surface(
+            axis, surface, mesh_x, mesh_y, bounds, colours, norm,
             breaks=breaks, render=surface_render,
         )
 
@@ -639,3 +654,211 @@ def _city_path(metric: gpd.GeoDataFrame):
                     + [matplotlib.path.Path.CLOSEPOLY]
                 )
     return matplotlib.path.Path(vertices, codes)
+
+
+# ---------------------------------------------------------------------------
+# Stage
+# ---------------------------------------------------------------------------
+
+
+def _spanish(value: int) -> str:
+    """A count, punctuated the way the documents these figures go into punctuate it."""
+    return f"{value:,}".replace(",", ".")
+
+
+def _notes(count_name: str, book: dict[str, int], bandwidth: float, floor: float) -> list[str]:
+    """What every caption of this study's maps has to carry.
+
+    The recipe, because a bandwidth chosen by a person is a parameter with no
+    right answer and has to be visible rather than buried in a configuration file;
+    the balance, because a map that draws fewer casualties than the year holds must
+    say so where it is seen and not only in a log; and the caveat, because a map of
+    counts read as a map of risk is the single most likely misreading of the whole
+    study.
+    """
+    notes = [
+        f"Núcleo gaussiano, σ = {bandwidth:.0f} m sobre malla de "
+        f"{config.CASUALTY_MAP_KERNEL_CELL_M:.0f} m; {config.CASUALTY_MAP_RAMP_CLASSES} clases por "
+        f"cuantiles desde el percentil {floor:.0f}, concentradas hacia el extremo denso; "
+        f"escala compartida por todos los años de este conteo. "
+        f"{_spanish(book['drawn'])} de {_spanish(book['total'])} dibujadas, "
+        f"{_spanish(book['outside_every_unit'])} fuera de toda UPL.",
+    ]
+    if book["drawn"] < config.CASUALTY_MAP_SPARSE_BELOW:
+        notes.append(
+            config.CASUALTY_MAP_SPARSE_CAVEAT_ES.format(
+                events=_spanish(book["drawn"]), sigma=bandwidth
+            )
+        )
+    notes.append(config.CASUALTY_MAP_CAVEAT_ES)
+    return notes
+
+
+def render_all(
+    affected: pd.DataFrame,
+    units: gpd.GeoDataFrame,
+    log: RunLog,
+    years: tuple[int, ...] | None = None,
+) -> dict[tuple[str, int | None], Path]:
+    """One map per count and year, plus one over the whole span, for the observed set.
+
+    **The corrected dataset gets no map, and that is a decision rather than an
+    omission (D44).** The correction promotes parties of crashes that already
+    happened, so it adds no coordinate: the corrected map would be the same points
+    at slightly different weights. The difference is real and it is visible where
+    it belongs, in the matrices and the tables, which is where the correction is a
+    number rather than a position.
+
+    The class breaks are pooled over every year of a count and then handed to each
+    of them, so two years are drawn to one ruler. The aggregate is not on that
+    ruler and takes its own: a cell of it holds eighteen years, so sharing would
+    put every single year in the bottom class.
+    """
+    year_range = list(years) if years is not None else list(config.STUDY_YEARS)
+    scale = config.active_scale()
+    written: dict[tuple[str, int | None], Path] = {}
+    located = affected[affected[config.AREA_CODE_COL].notna()]
+
+    for count_name in config.MATRIX_COUNTS:
+        bandwidth = bandwidth_for(count_name)
+        floor = floor_for(count_name)
+
+        by_year = {
+            year: count_points(located[located[config.YEAR_COL] == year], count_name, units)
+            for year in year_range
+        }
+
+        # Pass one: the values every year of this count will hold, pooled into one
+        # set of breaks. Nothing is drawn yet, because the first map cannot be
+        # drawn until the last year of values is known.
+        surfaces = [
+            surface_values(units, x, y, w, bandwidth, config.CASUALTY_MAP_KERNEL_CELL_M)
+            for x, y, w in by_year.values()
+            if len(x)
+        ]
+        pooled = np.concatenate(surfaces) if surfaces else np.array([])
+        breaks = quantile_breaks(pooled, config.CASUALTY_MAP_RAMP_CLASSES, floor)
+        log.info(
+            "%s: map classes shared across %d years span %.3g to %.3g %s",
+            count_name,
+            len(year_range),
+            breaks[0],
+            breaks[-1],
+            config.CASUALTY_MAP_LEGENDS_ES[count_name],
+        )
+
+        for year, (x, y, w) in by_year.items():
+            book = accounted_for(affected[affected[config.YEAR_COL] == year], count_name)
+            path = figures.count_figure_directory(log.run_dir, count_name, year) / (
+                f"map_{count_name}__{year}.{config.CASUALTY_MAP_FORMAT}"
+            )
+            render(
+                units, x, y, w, path,
+                technique=KERNEL, bandwidth_m=bandwidth, floor_percentile=floor, breaks=breaks,
+                title=f"{config.CASUALTY_MAP_TITLES_ES[count_name]} — {year} — "
+                      f"Bogotá, {len(units)} {scale.label}",
+                legend_label=config.CASUALTY_MAP_LEGENDS_ES[count_name],
+                notes=_notes(count_name, book, bandwidth, floor),
+            )
+            written[(count_name, year)] = path
+
+        # The aggregate, on its own breaks for the same reason the aggregate matrix
+        # has its own colour scale.
+        x, y, w = count_points(located, count_name, units)
+        book = accounted_for(affected, count_name)
+        aggregate_breaks = quantile_breaks(
+            surface_values(units, x, y, w, bandwidth, config.CASUALTY_MAP_KERNEL_CELL_M),
+            config.CASUALTY_MAP_RAMP_CLASSES,
+            floor,
+        )
+        path = figures.count_figure_directory(log.run_dir, count_name, None) / (
+            f"map_{count_name}__{config.ALL_YEARS_FOLDER}.{config.CASUALTY_MAP_FORMAT}"
+        )
+        render(
+            units, x, y, w, path,
+            technique=KERNEL, bandwidth_m=bandwidth, floor_percentile=floor, breaks=aggregate_breaks,
+            title=f"{config.CASUALTY_MAP_TITLES_ES[count_name]} — "
+                  f"{min(year_range)}-{max(year_range)} — Bogotá, {len(units)} {scale.label}",
+            legend_label=config.CASUALTY_MAP_LEGENDS_ES[count_name],
+            notes=_notes(count_name, book, bandwidth, floor),
+        )
+        written[(count_name, None)] = path
+
+    log.info(
+        "wrote %d casualty maps under %s/ (observed dataset only; see D44)",
+        len(written),
+        config.FIGURES_SUBDIR,
+    )
+    return written
+
+
+def verify(
+    affected: pd.DataFrame,
+    units: gpd.GeoDataFrame,
+    paths: dict[tuple[str, int | None], Path],
+    log: RunLog,
+    years: tuple[int, ...] | None = None,
+) -> bool:
+    """Check that the maps account for the same casualties the matrix does."""
+    year_range = list(years) if years is not None else list(config.STUDY_YEARS)
+    metric = units.to_crs(epsg=config.PROJECTED_CRS)
+    city = metric.geometry.union_all()
+    located = affected[affected[config.AREA_CODE_COL].notna()]
+    checks: list[tuple[str, bool, str]] = []
+
+    for count_name in config.MATRIX_COUNTS:
+        # The balance: what a map draws plus what it sets aside is what the year
+        # holds. The parties set aside are the ones D11 drops at aggregation, and
+        # they leave the map for the same reason and in the same number.
+        unbalanced = []
+        for year in year_range:
+            book = accounted_for(affected[affected[config.YEAR_COL] == year], count_name)
+            if book["drawn"] + book["outside_every_unit"] + book["no_coordinate"] != book["total"]:
+                unbalanced.append(year)
+        whole = accounted_for(affected, count_name)
+        checks.append((
+            f"{count_name}: drawn plus set aside equals what the span holds",
+            not unbalanced
+            and whole["drawn"] + whole["outside_every_unit"] + whole["no_coordinate"] == whole["total"],
+            f"{_spanish(whole['drawn'])} drawn, {whole['outside_every_unit']} outside every unit, "
+            f"{whole['no_coordinate']} without a coordinate, of {_spanish(whole['total'])}"
+            + (f"; years not balancing: {unbalanced}" if unbalanced else ""),
+        ))
+
+        # And every point a map draws really is inside the thirty units. The unit
+        # and the coordinate both come from the crash but are resolved by two
+        # different rules, so this is checked and not assumed.
+        x, y, _ = count_points(located, count_name, units)
+        outside = int((~shapely.contains_xy(city, x, y)).sum()) if len(x) else 0
+        checks.append((
+            f"{count_name}: every point drawn falls inside the units",
+            outside == 0,
+            f"{outside} of {_spanish(len(x))} outside",
+        ))
+
+    expected = {(count, year) for count in config.MATRIX_COUNTS for year in [*year_range, None]}
+    checks.append((
+        "one map per count and year, plus the aggregate",
+        set(paths) == expected,
+        f"{len(paths)} of {len(expected)}",
+    ))
+
+    missing = [path for path in paths.values() if not path.exists()]
+    empty = [path for path in paths.values() if path.exists() and path.stat().st_size == 0]
+    smallest = min((path.stat().st_size for path in paths.values() if path.exists()), default=0)
+    checks.append((
+        "every map is on disk and none is empty",
+        not missing and not empty,
+        f"{len(missing)} missing, {len(empty)} empty, smallest {smallest / 1024:,.0f} KB",
+    ))
+
+    width = max(len(name) for name, _, _ in checks)
+    lines = [f"{'check'.ljust(width)}  {'result':>8}  detail", f"{'-' * width}  {'-' * 8}  ------"]
+    for name, ok, detail in checks:
+        lines.append(f"{name.ljust(width)}  {'OK' if ok else 'FAILED':>8}  {detail}")
+    log.table("casualty map verification:", "\n".join(lines))
+
+    passed = all(ok for _, ok, _ in checks)
+    if not passed:
+        log.warn("casualty map verification FAILED")
+    return passed
