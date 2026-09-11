@@ -66,6 +66,10 @@ LOGARITHMIC = "log"
 CONTOURS = "contour"
 PIXELS = "image"
 
+# What a caller that names no count gets. Every route names one; this is only so
+# that a probe drawing one map by hand does not have to.
+_DENSE_FLOOR = config.CASUALTY_MAP_RAMP_FLOOR_PERCENTILE["injured"]
+
 
 def bandwidth_for(count_name: str) -> float:
     """The kernel width this count is drawn at, the same in every one of its years.
@@ -75,6 +79,16 @@ def bandwidth_for(count_name: str) -> float:
     are not.
     """
     return config.CASUALTY_MAP_KERNEL_BANDWIDTH_M[count_name]
+
+
+def floor_for(count_name: str) -> float:
+    """The percentile below which this count's surface is left uncoloured.
+
+    Per count and the same in every one of its years, like the bandwidth: it
+    decides how much of the map is painted, and two years painted to different
+    extents would look like two different amounts of harm.
+    """
+    return config.CASUALTY_MAP_RAMP_FLOOR_PERCENTILE[count_name]
 
 
 def point_style(drawn: int) -> tuple[float, float]:
@@ -113,8 +127,34 @@ def _class_colours(colours, classes: int, span=None):
     )
 
 
-def quantile_breaks(positive: np.ndarray, classes: int) -> np.ndarray:
-    """Class breaks at the quantiles of the values drawn, floor to maximum.
+def class_positions(classes: int, concentration: float | None = None) -> np.ndarray:
+    """Where along the ordered values the class breaks are taken, as fractions.
+
+    **Even quantiles give every class the same area, and that is the defect.**
+    Cutting at 1/7, 2/7 and so on puts a seventh of the coloured surface in each
+    band by construction, so the darkest band is as large as the palest one in
+    every map ever drawn this way. What a density map is read for is the opposite:
+    a small intense core inside a wide faint surround.
+
+    The positions are therefore bunched towards the top, by `1 - (1 - p) ** k`. At
+    k = 1 they are the even quantiles. Above it each successive class covers less
+    of the surface than the one below: at k = 2 the seven classes hold roughly
+    26, 22, 18, 14, 10, 6 and 2 per cent of it, so the darkest marks the densest
+    fiftieth rather than the densest seventh.
+
+    This changes which values the colours mean and not the values themselves, and
+    the bar still prints every break, so what each class covers stays checkable.
+    """
+    k = config.CASUALTY_MAP_RAMP_CONCENTRATION if concentration is None else concentration
+    even = np.linspace(0.0, 1.0, classes + 1)
+    return 1.0 - (1.0 - even) ** k
+
+
+def quantile_breaks(
+    positive: np.ndarray, classes: int, floor_percentile: float | None = None,
+    concentration: float | None = None,
+) -> np.ndarray:
+    """Class breaks at quantiles of the values drawn, floor to maximum.
 
     Computed once over every year of a count and then handed to each year, so the
     set of maps shares one ruler. Deriving them per year would give every year the
@@ -123,10 +163,10 @@ def quantile_breaks(positive: np.ndarray, classes: int) -> np.ndarray:
     """
     if not positive.size:
         return np.array([1.0, 2.0])
-    low = max(float(np.percentile(positive, config.CASUALTY_MAP_RAMP_FLOOR_PERCENTILE)),
-              float(np.nextafter(0.0, 1.0)))
+    percentile = _DENSE_FLOOR if floor_percentile is None else floor_percentile
+    low = max(float(np.percentile(positive, percentile)), float(np.nextafter(0.0, 1.0)))
     inside = positive[positive >= low]
-    breaks = np.unique(np.quantile(inside, np.linspace(0.0, 1.0, classes + 1)))
+    breaks = np.unique(np.quantile(inside, class_positions(classes, concentration)))
     if breaks.size < 2:
         breaks = np.array([low, max(float(positive.max()), low * 1.01)])
     breaks[0] = low
@@ -141,6 +181,8 @@ def build_ramp(
     ramp: str,
     classes: int,
     colours,
+    floor_percentile: float | None = None,
+    concentration: float | None = None,
 ):
     """The norm the surface is painted through, and the values at its breaks.
 
@@ -160,7 +202,7 @@ def build_ramp(
     every year pooled, computed once by `quantile_breaks` and handed to each map.
     """
     if breaks is None:
-        breaks = quantile_breaks(positive, classes)
+        breaks = quantile_breaks(positive, classes, floor_percentile, concentration)
     low, high = float(breaks[0]), float(breaks[-1])
 
     if ramp == LOGARITHMIC:
@@ -366,6 +408,8 @@ def render(
     rasterize_points: bool | None = None,
     style: tuple[float, float] | None = None,
     surface_render: str | None = None,
+    floor_percentile: float | None = None,
+    concentration: float | None = None,
 ) -> dict[str, float]:
     """Draw one map and return what the figure had to decide, for the note.
 
@@ -421,7 +465,10 @@ def render(
         raise ValueError(f"unknown technique {technique!r}; expected {HEXBIN!r} or {KERNEL!r}")
 
     positive = values[values > 0]
-    norm, breaks = build_ramp(positive, breaks, ramp=ramp, classes=classes, colours=colours)
+    norm, breaks = build_ramp(
+        positive, breaks, ramp=ramp, classes=classes, colours=colours,
+        floor_percentile=floor_percentile, concentration=concentration,
+    )
     if ramp == QUANTILE:
         colours = _class_colours(colours, len(breaks) - 1, colour_span)
     # Anything under the floor takes no colour at all and lets the flat city

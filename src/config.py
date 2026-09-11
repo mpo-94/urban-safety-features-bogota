@@ -4777,16 +4777,40 @@ CASUALTY_MAP_SURFACE_RENDER = "contour"
 CASUALTY_MAP_RAMP = "quantile"
 CASUALTY_MAP_RAMP_CLASSES = 7
 
+# How much the classes crowd towards the dense end, as the exponent in
+# `1 - (1 - p) ** k` applied to the quantile positions.
+#
+# **At 1 the classes are even quantiles, and that is a defect rather than a
+# neutral choice.** Even quantiles give every class the same share of the coloured
+# surface by construction, so the darkest band comes out as large as the palest in
+# every map, which is the opposite of how a density is read: a small intense core
+# inside a wide faint surround. At 2 the seven classes hold roughly 26, 22, 18,
+# 14, 10, 6 and 2 per cent of the surface, so the darkest marks the densest
+# fiftieth rather than the densest seventh.
+CASUALTY_MAP_RAMP_CONCENTRATION = 2.0
+
 # The floor of the ramp, as a percentile of the values actually drawn. Below it a
 # cell takes the ground colour: on a kernel the bottom percentiles are the faintest
 # tail the smoothing left in a corner of the city, and colouring them at all says
 # there is something there to see.
 #
-# **This is the setting that decides how much of the map is coloured at all.** At
-# 5 the surface reaches almost every corner of the city; raising it leaves the
-# thin edges bare and concentrates the colour where the casualties are. It changes
-# nothing about the values — only where the figure stops claiming to show one.
-CASUALTY_MAP_RAMP_FLOOR_PERCENTILE = 35.0
+# **This is the setting that decides how much of the map is coloured at all.** It
+# changes nothing about the values — only where the figure stops claiming to show
+# one.
+#
+# **Per count, like the bandwidth, and for the same reason.** The counts differ by
+# two orders of magnitude and so do the shapes of their surfaces. A year of
+# injuries is broadly raised over the whole built city, and a floor at the 35th
+# percentile is what leaves the thin edges bare and keeps the grey meaning
+# "covered and nearly empty". A year of deaths is near zero almost everywhere with
+# five hundred peaks in it, so the same percentile cuts into the surround of each
+# peak and leaves the map as detached blobs; at 20 the surrounds reach far enough
+# to meet and the corridors read as corridors.
+CASUALTY_MAP_RAMP_FLOOR_PERCENTILE: dict[str, float] = {
+    "parties": 35.0,
+    "injured": 35.0,
+    "killed": 20.0,
+}
 
 # Which stretch of the colormap the classes are taken from, as two fractions of
 # it. Neither end of a colormap is usable here. The palest is too close to the
