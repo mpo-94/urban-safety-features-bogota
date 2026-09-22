@@ -2137,9 +2137,45 @@ DATASET_LABELS_ES: dict[str, str] = {
 # so about. Not a test and not a threshold anything acts on: it is the level at
 # which the run mentions it, because the panel that follows this step is where
 # it would be dealt with.
+# What each becomes in a path. Declared beside the labels rather than derived
+# from them, because a folder name built by lower-casing a label would change the
+# moment the label is reworded, and a path is what somebody bookmarks.
+FAMILY_SLUGS: dict[str, str] = {
+    "OLS": "minimos-cuadrados",
+    "POISSON": "poisson",
+    "NEGATIVE_BINOMIAL": "binomial-negativa",
+}
+OFFSET_SLUGS: dict[str, str] = {
+    "MODE_EXPOSURE": "exposicion-modo",
+    "BOTH_EXPOSURES": "exposicion-ambos",
+    "POPULATION": "poblacion",
+}
+DATASET_SLUGS: dict[str, str] = {
+    "OBSERVED": "observado",
+    "RHO_CORRECTED": "corregido-rho",
+}
+
+# The one combination copied into `principal/`, which is what somebody opens who
+# wants the result rather than a variant. Not taste: the observed dataset is what
+# the study reports and the corrected one is what it contrasts against; the mode
+# exposure is the offset the anteproyecto declares; and the negative binomial is
+# the family the dispersion endorses in 143 of 144 models.
+PRIMARY_DATASET = "OBSERVED"
+PRIMARY_OFFSET = "MODE_EXPOSURE"
+PRIMARY_FAMILY = "NEGATIVE_BINOMIAL"
+
 MORAN_REPORTING_THRESHOLD = 0.2
 
 REGRESSION_POINT_COLOR = "#3C616F"
+
+# One colour per offset, for the panel that holds all three at once. Taken from
+# the thesis palette so a figure in a message and a figure in the document are
+# the same document; distinguishable in greyscale, because these get printed.
+OFFSET_COLORS: dict[str, str] = {
+    "MODE_EXPOSURE": "#3C616F",
+    "BOTH_EXPOSURES": "#995E54",
+    "POPULATION": "#818C6C",
+}
 
 
 # The three offset quantities are not declared predictors, so they carry their

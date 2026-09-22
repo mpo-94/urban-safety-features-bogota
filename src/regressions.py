@@ -38,6 +38,8 @@ Run it on its own:
 from __future__ import annotations
 
 import itertools
+import shutil
+import textwrap
 import warnings
 from dataclasses import dataclass
 from pathlib import Path
@@ -1095,8 +1097,8 @@ def _panel_grid(title: str) -> tuple[plt.Figure, np.ndarray]:
     """Two rows of four, which is how the eight pairs are read.
 
     Vulnerable victims above and motorised below, in the order the configuration
-    declares them. My advisor asked for this shape and it is also the only one
-    that fits eight panels on a page without either of them going illegible.
+    declares them. My advisor asked for this shape, and it is also the only one
+    that fits eight panels on a page without any of them going illegible.
     """
     figure, axes = plt.subplots(2, 4, figsize=(16, 8))
     figure.suptitle(title, fontsize=13)
@@ -1119,8 +1121,8 @@ def _fit_panel(
     shared scale would crush half the panels into the origin.
 
     The reference is the 45-degree line and never a line fitted to the cloud: the
-    question the figure answers is how far the model is from the observation, and
-    a fitted line would answer a different one while looking like this one.
+    question is how far the model is from the observation, and a fitted line would
+    answer a different one while looking like this one.
     """
     figure, axes = _panel_grid(
         f"Observado contra predicho · {year} · {config.FAMILY_LABELS_ES[family]}\n"
@@ -1143,11 +1145,11 @@ def _fit_panel(
             continue
         observed = rows["OBSERVED"].to_numpy(dtype=float)
         predicted = rows["PREDICTED"].to_numpy(dtype=float)
-        top = max(observed.max(), predicted.max()) * 1.05 or 1.0
+        top = max(observed.max(), predicted.max(), 1.0) * 1.05
         axis.plot([0, top], [0, top], color="#888888", linewidth=1, zorder=1)
         axis.scatter(observed, predicted, s=26, color=config.REGRESSION_POINT_COLOR, zorder=2)
         axis.set_xlim(0, top)
-        axis.set_ylim(0, top)
+        axis.set_ylim(min(0, predicted.min() * 1.05), top)
         axis.set_xlabel("observado")
         axis.set_ylabel("predicho")
 
@@ -1160,13 +1162,8 @@ def _fit_panel(
         ]
         if len(row):
             axis.text(
-                0.03,
-                0.97,
-                f"AIC {float(row['AIC'].iloc[0]):.0f}",
-                transform=axis.transAxes,
-                va="top",
-                fontsize=8,
-                color="#555555",
+                0.03, 0.97, f"AIC {float(row['AIC'].iloc[0]):.0f}",
+                transform=axis.transAxes, va="top", fontsize=8, color="#555555",
             )
     figure.tight_layout()
     figure.savefig(out_path, dpi=config.FIGURE_DPI, bbox_inches="tight")
@@ -1176,88 +1173,354 @@ def _fit_panel(
 def _coefficient_panel(
     coefficients: pd.DataFrame,
     dataset: str,
-    offset: str,
     family: str,
     year: int,
     out_path: Path,
 ) -> None:
-    """The selected coefficients with their intervals, one panel per pair.
+    """The selected coefficients of all three offsets, one panel per pair.
+
+    **The three offsets are one figure and not three.** They differ only in the
+    denominator, so putting them on the same axis shows directly how far a
+    coefficient moves when the denominator changes — which is the question the
+    three offsets exist to answer, and which three separate files could only be
+    answered by holding them side by side.
 
     Standardised coefficients, because a panel puts variables of wildly different
-    units side by side and only the standardised ones can be compared by eye. The
-    table carries both.
+    units together and only the standardised ones can be compared by eye. The
+    exported table carries both scales.
 
     The vertical at zero is drawn so an interval that crosses it is visible
     without reading a number.
     """
     figure, axes = _panel_grid(
         f"Coeficientes estandarizados · {year} · {config.FAMILY_LABELS_ES[family]}\n"
-        f"offset: {config.OFFSET_LABELS_ES[offset]} · conjunto: {config.DATASET_LABELS_ES[dataset]}"
+        f"conjunto: {config.DATASET_LABELS_ES[dataset]} · un color por offset"
         " · intervalo del 95 %"
     )
+    offsets = list(config.REGRESSION_OFFSETS)
+    colours = config.OFFSET_COLORS
+
     for axis, pair in zip(axes, config.REGRESSION_PAIRS):
-        rows = coefficients[
-            (coefficients[DATASET_COL] == dataset)
-            & (coefficients[config.OFFSET_COL] == offset)
-            & (coefficients[config.FAMILY_COL] == family)
-            & (coefficients[config.YEAR_COL] == year)
-            & (coefficients[PAIR_NAME_COL] == pair.name)
-            & (coefficients["TERM"] != "INTERCEPT")
-        ]
         axis.set_title(pair.label_es, fontsize=10)
-        if rows.empty:
+        axis.axvline(0, color="#888888", linewidth=1, zorder=1)
+
+        labels: list[str] = []
+        position = 0.0
+        drew = False
+        for offset in offsets:
+            rows = coefficients[
+                (coefficients[DATASET_COL] == dataset)
+                & (coefficients[config.OFFSET_COL] == offset.name)
+                & (coefficients[config.FAMILY_COL] == family)
+                & (coefficients[config.YEAR_COL] == year)
+                & (coefficients[PAIR_NAME_COL] == pair.name)
+                & (coefficients["TERM"] != "INTERCEPT")
+            ]
+            for _, row in rows.iterrows():
+                axis.hlines(
+                    position, row["CI_LOW"], row["CI_HIGH"],
+                    color=colours[offset.name], linewidth=2, zorder=2,
+                )
+                axis.scatter(
+                    row["COEFFICIENT_STANDARDISED"], position,
+                    s=28, color=colours[offset.name], zorder=3,
+                )
+                labels.append(config.predictor_label_es(row["TERM"]))
+                position += 1
+                drew = True
+            # A blank line between offsets, so three blocks read as three and not
+            # as one list of nine.
+            if len(rows):
+                position += 0.6
+                labels.append("")
+
+        if not drew:
             axis.text(0.5, 0.5, "sin modelo", ha="center", va="center", transform=axis.transAxes)
             axis.set_xticks([])
             axis.set_yticks([])
             continue
-        positions = np.arange(len(rows))
-        estimates = rows["COEFFICIENT_STANDARDISED"].to_numpy(dtype=float)
-        low = rows["CI_LOW"].to_numpy(dtype=float)
-        high = rows["CI_HIGH"].to_numpy(dtype=float)
-        axis.axvline(0, color="#888888", linewidth=1)
-        axis.hlines(positions, low, high, color=config.REGRESSION_POINT_COLOR, linewidth=2)
-        axis.scatter(estimates, positions, s=30, color=config.REGRESSION_POINT_COLOR, zorder=3)
-        axis.set_yticks(positions)
-        axis.set_yticklabels(
-            [config.predictor_label_es(name) for name in rows["TERM"]], fontsize=8
-        )
-        axis.invert_yaxis()
-    figure.tight_layout()
+        axis.set_yticks(range(len(labels)), labels, fontsize=7)
+        axis.set_ylim(len(labels) - 0.4, -0.6)
+
+    handles = [
+        plt.Line2D([], [], color=colours[offset.name], linewidth=3,
+                   label=config.OFFSET_LABELS_ES[offset.name])
+        for offset in offsets
+    ]
+    figure.legend(handles=handles, loc="lower center", ncol=3, frameon=False, fontsize=9)
+    figure.tight_layout(rect=(0, 0.04, 1, 1))
     figure.savefig(out_path, dpi=config.FIGURE_DPI, bbox_inches="tight")
     plt.close(figure)
 
 
-def _table_figure(frame: pd.DataFrame, title: str, note: str, out_path: Path) -> None:
-    """A table rendered as an image, for a slide or a document.
+# -- tables drawn as a grid, never with matplotlib's own table ---------------
+# `axis.table` sizes its columns by their count and not by what is in them, so a
+# heading longer than its share is drawn over its neighbour and a long cell spills
+# across the one beside it. Both happened, and the whole of PREDICTORS was
+# unreadable. These draw on an image grid instead, the way the predictor master
+# table does: the text sits at a cell centre, the grid fills the axes, and nothing
+# can overflow because nothing is laid out by matplotlib.
 
-    Rendered rather than linked because these go into a message to my advisor,
-    and a CSV in an attachment is not read. The note under it travels with the
-    image for the same reason.
-    """
-    rows, columns = frame.shape
-    # The height follows the rows and the table fills the axes, or matplotlib
-    # leaves half a canvas of white under a short table and squeezes a long one.
-    figure, axis = plt.subplots(figsize=(min(2.2 + 1.5 * columns, 22), 0.9 + 0.24 * rows))
-    axis.axis("off")
-    axis.set_title(title, fontsize=11, pad=12)
-    table = axis.table(
-        cellText=frame.astype(str).to_numpy(),
-        colLabels=list(frame.columns),
-        loc="center",
-        cellLoc="center",
-        bbox=[0, 0, 1, 1],
+
+def _grid_table(
+    text: list[list[str]],
+    columns: list[str],
+    rows: list[str],
+    title: str,
+    note: str,
+    out_path: Path,
+    shading: np.ndarray | None = None,
+    colormap: str = config.MASTER_TABLE_COLORMAP,
+    centre_on_zero: bool = False,
+    column_width: float = 1.4,
+    column_fontsize: float = 8,
+    column_groups: list[tuple[str, int, int]] | None = None,
+    title_pad: float = 26,
+    wrap: int | None = None,
+) -> None:
+    """A table of text on a grid, optionally shaded, filling its own canvas."""
+    row_count, column_count = len(rows), len(columns)
+    # A cell longer than its column would be drawn over its neighbour, which is
+    # what `matplotlib.table` did and what this exists to avoid. Wrapping is done
+    # here rather than by shrinking the font, because a list of three variable
+    # names in six-point type is not readable either. The rows grow to fit.
+    if wrap:
+        text = [[textwrap.fill(cell, wrap) for cell in row] for row in text]
+    tallest = max(
+        (cell.count(chr(10)) + 1 for row in text for cell in row),
+        default=1,
     )
-    table.auto_set_font_size(False)
-    table.set_fontsize(7.5)
-    table.scale(1, 1.25)
-    for position, cell in table.get_celld().items():
-        cell.set_edgecolor("#dddddd")
-        if position[0] == 0:
-            cell.set_text_props(weight="bold")
+    figure, axis = plt.subplots(
+        figsize=(
+            max(4.0, 1.9 + column_width * column_count),
+            max(2.0, 1.5 + 0.26 * row_count * tallest),
+        )
+    )
+
+    if shading is None:
+        painted = np.zeros((row_count, column_count))
+        cmap = matplotlib.colors.ListedColormap(["white"])
+        low, high = 0.0, 1.0
+    else:
+        painted = shading
+        cmap = plt.get_cmap(colormap).copy()
+        cmap.set_bad(config.HEATMAP_EMPTY_COLOR)
+        finite = painted[np.isfinite(painted)]
+        span = float(np.abs(finite).max()) if len(finite) else 1.0
+        low, high = (-span, span) if centre_on_zero else (0.0, 1.0)
+
+    axis.imshow(np.ma.masked_invalid(painted), cmap=cmap, vmin=low, vmax=high, aspect="auto")
+
+    for row, column in itertools.product(range(row_count), range(column_count)):
+        value = painted[row, column]
+        dark = np.isfinite(value) and shading is not None and abs(value - (low + high) / 2) > (
+            (high - low) * 0.32
+        )
+        axis.text(
+            column, row, text[row][column], ha="center", va="center",
+            fontsize=7, color="white" if dark else "#222222",
+        )
+
+    axis.set_xticks(range(column_count), columns, fontsize=column_fontsize)
+    axis.xaxis.set_ticks_position("top")
+    if column_groups:
+        # The group name once above its own columns, instead of repeated in every
+        # one of them and cut off by the column width. This is what the pair and
+        # year heading needed: eight names rather than twenty-four.
+        for label, start, stop in column_groups:
+            axis.annotate(
+                label,
+                xy=((start + stop) / 2, -1.55),
+                xycoords="data",
+                ha="center",
+                va="bottom",
+                fontsize=8.5,
+                annotation_clip=False,
+            )
+            axis.annotate(
+                "", xy=(start - 0.45, -1.2), xytext=(stop + 0.45, -1.2), xycoords="data",
+                arrowprops={"arrowstyle": "-", "color": "#bbbbbb", "linewidth": 0.8},
+                annotation_clip=False,
+            )
+    axis.set_yticks(range(row_count), rows, fontsize=7.5)
+    axis.set_xticks(np.arange(-0.5, column_count, 1), minor=True)
+    axis.set_yticks(np.arange(-0.5, row_count, 1), minor=True)
+    axis.grid(which="minor", color="#cccccc", linewidth=0.8)
+    axis.tick_params(which="minor", length=0)
+    for spine in axis.spines.values():
+        spine.set_visible(False)
+
+    axis.set_title(title, fontsize=11, pad=title_pad)
     if note:
-        figure.text(0.01, 0.005, note, fontsize=7, color="#555555", ha="left", va="bottom")
+        # Placed in data coordinates, just under the last row. An earlier version
+        # put it at a fraction far below the axes and `bbox_inches="tight"`
+        # stretched the canvas down to reach it, which is where half an image of
+        # white space came from.
+        axis.annotate(
+            note,
+            xy=(-0.5, row_count - 0.2),
+            xycoords="data",
+            va="top",
+            fontsize=7,
+            color="#555555",
+            annotation_clip=False,
+        )
     figure.savefig(out_path, dpi=config.FIGURE_DPI, bbox_inches="tight")
     plt.close(figure)
+
+
+def _beta_heatmap(
+    coefficients: pd.DataFrame,
+    dataset: str,
+    offset: str,
+    family: str,
+    out_path: Path,
+) -> None:
+    """Every beta of a whole block, as one picture.
+
+    **This is the figure that answers what the regressions found.** One row per
+    candidate variable, one column per pair and year, and in each cell the
+    standardised coefficient of that variable in that model — blank where the
+    variable was not selected, which is itself the finding for a variable whose
+    row is nearly empty.
+
+    Diverging colour centred on zero, so sign reads before magnitude: a row that
+    is blue all the way across is a variable that keeps the same sign in every
+    context it survives into, and that is worth more than any one p-value in a
+    search this size.
+
+    Standardised, because the rows are variables measured in shares, densities and
+    kilometres and no other scale lets them share a ramp.
+    """
+    block = coefficients[
+        (coefficients[DATASET_COL] == dataset)
+        & (coefficients[config.OFFSET_COL] == offset)
+        & (coefficients[config.FAMILY_COL] == family)
+        & (coefficients["TERM"] != "INTERCEPT")
+    ]
+    variables = [
+        name
+        for name in config.REGRESSION_CANDIDATE_POOL
+        if name in set(block["TERM"])
+    ]
+    cells = [
+        (pair, year) for pair in config.REGRESSION_PAIRS for year in config.REGRESSION_YEARS
+    ]
+    if not variables:
+        return
+
+    shading = np.full((len(variables), len(cells)), np.nan)
+    text = [["" for _ in cells] for _ in variables]
+    lookup = block.set_index([PAIR_NAME_COL, config.YEAR_COL, "TERM"])
+    for row, name in enumerate(variables):
+        for column, (pair, year) in enumerate(cells):
+            try:
+                entry = lookup.loc[(pair.name, year, name)]
+            except KeyError:
+                continue
+            estimate = float(entry["COEFFICIENT_STANDARDISED"])
+            shading[row, column] = estimate
+            text[row][column] = f"{estimate:.2f}{entry['STARS']}"
+
+    _grid_table(
+        text=text,
+        columns=[str(year) for _, year in cells],
+        # The pair named once above its own three years instead of repeated
+        # in each and cut off by the column width: eight names, not twenty-four.
+        column_groups=[
+            (pair.label_es, index * len(config.REGRESSION_YEARS),
+             index * len(config.REGRESSION_YEARS) + len(config.REGRESSION_YEARS) - 1)
+            for index, pair in enumerate(config.REGRESSION_PAIRS)
+        ],
+        title_pad=42,
+        rows=[config.predictor_label_es(name) for name in variables],
+        title=(
+            f"Coeficientes estandarizados por pareja y año · {config.FAMILY_LABELS_ES[family]}\n"
+            f"offset: {config.OFFSET_LABELS_ES[offset]} · conjunto: "
+            f"{config.DATASET_LABELS_ES[dataset]}"
+        ),
+        note=(
+            "Celda vacía: la variable no fue seleccionada en ese modelo. Color divergente "
+            "centrado en cero, así que el signo se lee antes que la magnitud.\n"
+            "* p<0,05  ** p<0,01  *** p<0,001 — inflados por la selección: son el ganador "
+            "de una búsqueda sobre todos los subconjuntos declarados."
+        ),
+        out_path=out_path,
+        shading=shading,
+        colormap=config.DIVERGING_COLORMAP,
+        centre_on_zero=True,
+        column_width=0.72,
+    )
+
+
+def _models_table(models: pd.DataFrame, dataset: str, offset: str, family: str, out_path: Path) -> None:
+    """The selected model of every pair and year, with what it is worth.
+
+    One block at a time — a dataset, an offset and a family — because all of them
+    at once was a hundred and forty-four rows that nobody could read, and the
+    columns that identify the block are then the title instead of four repeated
+    columns.
+    """
+    block = models[
+        (models[DATASET_COL] == dataset)
+        & (models[config.OFFSET_COL] == offset)
+        & (models[config.FAMILY_COL] == family)
+    ]
+    if block.empty:
+        return
+    # Dispersion is estimated on the Poisson fit and is null for the others, so
+    # the column appears only where it holds something. A column of `nan` is worse
+    # than no column: it reads as a measurement that failed.
+    show_dispersion = bool(block["DISPERSION"].notna().any())
+    columns = ["Variables seleccionadas", "AIC", "BIC"]
+    if show_dispersion:
+        columns.append("Dispersión")
+    columns += ["Moran", "Colineal", "¿gana al nulo?"]
+
+    rows: list[str] = []
+    text: list[list[str]] = []
+    for pair in config.REGRESSION_PAIRS:
+        for year in config.REGRESSION_YEARS:
+            entry = block[(block[PAIR_NAME_COL] == pair.name) & (block[config.YEAR_COL] == year)]
+            rows.append(f"{pair.label_es}  {year}")
+            if entry.empty:
+                text.append(["sin modelo"] + [""] * (len(columns) - 1))
+                continue
+            row = entry.iloc[0]
+            names = ", ".join(
+                config.predictor_label_es(name) for name in row["PREDICTORS"].split(", ") if name
+            )
+            cells = [names, f"{row['AIC']:.1f}", f"{row['BIC']:.1f}"]
+            if show_dispersion:
+                cells.append(f"{row['DISPERSION']:.2f}" if np.isfinite(row["DISPERSION"]) else "-")
+            cells += [
+                f"{row['MORANS_I']:.3f}",
+                "sí" if row["COLLINEAR"] else "no",
+                "sí" if row["BEATS_NULL"] else "NO",
+            ]
+            text.append(cells)
+
+    _grid_table(
+        text=text,
+        columns=columns,
+        rows=rows,
+        title=(
+            f"Modelos seleccionados · {config.FAMILY_LABELS_ES[family]}\n"
+            f"offset: {config.OFFSET_LABELS_ES[offset]} · conjunto: "
+            f"{config.DATASET_LABELS_ES[dataset]}"
+        ),
+        note=(
+            "AIC compara sólo dentro de una misma familia y un mismo offset. Moran sobre los "
+            "residuales: por encima de 0,2 el corte deja estructura espacial que el panel "
+            "tendrá que recoger.\n"
+            "Colineal: el modelo contiene un par de variables correlacionado por encima de "
+            f"{config.CORRELATION_HIGH_THRESHOLD:.2f}, y entonces un coeficiente es un efecto "
+            "repartido entre dos."
+        ),
+        out_path=out_path,
+        column_width=1.75,
+        wrap=28,
+    )
 
 
 def render_figures(
@@ -1265,111 +1528,212 @@ def render_figures(
     tables: dict[str, pd.DataFrame],
     log: RunLog,
 ) -> int:
-    """Every figure of every year, family and offset."""
+    """Every figure, in a tree whose path is the question it answers.
+
+    `principal/` holds the one combination the study reports, so nobody has to
+    navigate to see a result. `variantes/<conjunto>/<offset>/<familia>/` holds the
+    rest, and the path reads as a sentence. `entradas/` holds what went in, which
+    depends on none of those three. `resumen/` holds what is true across all of
+    them.
+
+    The year is in the file name and not in a folder, because it is the dimension
+    that gets compared rather than fixed: three years of one combination belong
+    together, and putting the year first scattered that comparison across three
+    folders while piling eighteen variants into each.
+    """
     root = log.run_dir / config.FIGURES_SUBDIR / "regressions"
     written = 0
+    families = (config.OLS_FAMILY, config.POISSON_FAMILY, config.NEGATIVE_BINOMIAL_FAMILY)
 
     for dataset in data:
         for offset in config.REGRESSION_OFFSETS:
-            for family in (config.OLS_FAMILY, config.POISSON_FAMILY, config.NEGATIVE_BINOMIAL_FAMILY):
+            for family in families:
+                folder = (
+                    root / "variantes" / config.DATASET_SLUGS[dataset]
+                    / config.OFFSET_SLUGS[offset.name] / config.FAMILY_SLUGS[family]
+                )
+                folder.mkdir(parents=True, exist_ok=True)
                 for year in config.REGRESSION_YEARS:
-                    folder = root / str(year)
-                    folder.mkdir(parents=True, exist_ok=True)
-                    stem = f"{family.lower()}__{offset.name.lower()}__{dataset.lower()}__{year}"
                     _fit_panel(
                         tables["predictions"], tables["models"], dataset, offset.name,
-                        family, year, folder / f"fit__{stem}.png",
+                        family, year, folder / f"ajuste__{year}.png",
                     )
-                    _coefficient_panel(
-                        tables["coefficients"], dataset, offset.name, family, year,
-                        folder / f"coefficients__{stem}.png",
-                    )
-                    written += 2
-
-    # One table-figure per year of what went in, which is the same block for all
-    # eight pairs because the predictors are properties of the unit.
-    for year in config.REGRESSION_YEARS:
-        folder = root / str(year)
-        folder.mkdir(parents=True, exist_ok=True)
-        first = next(iter(data.values()))
-        block = first[first[config.YEAR_COL] == year]
-        predictors_table = (
-            block[[config.AREA_CODE_COL, *config.REGRESSION_URBAN_CANDIDATES]]
-            .drop_duplicates(subset=config.AREA_CODE_COL)
-            .round(4)
-        )
-        _table_figure(
-            predictors_table,
-            f"Predictoras por unidad · {year}",
-            "Mismo bloque para las ocho parejas: son propiedades de la unidad.",
-            folder / f"table_predictors__{year}.png",
-        )
-        responses = (
-            block.pivot(index=config.AREA_CODE_COL, columns=PAIR_NAME_COL, values=RESPONSE_COL)
-            .reset_index()
-        )
-        _table_figure(
-            responses,
-            f"Partes afectadas por unidad y pareja · {year}",
-            "Un cero es una observación de ausencia, no un dato que falte.",
-            folder / f"table_responses__{year}.png",
-        )
-        written += 2
-
-    all_years = root / "all_years"
-    all_years.mkdir(parents=True, exist_ok=True)
-    frequency = selection_frequency(tables["coefficients"])
-    frequency_shown = frequency.assign(
-        TERM=lambda f: f["TERM"].map(config.predictor_label_es),
-        SELECTED_SHARE=lambda f: (100 * f["SELECTED_SHARE"]).round(1),
-    ).rename(
-        columns={
-            "TERM": "Variable", "SELECTED": "Veces elegida", "SIGNIFICANT": "Significativa",
-            "POSITIVE": "Signo +", "NEGATIVE": "Signo −", "MODELS": "Modelos",
-            "SELECTED_SHARE": "% de modelos",
-        }
-    )
-    _table_figure(
-        frequency_shown,
-        "Frecuencia de selección de cada variable",
-        "Una variable que gana en contextos independientes —parejas, años, conjuntos, "
-        "offsets y familias distintos— es evidencia. Si la ganadora cambia cada vez, "
-        "la selección es ruido.",
-        all_years / "table_selection_frequency.png",
-    )
-    written += 1
-
-    # The models and their coefficients, rendered per family so a page holds one
-    # kind of number at a time.
-    for family in (config.OLS_FAMILY, config.POISSON_FAMILY, config.NEGATIVE_BINOMIAL_FAMILY):
-        rows = tables["models"][tables["models"][config.FAMILY_COL] == family]
-        shown = rows[
-            [DATASET_COL, config.OFFSET_COL, PAIR_NAME_COL, config.YEAR_COL,
-             "PREDICTORS", "AIC", "BIC", "DISPERSION", "MORANS_I", "COLLINEAR"]
-        ].round(3)
-        shown = shown.assign(
-            PREDICTORS=lambda f: f["PREDICTORS"].map(
-                lambda names: ", ".join(
-                    config.predictor_label_es(name) for name in names.split(", ") if name
+                    written += 1
+                _beta_heatmap(
+                    tables["coefficients"], dataset, offset.name, family,
+                    folder / "betas.png",
                 )
-            ),
-            PAIR=lambda f: f[PAIR_NAME_COL].map(
-                {pair.name: pair.label_es for pair in config.REGRESSION_PAIRS}
-            ),
-            OFFSET=lambda f: f[config.OFFSET_COL].map(config.OFFSET_LABELS_ES),
-            DATASET=lambda f: f[DATASET_COL].map(config.DATASET_LABELS_ES),
-        )
-        _table_figure(
-            shown,
-            f"Modelos seleccionados · {config.FAMILY_LABELS_ES[family]}",
-            "AIC compara sólo dentro de una misma familia. La dispersión es la de Poisson "
-            "y es la que justifica la binomial negativa.",
-            all_years / f"table_models__{family.lower()}.png",
-        )
-        written += 1
+                _models_table(
+                    tables["models"], dataset, offset.name, family, folder / "modelos.png",
+                )
+                written += 2
+
+        # The coefficient panel holds all three offsets at once, so it belongs to
+        # the dataset and the family and not to any one offset.
+        for family in families:
+            folder = root / "variantes" / config.DATASET_SLUGS[dataset] / config.FAMILY_SLUGS[family]
+            folder.mkdir(parents=True, exist_ok=True)
+            for year in config.REGRESSION_YEARS:
+                _coefficient_panel(
+                    tables["coefficients"], dataset, family, year,
+                    folder / f"coeficientes__{year}.png",
+                )
+                written += 1
+
+    written += _render_inputs(data, root / "entradas")
+    written += _render_summary(tables, root / "resumen")
+    written += _copy_primary(root, log)
 
     log.info("wrote %d regression figures under %s/regressions/", written, config.FIGURES_SUBDIR)
     return written
+
+
+def _render_inputs(data: dict[str, pd.DataFrame], folder: Path) -> int:
+    """What went in, which depends on no offset, family or dataset — except one.
+
+    The predictors are properties of the unit and are the same block for every
+    pair, year excepted, and the same for both casualty datasets. **The responses
+    are not**, and an earlier version of this drew them from whichever dataset came
+    first and did not say which: the rho-corrected responses differ and were never
+    shown anywhere. There is one per dataset now, and the title names it.
+    """
+    folder.mkdir(parents=True, exist_ok=True)
+    written = 0
+    first = next(iter(data.values()))
+    for year in config.REGRESSION_YEARS:
+        block = first[first[config.YEAR_COL] == year].drop_duplicates(subset=config.AREA_CODE_COL)
+        values = block[list(config.REGRESSION_URBAN_CANDIDATES)].to_numpy(dtype=float)
+        # Shaded column by column, from each variable's own minimum to its own
+        # maximum: a share of a unit and a density per square kilometre have
+        # nothing to say to each other on a shared ramp.
+        shading = np.full(values.shape, np.nan)
+        for index in range(values.shape[1]):
+            column = values[:, index]
+            low, high = float(np.nanmin(column)), float(np.nanmax(column))
+            shading[:, index] = (
+                (column - low) / (high - low)
+                if high > low
+                else np.full_like(column, config.MASTER_TABLE_FLAT_COLUMN_POSITION)
+            )
+        _grid_table(
+            text=[
+                [f"{value:.{config.predictor_decimals(float(np.nanmax(values[:, i])))}f}"
+                 for i, value in enumerate(row)]
+                for row in values
+            ],
+            columns=[config.predictor_label_es(name).replace(" ", "\n")
+                     for name in config.REGRESSION_URBAN_CANDIDATES],
+            rows=list(block[config.AREA_CODE_COL]),
+            title=f"Predictoras por unidad · {year}",
+            note="Mismo bloque para las ocho parejas y para los dos conjuntos: son "
+                 "propiedades de la unidad. Color por columna, de su propio mínimo a su "
+                 "propio máximo, así que compara hacia abajo y no hacia los lados.",
+            out_path=folder / f"predictoras__{year}.png",
+            shading=shading,
+            column_width=1.05,
+        )
+        written += 1
+
+    for dataset, frame in data.items():
+        for year in config.REGRESSION_YEARS:
+            block = frame[frame[config.YEAR_COL] == year]
+            wide = block.pivot(
+                index=config.AREA_CODE_COL, columns=PAIR_NAME_COL, values=RESPONSE_COL
+            ).reindex(columns=[pair.name for pair in config.REGRESSION_PAIRS])
+            values = wide.to_numpy(dtype=float)
+            shading = np.full(values.shape, np.nan)
+            for index in range(values.shape[1]):
+                column = values[:, index]
+                high = float(np.nanmax(column))
+                shading[:, index] = column / high if high > 0 else 0.0
+            _grid_table(
+                text=[[f"{int(value)}" for value in row] for row in values],
+                columns=[pair.label_es.replace("-", "\n") for pair in config.REGRESSION_PAIRS],
+                rows=list(wide.index),
+                title=f"Partes afectadas por unidad y pareja · {year} · "
+                      f"conjunto {config.DATASET_LABELS_ES[dataset]}",
+                note="Un cero es una observación de ausencia, no un dato que falte. Color por "
+                     "columna: cada pareja contra su propio máximo.",
+                out_path=folder / f"respuestas__{config.DATASET_SLUGS[dataset]}__{year}.png",
+                shading=shading,
+                column_width=1.05,
+            )
+            written += 1
+    return written
+
+
+def _render_summary(tables: dict[str, pd.DataFrame], folder: Path) -> int:
+    """What holds across every combination."""
+    folder.mkdir(parents=True, exist_ok=True)
+    frequency = selection_frequency(tables["coefficients"])
+    total = int(frequency["MODELS"].iloc[0])
+    _grid_table(
+        text=[
+            [
+                f"{int(row['SELECTED'])}",
+                f"{100 * row['SELECTED_SHARE']:.1f}%",
+                f"{int(row['POSITIVE'])}",
+                f"{int(row['NEGATIVE'])}",
+                f"{int(row['SIGNIFICANT'])}",
+            ]
+            for _, row in frequency.iterrows()
+        ],
+        columns=["Veces\nelegida", "% de los\nmodelos", "Signo +", "Signo −", "Significativa"],
+        rows=[config.predictor_label_es(name) for name in frequency["TERM"]],
+        title=f"Frecuencia de selección de cada variable · {total} modelos",
+        note="Una variable que gana en contextos independientes —parejas, años, conjuntos, "
+             "offsets y familias distintos— es evidencia. Si la ganadora cambia cada vez, la "
+             "selección es ruido.\nUn signo que se sostiene vale más que cualquiera de los "
+             "valores p de las tablas, que están inflados por la selección.",
+        out_path=folder / "frecuencia_seleccion.png",
+        column_width=1.25,
+    )
+    return 1
+
+
+def _copy_primary(root: Path, log: RunLog) -> int:
+    """Copy the combination the study reports into a folder of its own.
+
+    Six files duplicated, which is cheap, so that somebody who wants the result
+    does not have to navigate a tree to find it. The note beside them says which
+    combination it is and why that one.
+    """
+    source = (
+        root / "variantes" / config.DATASET_SLUGS[config.PRIMARY_DATASET]
+        / config.OFFSET_SLUGS[config.PRIMARY_OFFSET] / config.FAMILY_SLUGS[config.PRIMARY_FAMILY]
+    )
+    coefficients_source = (
+        root / "variantes" / config.DATASET_SLUGS[config.PRIMARY_DATASET]
+        / config.FAMILY_SLUGS[config.PRIMARY_FAMILY]
+    )
+    folder = root / "principal"
+    folder.mkdir(parents=True, exist_ok=True)
+
+    copied = 0
+    for origin in (source, coefficients_source):
+        if not origin.is_dir():
+            continue
+        for path in sorted(origin.glob("*.png")):
+            shutil.copyfile(path, folder / path.name)
+            copied += 1
+
+    (folder / "LEEME.txt").write_text(
+        "Estas figuras son una copia de\n"
+        f"  variantes/{config.DATASET_SLUGS[config.PRIMARY_DATASET]}/"
+        f"{config.OFFSET_SLUGS[config.PRIMARY_OFFSET]}/"
+        f"{config.FAMILY_SLUGS[config.PRIMARY_FAMILY]}/\n\n"
+        "Es la combinación que el estudio reporta, y no es cuestión de gusto:\n\n"
+        "  conjunto observado        el corregido con rho existe para contrastar,\n"
+        "                            no para reportar\n"
+        "  offset de exposición      es el que declara el anteproyecto\n"
+        "  del modo afectado\n"
+        "  binomial negativa         es la familia que respalda la sobredispersión,\n"
+        "                            en 143 de 144 modelos de Poisson\n\n"
+        "Las otras diecisiete combinaciones están completas en variantes/.\n",
+        encoding="utf-8",
+    )
+    log.info("copied %d figures into principal/ from the combination the study reports", copied)
+    return copied
 
 
 # ---------------------------------------------------------------------------
