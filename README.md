@@ -50,8 +50,17 @@ follows from that review.
 
 ```
 src/     Pipeline implementation
+tools/   Read-only checks on the delivered data
 docs/    Documentation
 ```
+
+`tools/` is separate from `src/` because nothing in the pipeline imports it and
+nothing in it writes. It holds the checks whose numbers the design decisions
+quote — whether a layer delivered year by year is a stock or a flow, how much
+signal the response carries, what date each static layer is actually from — and
+it is published for the same reason those decisions are: **a document that cites
+a script nobody can run has not shown its working.** `tools/README.md` says what
+each one answers and which decision it is the evidence for.
 
 Raw crash and geospatial data are not distributed here. They come from public
 sources published by the Secretaría Distrital de Movilidad de Bogotá and the

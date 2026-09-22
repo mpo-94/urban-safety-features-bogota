@@ -5963,7 +5963,7 @@ files onto it, exactly as vertical signage will be built from its 2016
 `INVENTARIO`. That is a request to the Secretaría Distrital de Movilidad and not
 a computation, and until it arrives the layers stay delivered and unread.
 
-**Reproduce it.** `deliverables/diseno/flujos_vs_stock.py` prints the whole table
+**Reproduce it.** `tools/flujos_vs_stock.py` prints the whole table
 above for the three layers together, including the cycleway as the control. It
 reads the layers through `config.resolve_source_path`, because two of these
 folder names carry an ñ that this filesystem stores decomposed and a plain glob

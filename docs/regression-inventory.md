@@ -105,7 +105,7 @@ eight years — and pedestrian–car falls. That may be the city motorising, or 
 be the change in recording practice that rho measures, which is exactly why every
 model runs on both datasets.
 
-Reproduce with `deliverables/diseno/respuesta.py`.
+Reproduce with `tools/respuesta.py`.
 
 ---
 
@@ -255,7 +255,7 @@ to the Secretaría Distrital de Movilidad and not a computation.
 
 **D46 is the full record**, with the year-on-year swings, what was rejected and
 why, including the option of using the flow itself as a predictor. Reproduce the
-whole table with `deliverables/diseno/flujos_vs_stock.py`.
+whole table with `tools/flujos_vs_stock.py`.
 
 ---
 
@@ -357,7 +357,7 @@ exposure, the population and the response. A reader must not be allowed to concl
 effect of sidewalk changed between 2015 and 2023" when the sidewalk is the same
 number all three times.
 
-Reproduce with `deliverables/diseno/vigencia.py`.
+Reproduce with `tools/vigencia.py`.
 
 ### What cites each variable
 
@@ -383,7 +383,9 @@ already cited in the thesis.** Three of them — crossing, camera and signage �
 no mention in the vault's reference notes and were found in the full texts; their
 notes should record the finding so the next search does not repeat this one.
 
-Reproduce with `deliverables/diseno/fuentes_variables.py`.
+Reproduce with `deliverables/diseno/fuentes_variables.py`, which stays with the
+thesis because it reads the vault and chapter 2 rather than the data. See
+section 9.
 
 ---
 
@@ -589,13 +591,29 @@ interval crossing it is visible without reading the table.
 
 ## 9. How to reproduce every figure here
 
-All of these run from the project root and touch nothing:
+All of these run from the project root, read only, and write nothing:
 
-    .venv/Scripts/python.exe deliverables/diseno/respuesta.py
-    .venv/Scripts/python.exe deliverables/diseno/vigencia.py
+    .venv/Scripts/python.exe tools/respuesta.py
+    .venv/Scripts/python.exe tools/vigencia.py
+    .venv/Scripts/python.exe tools/flujos_vs_stock.py
+
+They are in `tools/`, which is published, **because this document is published
+and a citation nobody can follow is not a citation.** They were under
+`deliverables/` until 2026-09-21 and moved for that reason; `tools/README.md`
+says what each one answers.
+
+One check stays with the thesis and cannot move:
+
     .venv/Scripts/python.exe deliverables/diseno/fuentes_variables.py
 
+It maps each predictor to the works in the bibliography that discuss it, and it
+reads the vault of reference notes and the text of chapter 2. Those are the
+thesis, not the pipeline, and they are not published — so moving the script would
+put it where a reader could open it and still not run it. It is named here so the
+asymmetry is a stated fact rather than something that looks like an oversight.
+
 The measurements of the series at city level, the extrapolation attempts and the
-stock reconstruction were made in the session of 2026-09-21; their numbers are in
-sections 2 and 4 and are reproduced by the checks of section 7, which is the point
-of making them external controls.
+stock reconstruction were made in the session of 2026-09-21. Their numbers are in
+sections 2 and 4, `flujos_vs_stock.py` reproduces all of them in one table, and
+the checks of section 7 reach them again by another route, which is the point of
+making them external controls.
