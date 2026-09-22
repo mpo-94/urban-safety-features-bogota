@@ -2000,6 +2000,22 @@ OFFSET_QUANTITIES: tuple[str, ...] = (
 # thing at a correlation near one. D32 settles that the whole census is the
 # variable and the variants are a sensitivity check.
 REGRESSION_EXCLUSIONS: tuple[PredictorExclusion, ...] = (
+    # Decided on 2026-09-22, after looking at what the first run selected. It is
+    # the exclusion `MODEL_EXCLUSIONS` already carried and that the panel session
+    # deferred, reinstated on the same evidence: roadway correlates at 0.969 with
+    # sidewalk, the highest pair in the study, and the two were selected together
+    # in 44 of the 430 models — a tenth of them holding two measurements of one
+    # thing and splitting one effect between them.
+    #
+    # The sidewalk is the one that stays because it is what the study argues
+    # about: a surface pedestrians use, not a surface they are kept off.
+    PredictorExclusion(
+        predictor="ROADWAY_AREA_SHARE",
+        reason=(
+            "correlates at 0.969 with SIDEWALK_AREA_SHARE, which is collinearity and not "
+            "two measurements; the sidewalk is the variable the study argues about"
+        ),
+    ),
     PredictorExclusion(
         predictor="TREE_DENSITY_WITHOUT_P1",
         reason="a narrower count of the same census as TREE_DENSITY, which is the variable (D32)",
@@ -2165,6 +2181,20 @@ PRIMARY_OFFSET = "MODE_EXPOSURE"
 PRIMARY_FAMILY = "NEGATIVE_BINOMIAL"
 
 MORAN_REPORTING_THRESHOLD = 0.2
+
+# Where each family sits in the figure tree. Least squares is one branch and the
+# GLM is another with two variants inside it, because that is the relation
+# between them: the two count families are a choice within one method, and only
+# one of them is reported. Three flat folders would have read as three peers.
+FAMILY_PATHS: dict[str, str] = {
+    "OLS": "minimos-cuadrados",
+    "POISSON": "glm/poisson",
+    "NEGATIVE_BINOMIAL": "glm/binomial-negativa",
+}
+
+# The note under a table. Declared because the wrapping is computed from it: the
+# width of the axes is divided by the average advance of this size.
+FIGURE_NOTE_FONTSIZE = 7
 
 REGRESSION_POINT_COLOR = "#3C616F"
 

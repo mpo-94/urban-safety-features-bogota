@@ -4074,25 +4074,91 @@ The run says so and the exported figure carries the same caveat under itself.
 
 ### The figures
 
-126 files under `figures/regressions/`, in a tree whose path is the question.
-The first version put the year first and left 38 files in each of three flat
-folders; the year is the dimension that gets compared and not the one that gets
-fixed, so it moved into the file name and the three that get fixed — dataset,
-offset, family — became the path. No folder now holds more than nine files, and
-`principal/` is a copy of the one combination the study reports.
+118 files under `figures/regressions/`, in a tree whose path is the question, and
+every one of them reviewed one at a time against a rendering before it was built.
 
-**`betas.png` is what a reader opens to see what the regressions found**: every
-candidate against every pair and year, the standardised coefficient in the cell,
-blank where the variable was not selected, and a diverging colour centred on zero
-so the sign reads before the magnitude.
+```
+principal/<familia>/<conjunto>/<offset>/   ajuste×3, betas, modelos
+principal/entradas/                        lo que entró, 9 tablas
+principal/frecuencia_seleccion.png
+coeficientes/<familia>/<conjunto>/         los tres offsets a la vez
+```
 
-**The tables are drawn on an image grid, not with `matplotlib.table`.** That
-sizes columns by their count rather than their content, so the first version of
-the selected-model table drew its longest column over its neighbour, carried
-English headings and a column of `nan` — dispersion exists only for Poisson —
-and put 144 rows in one image. It is one block per dataset, offset and family
-now: 24 readable rows, and the columns that identify the block are the title.
+The family is the first level because **the coefficients of two families are not
+comparable**: least squares models a rate additively and the GLM models its
+logarithm, so the same association reads 0.0035 in one and 0.87 in the other. A
+folder boundary there is also a "do not compare across this line" boundary. Least
+squares is one branch and the GLM another with its two count families inside,
+because those two are a choice within one method and only one is reported.
 
-**And the response table was wrong.** It was drawn from whichever dataset came
-first and did not say which, so the rho-corrected responses appeared in no figure
-at all. There is one per dataset now and the title names it.
+The year is in the file name and not a folder: it is the dimension that gets
+compared rather than fixed.
+
+### Six defects the review found, and what each was
+
+Worth listing because none of them would have failed a check, and four were
+invisible until somebody looked at the picture.
+
+**Coefficients were drawn beside the wrong variable's name.** Labels were placed
+at whole numbers while points advanced by an extra 0.6 between offset groups, so
+from the second group on, every coefficient sat beside a different variable's
+label. Eleven labels for nine points. The position and the label are now built in
+the same statement.
+
+**Low values in the input tables were printed white on near-white.** The text
+colour was chosen by distance from the middle of the scale, which is right for the
+diverging map of the coefficients — both ends dark — and wrong for the sequential
+blue, where the low end is almost white. One unit's whole row was unreadable. The
+colour is now chosen from the measured luminance of the cell, by WCAG's rule, so
+one rule serves both scales.
+
+**A candidate that never won disappeared from the coefficient map.** Only
+variables selected at least once got a row, so a variable that competed in every
+model of every cell and lost each time was indistinguishable from one that was
+never in the search. The first is a result. Every candidate now has a row, and a
+greyed name marks the ones that never won.
+
+**The column headers covered the years.** Three things shared one band: the pair
+name, its separator rule, and the year. The axis tick marks pointed into the same
+space and marked nothing the label did not already say. They are gone and the
+three have a band each.
+
+**Notes ran off the right edge of their tables.** They started at the left of the
+table and continued as far as the text needed. They are now wrapped to the width
+the axes actually occupy, measured after drawing, so the same code serves a table
+of five columns and one of twenty-four.
+
+**`Colineal` and `¿gana al nulo?` said yes and no without saying of what.**
+Collinearity now shows the correlation itself — 0.71 and 0.97 are very different
+situations that a yes could not tell apart — and the null comparison is called
+"mejor que sin variables", which is the comparison it makes. The note explains all
+five measurements; it used to explain two half way and the null not at all.
+
+### What the run found, without the carriageway
+
+| | |
+|---|---:|
+| Specifications declared | 182,728, of which 180,391 could be fitted |
+| Selected models | 430 |
+| Models holding a collinear pair | **96**, down from 147 |
+| Models beating their own null | 413 |
+| Poisson models overdispersed above 1.25 | 143 of 144, median 4.17 |
+| Residuals with Moran's I beyond 0.2 | 87 |
+
+The selection is stable in sign where it matters, across 430 models built on
+different pairs, years, datasets, offsets and families:
+
+| Variable | Selected | Sign + | Sign − |
+|---|---:|---:|---:|
+| **Affected mode's own exposure** | 67 | **67** | **0** |
+| **TransMilenio stations** | 106 | **102** | **4** |
+| **Tree density** | 102 | **8** | **94** |
+| **Cycleway** | 71 | **2** | **69** |
+| Pedestrian crossings | 138 | 97 | 41 |
+| Arterial road | 101 | 46 | 55 |
+
+The affected mode's own exposure is positive in **every one** of the sixty-seven
+models that select it, which is the sanity check the whole design rests on: more
+travel, more casualties. The arterial road rose from 77 selections to 101, taking
+over part of what the carriageway had been doing, and its sign is split — which is
+what a variable standing in for several things looks like.

@@ -6185,6 +6185,19 @@ inflates significance by construction. The European study being replicated has t
 same defect. It is not fixed by more computation; it is fixed by stating it, so
 the coefficients table carries the caveat beside the column.
 
+**Amended on 2026-09-22 — the carriageway is excluded after all.** The first run
+selected it in 92 of 430 models and put it beside the sidewalk in 44 of them,
+which is a tenth of every model holding two measurements of one thing at a
+correlation of 0.969. It is the exclusion `MODEL_EXCLUSIONS` already carried and
+that the panel session deferred, reinstated on the evidence the run produced.
+The sidewalk is the one that stays, because it is the surface the study argues
+about.
+
+**It cost a third of the collinearity.** Models holding a pair above the declared
+threshold fell from 147 of 430 to 96, on one variable. Nothing else moved much:
+the median AIC is the same to a decimal, 413 of 430 models still beat their null
+against 414, and Moran's I beyond 0.2 went from 93 to 87.
+
 **What is deferred, explicitly, so the chapter can say so.** The panel with its
 fixed or random effects and its Hausman test; whether a second family of models on
 persons killed is built (D3); and which of the fifteen candidates are finally

@@ -40,8 +40,8 @@ survives, by putting three separately estimated coefficients side by side.
 | Pairs | eight, listed in section 2 |
 | Years | 2015, 2019, 2023 |
 | Offsets | three, declared in section 3; the anteproyecto's is the first |
-| Candidate predictors | fifteen, listed in section 5, less whatever the offset takes |
-| Models per pair and year | 560 under the first offset, 455 under the other two |
+| Candidate predictors | fourteen, listed in section 5, less whatever the offset takes |
+| Models per pair and year | 455, or 364 under the offset that takes two quantities |
 | Families | least squares and generalised linear model |
 | Datasets | observed and rho-corrected, **both, always** |
 
@@ -142,8 +142,14 @@ quantities whose logarithms it sums, and three are declared:
 
 **A quantity that enters the offset leaves the candidate predictors.** Putting it
 in both would estimate its coefficient and fix it at one at the same time. So the
-candidate set is derived from the offset and never maintained by hand: fifteen
-candidates and 560 models under the first, fourteen and 455 under the other two.
+candidate set is derived from the offset and never maintained by hand: fourteen
+candidates and 455 models under the first and the third, thirteen and 364 under
+the one that takes two quantities.
+
+The pool is twelve urban variables and the three offset quantities. It was
+thirteen urban variables until 2026-09-22, when the carriageway was excluded on
+the evidence of the first run — it sat beside the sidewalk, which it correlates
+with at 0.969, in 44 of 430 models. See D48.
 
 That derivation is also what the second offset asserts and the first does not.
 Forcing `E_j` into the offset claims an exponent of one for the counterpart's
