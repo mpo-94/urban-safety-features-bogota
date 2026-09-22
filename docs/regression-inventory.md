@@ -671,20 +671,51 @@ column holding whichever the run used. A reader can then recompute any of the
 three denominators from the table itself, and the table does not change shape when
 an offset is added.
 
-Figures follow the existing convention, `figures/<grouping>/<year>/<kind>__<year>`:
+Figures are a tree whose path is the question they answer. **The year is in the
+file name and not in a folder**, because it is the dimension that gets compared
+rather than fixed: three years of one combination belong together, and putting
+the year first scattered that comparison across three folders while piling
+eighteen variants into each.
 
 ```
-figures/regressions/2015/    fit_glm__2015.png          panel of 2 by 4
-                             coefficients_glm__2015.png panel of 2 by 4
-                             table_coefficients_glm__2015.png
-                             table_models_glm__2015.png
-                             table_predictors__2015.png   30 units by 15
-                             table_responses__2015.png    30 units by 8 pairs
-figures/regressions/2019/    same
-figures/regressions/2023/    same
-figures/regressions/all_years/  coefficients_glm__all_years.png
-                                table_selection_frequency.png
+figures/regressions/
+├── principal/                     the combination the study reports, copied
+│     ajuste__<año>.png            · coeficientes__<año>.png
+│     betas.png · modelos.png · LEEME.txt
+├── variantes/<conjunto>/<offset>/<familia>/
+│     ajuste__<año>.png · betas.png · modelos.png
+├── variantes/<conjunto>/<familia>/
+│     coeficientes__<año>.png      the three offsets at once
+├── entradas/
+│     predictoras__<año>.png       · respuestas__<conjunto>__<año>.png
+└── resumen/
+      frecuencia_seleccion.png
 ```
+
+No folder holds more than nine files, against thirty-eight in the first version.
+`principal/` is a copy of one leaf so that nobody navigates a tree to see a
+result, and its `LEEME.txt` says which combination and why: the observed dataset,
+the anteproyecto's offset, and the family the dispersion endorses in 143 of 144
+models.
+
+**`betas.png` is the figure that answers what the regressions found**, and it is
+what my advisor and the panel adviser asked for when they asked for the
+coefficients. One row per candidate variable, one column per pair and year, and
+in each cell the standardised coefficient of that variable in that model —
+**blank where it was not selected**, which is itself the finding for a variable
+whose row is nearly empty. Diverging colour centred on zero, so the sign reads
+before the magnitude: a row that holds one colour across the grid is a variable
+that keeps its sign in every context it survives into.
+
+**The coefficient panel holds all three offsets at once**, one colour each, so
+how far a coefficient moves when the denominator changes is visible in one
+picture rather than by holding three files side by side.
+
+**The tables are drawn on an image grid and never with `matplotlib.table`.** That
+sizes its columns by how many there are and not by what is in them, so a heading
+longer than its share is drawn over its neighbour and a long cell spills across
+the one beside it — which is what made the first selected-model table
+unreadable. Long cells wrap and the rows grow to fit.
 
 **The figures carry results, not attestations.** An earlier version of this plan
 proposed four table-figures showing that each methodological commitment had been

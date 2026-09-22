@@ -4074,13 +4074,25 @@ The run says so and the exported figure carries the same caveat under itself.
 
 ### The figures
 
-118 files under `figures/regressions/`. Per year, family, offset and dataset: the
-observed-against-predicted panel in two rows of four, each with its own scale, and
-the coefficient panel with its interval and a vertical at zero. Per year: the
-predictor block and the response block as rendered tables. Over all years: the
-selection frequency and the selected models per family.
+126 files under `figures/regressions/`, in a tree whose path is the question.
+The first version put the year first and left 38 files in each of three flat
+folders; the year is the dimension that gets compared and not the one that gets
+fixed, so it moved into the file name and the three that get fixed — dataset,
+offset, family — became the path. No folder now holds more than nine files, and
+`principal/` is a copy of the one combination the study reports.
 
-They are labelled in Spanish and each names its family, offset and dataset in the
-file name, so two figures about to sit side by side cannot be told apart by which
-one lacks a suffix.
+**`betas.png` is what a reader opens to see what the regressions found**: every
+candidate against every pair and year, the standardised coefficient in the cell,
+blank where the variable was not selected, and a diverging colour centred on zero
+so the sign reads before the magnitude.
 
+**The tables are drawn on an image grid, not with `matplotlib.table`.** That
+sizes columns by their count rather than their content, so the first version of
+the selected-model table drew its longest column over its neighbour, carried
+English headings and a column of `nan` — dispersion exists only for Poisson —
+and put 144 rows in one image. It is one block per dataset, offset and family
+now: 24 readable rows, and the columns that identify the block are the title.
+
+**And the response table was wrong.** It was drawn from whichever dataset came
+first and did not say which, so the rho-corrected responses appeared in no figure
+at all. There is one per dataset now and the title names it.
