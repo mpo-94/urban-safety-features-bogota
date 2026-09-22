@@ -48,6 +48,7 @@ from src import (
     parties,
     population,
     predictors,
+    regressions,
     rho,
 )
 from src.provenance import RunLog
@@ -245,6 +246,36 @@ def run_predictors(log: RunLog) -> None:
     ):
         raise RouteFailed("the correlation exported for the models is not the model set's")
     predictors.report(long_table, log)
+
+
+def run_regressions(log: RunLog) -> None:
+    """The cross-sectional regressions at 2015, 2019 and 2023.
+
+    A first step and not the methodology: the panel the anteproyecto declares
+    comes after this, and everything that needs variation within a unit over time
+    is deliberately absent. See D48.
+
+    It reads four tables other routes exported and writes five of its own. It
+    rebuilds none of them, for the reason `interpolation` gives for the same
+    choice: rebuilding would re-read five surveys and thirteen layers to produce
+    tables this stage is not allowed to change.
+    """
+    units = loading.load_territorial_units(log)
+    matrices, exposure, population_panel, predictor_table = regressions.read_inputs(log)
+
+    data = {
+        dataset: regressions.build_dataset(matrix, exposure, population_panel, predictor_table, log)
+        for dataset, matrix in matrices.items()
+    }
+    tables = regressions.fit_all(data, units, log)
+
+    paths = regressions.export(data, tables, log)
+    regressions.render_figures(data, tables, log)
+
+    log.table("record funnel:", log.funnel())
+    if not regressions.verify(data, tables, units, log):
+        raise RouteFailed("the regression tables do not agree with what entered them")
+    regressions.report(tables, log)
 
 
 def run_population(log: RunLog) -> None:
@@ -538,6 +569,11 @@ ROUTES: tuple[Route, ...] = (
     Route("parties", "up to party resolution: one row per affected party", run_parties),
     Route("loading", "sources only: read them, locate them, verify the counts", run_loading),
     Route("predictors", "the static urban predictors, with histograms and their correlation", run_predictors),
+    Route(
+        "regressions",
+        "cross-sectional regressions at 2015, 2019 and 2023: the step before the panel",
+        run_regressions,
+    ),
     Route("population", "the resident population of every unit, in every year of the study", run_population),
     Route("exposure", "travel exposure per unit, year, mode and day, from the mobility surveys", run_exposure),
     Route(

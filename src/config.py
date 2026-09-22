@@ -1917,6 +1917,259 @@ FIGURE_SETS: tuple[FigureSet, ...] = (
 
 FIGURE_SETS_BY_NAME: dict[str, FigureSet] = {figure_set.name: figure_set for figure_set in FIGURE_SETS}
 
+
+# ---------------------------------------------------------------------------
+# The cross-sectional regressions
+# ---------------------------------------------------------------------------
+# A first step and not the methodology. The anteproyecto declares a count GLM on
+# the unit-by-year panel with Hausman between fixed and random effects; this is
+# what my advisor and the panel adviser asked for before it is built. Everything
+# that needs variation within a unit over time belongs to the panel and is not
+# here, because a cross-section has one row per unit and no such variation. D48.
+
+# The three years, which are the three the exposure is measured in rather than
+# interpolated. See section 1 of docs/regression-inventory.md.
+REGRESSION_YEARS: tuple[int, ...] = (2015, 2019, 2023)
+
+
+@dataclass(frozen=True)
+class ActorPair:
+    """One oriented pair: who is hurt, and by what.
+
+    Oriented because (motorcycle, car) and (car, motorcycle) are different
+    numbers and both are modelled. `affected` is the side the response counts and
+    whose exposure the offset uses.
+    """
+
+    affected: str
+    counterpart: str
+
+    @property
+    def name(self) -> str:
+        return f"{self.affected}__{self.counterpart}"
+
+    @property
+    def label_es(self) -> str:
+        return f"{ROAD_USER_LABELS_ES[self.affected]}-{ROAD_USER_LABELS_ES[self.counterpart]}"
+
+
+# Eight pairs over four of the six actor classes, which is the subset the European
+# study modelled. Pedestrian and cyclist counterpart columns are nearly empty in
+# any casualty matrix, because those actors impose almost no risk on anyone else.
+# Ordered as the figures print them: vulnerable victims first, then motorised,
+# which is the two rows of the 2-by-4 panel.
+REGRESSION_PAIRS: tuple[ActorPair, ...] = (
+    ActorPair(PEDESTRIAN, MOTORCYCLE),
+    ActorPair(PEDESTRIAN, CAR),
+    ActorPair(BICYCLE, MOTORCYCLE),
+    ActorPair(BICYCLE, CAR),
+    ActorPair(MOTORCYCLE, MOTORCYCLE),
+    ActorPair(MOTORCYCLE, CAR),
+    ActorPair(CAR, MOTORCYCLE),
+    ActorPair(CAR, CAR),
+)
+
+# The share of a pair's cells that may be zero before it is not worth regressing.
+# Declared in the anteproyecto and fixed before anything was estimated. All eight
+# pairs pass in all three years, the worst being five zero units of thirty, so it
+# drops nothing today; it is here so that it would.
+REGRESSION_MAX_ZERO_SHARE = 0.5
+
+# The quantities an offset can be built from. Each is a column of the regression
+# data table, so a reader can recompute any denominator from the table itself.
+OFFSET_AFFECTED_EXPOSURE = "EXPOSURE_AFFECTED"
+OFFSET_COUNTERPART_EXPOSURE = "EXPOSURE_COUNTERPART"
+OFFSET_POPULATION = "POPULATION"
+OFFSET_QUANTITIES: tuple[str, ...] = (
+    OFFSET_AFFECTED_EXPOSURE,
+    OFFSET_COUNTERPART_EXPOSURE,
+    OFFSET_POPULATION,
+)
+
+
+# The candidate pool, which is NOT `MODEL_PREDICTOR_NAMES`. That constant holds
+# the eight the earlier exclusions left, and it stays as it is because the figures
+# and tables of chapter 3 justify those exclusions from it. **This stage excludes
+# nothing of the kind**: after the panel session my advisor reconsidered which
+# variables to leave out, so carriageway, bridge deck and urban park are in, and
+# the exclusion is deferred until he decides. The two must not be conflated.
+#
+# One exclusion survives and it is arithmetic rather than judgement: the two
+# narrower counts of the tree census. They measure the same objects as
+# TREE_DENSITY, so a model holding two of them would pair two measurements of one
+# thing at a correlation near one. D32 settles that the whole census is the
+# variable and the variants are a sensitivity check.
+REGRESSION_EXCLUSIONS: tuple[PredictorExclusion, ...] = (
+    PredictorExclusion(
+        predictor="TREE_DENSITY_WITHOUT_P1",
+        reason="a narrower count of the same census as TREE_DENSITY, which is the variable (D32)",
+    ),
+    PredictorExclusion(
+        predictor="TREE_DENSITY_U_CODES",
+        reason="a narrower count of the same census as TREE_DENSITY, which is the variable (D32)",
+    ),
+)
+
+for _excluded in REGRESSION_EXCLUSIONS:
+    if _excluded.predictor not in STATIC_PREDICTORS_BY_NAME:
+        raise ValueError(
+            f"regression exclusion names {_excluded.predictor!r}, which is not a declared predictor"
+        )
+
+# Thirteen urban variables over thirteen layers, plus the three quantities an
+# offset can be built from. Sixteen in the pool, and each offset takes its own out
+# of it: fifteen candidates under the first and the third, fourteen under the
+# second.
+REGRESSION_URBAN_CANDIDATES: tuple[str, ...] = tuple(
+    name
+    for name in STATIC_PREDICTOR_NAMES
+    if name not in {exclusion.predictor for exclusion in REGRESSION_EXCLUSIONS}
+)
+
+@dataclass(frozen=True)
+class OffsetSpec:
+    """One denominator the models are estimated against.
+
+    An offset is a term whose coefficient is fixed at one. Several quantities can
+    go in it, because the logarithm of a product is the sum of the logarithms, but
+    each one asserts a proportionality rather than estimating it.
+
+    **A quantity in the offset leaves the candidate predictors.** Putting it in
+    both would estimate its coefficient and fix it at one at the same time, so the
+    candidate set is derived from the offset here and never maintained by hand.
+    """
+
+    name: str
+    label_es: str
+    quantities: tuple[str, ...]
+    asserts: str  # one line: what fixing these at an exponent of one claims
+
+    def __post_init__(self) -> None:
+        unknown = [q for q in self.quantities if q not in OFFSET_QUANTITIES]
+        if unknown:
+            raise ValueError(f"offset {self.name}: unknown quantity {unknown}")
+        if not self.quantities:
+            raise ValueError(f"offset {self.name}: an offset with no quantity is no offset")
+
+    def candidate_predictors(self, candidates: tuple[str, ...]) -> tuple[str, ...]:
+        """The candidates that remain once this offset has taken what it needs."""
+        return tuple(name for name in candidates if name not in self.quantities)
+
+
+REGRESSION_CANDIDATE_POOL: tuple[str, ...] = REGRESSION_URBAN_CANDIDATES + OFFSET_QUANTITIES
+
+
+REGRESSION_OFFSETS: tuple[OffsetSpec, ...] = (
+    OffsetSpec(
+        name="MODE_EXPOSURE",
+        label_es="exposición del modo afectado",
+        quantities=(OFFSET_AFFECTED_EXPOSURE,),
+        asserts=(
+            "casualties of a mode are proportional to how much that mode travels, which "
+            "is what both Bogotá antecedents assume and what the anteproyecto declares"
+        ),
+    ),
+    OffsetSpec(
+        name="BOTH_EXPOSURES",
+        label_es="exposición de ambos modos",
+        quantities=(OFFSET_AFFECTED_EXPOSURE, OFFSET_COUNTERPART_EXPOSURE),
+        asserts=(
+            "casualties are proportional to the counterpart's volume as well, at an "
+            "exponent of one; the safety-in-numbers literature puts that exponent nearer "
+            "0.4, which is why the first offset estimates it instead"
+        ),
+    ),
+    OffsetSpec(
+        name="POPULATION",
+        label_es="población residente",
+        quantities=(OFFSET_POPULATION,),
+        asserts=(
+            "casualties are proportional to how many people live in the unit, which "
+            "answers burden per resident rather than risk per trip and is how much of "
+            "the regional literature reports"
+        ),
+    ),
+)
+
+# Both families, on both datasets, always. Least squares admits no offset, so its
+# response is the count divided by the same product the GLM puts in the offset:
+# the two then answer the same question on different scales, and their
+# coefficients compare in sign and significance rather than in magnitude.
+OLS_FAMILY = "OLS"
+POISSON_FAMILY = "POISSON"
+NEGATIVE_BINOMIAL_FAMILY = "NEGATIVE_BINOMIAL"
+
+# Above this, the counts are overdispersed and Poisson's standard errors are too
+# small. One is the Poisson assumption exactly; the margin is what keeps a value
+# a hair above one from switching family on noise.
+OVERDISPERSION_THRESHOLD = 1.25
+
+# Thirty observations do not support more than three predictors — the usual limit
+# is about ten observations per predictor — and the European study faced the same
+# limit with twenty-four cities and resolved it the same way.
+REGRESSION_SUBSET_SIZES: tuple[int, ...] = (2, 3)
+
+# The interval every coefficient is reported with, and the level below which it is
+# marked significant. Both declared in the anteproyecto.
+# Columns that identify a model. A model is a dataset, an offset, a pair, a year
+# and a family, and all five are columns so the three offsets and the three
+# families are blocks of one table that can be compared rather than separate runs
+# that cannot.
+# What each family and each offset is called in a figure. Declared beside the
+# constants rather than written into whichever function draws first, so two
+# figures cannot name the same thing two ways.
+FAMILY_LABELS_ES: dict[str, str] = {
+    "OLS": "Mínimos cuadrados",
+    "POISSON": "GLM Poisson",
+    "NEGATIVE_BINOMIAL": "GLM binomial negativa",
+}
+OFFSET_LABELS_ES: dict[str, str] = {
+    "MODE_EXPOSURE": "exposición del modo afectado",
+    "BOTH_EXPOSURES": "exposición de ambos modos",
+    "POPULATION": "población residente",
+}
+DATASET_LABELS_ES: dict[str, str] = {
+    "OBSERVED": "observado",
+    "RHO_CORRECTED": "corregido con rho",
+}
+
+# Beyond this, a model has left spatial structure in its residuals worth saying
+# so about. Not a test and not a threshold anything acts on: it is the level at
+# which the run mentions it, because the panel that follows this step is where
+# it would be dealt with.
+MORAN_REPORTING_THRESHOLD = 0.2
+
+REGRESSION_POINT_COLOR = "#3C616F"
+
+
+# The three offset quantities are not declared predictors, so they carry their
+# label here. Everything else reads its own `label_es`, and a name that is
+# neither is an error rather than a guess.
+OFFSET_QUANTITY_LABELS_ES: dict[str, str] = {
+    "EXPOSURE_AFFECTED": "Exposición afectado",
+    "EXPOSURE_COUNTERPART": "Exposición contraparte",
+    "POPULATION": "Población",
+}
+
+
+def predictor_label_es(name: str) -> str:
+    """What a candidate is called in a figure, whichever kind of candidate it is."""
+    if name in STATIC_PREDICTORS_BY_NAME:
+        return STATIC_PREDICTORS_BY_NAME[name].label_es
+    if name in OFFSET_QUANTITY_LABELS_ES:
+        return OFFSET_QUANTITY_LABELS_ES[name]
+    raise KeyError(
+        f"{name!r} is neither a declared predictor nor an offset quantity, so it has "
+        "no declared Spanish label and a figure must not invent one"
+    )
+
+OFFSET_COL = "OFFSET"
+FAMILY_COL = "FAMILY"
+
+REGRESSION_CONFIDENCE = 0.95
+REGRESSION_SIGNIFICANCE = 0.05
+
+
 # Columns of the predictor tables. Scale, unit and year deliberately reuse the
 # names and the values of the matrix and rho tables, because the dashboard joins
 # all three on them.
@@ -4261,6 +4514,15 @@ class SurveyExposureQuantity:
 TRIPS_PER_AVERAGE_DAY_COL = "TRIPS_PER_AVERAGE_DAY"
 TRIPS_PER_DAY_OF_TYPE_COL = "TRIPS_PER_DAY_OF_TYPE"
 TRIPS_PER_DAY_OF_TYPE_OVER_15MIN_COL = "TRIPS_PER_DAY_OF_TYPE_OVER_15MIN"
+
+# The exposure column the offsets read. Not a choice between two defensible
+# options: both declarations point at this one. TRIPS_PER_DAY_OF_TYPE is the basis
+# that is comparable across years, which these regressions need because they put
+# three years of coefficients side by side, and D39 settles that the pedestrian
+# series is read on the fifteen-minute definition of it. For BICYCLE, MOTORCYCLE
+# and CAR the two columns hold the same numbers, so the narrowing costs nothing
+# and the pedestrian is the only mode it moves.
+MODEL_EXPOSURE_COLUMN = TRIPS_PER_DAY_OF_TYPE_OVER_15MIN_COL
 DAY_TYPE_UNIVERSE_SHARE_COL = "DAY_TYPE_UNIVERSE_SHARE"
 INTRAZONAL_TRIPS_COL = "INTRAZONAL_TRIPS_PER_AVERAGE_DAY"
 TRIPS_AT_ORIGIN_COL = "TRIPS_PER_AVERAGE_DAY_AT_ORIGIN"
