@@ -825,6 +825,17 @@ POINT_DENSITY_METHOD = "point_density"
 # the kilometres of a desire line inside a unit cannot end up measured two
 # slightly different ways.
 LINE_LENGTH_METHOD = "line_length"
+# The stock method, and the reason it is a method rather than a flag on a
+# variable. The plan for this stage proposed a `stock_builder` field naming a
+# function that would assemble the layer before the point count ran. That does
+# not fit what the data turned out to be: the stock cannot be assembled as a set
+# of points, because a removal record cannot be matched to the inventory record
+# it removes — the identifiers do not persist, only 972 of 2017's 5,150 appear in
+# the inventory at all. What can be built is the count per unit, by locating each
+# intervention and accumulating. So the stock is a different way of turning a
+# layer into one number per unit, which is exactly what a method is, and the
+# dispatch that already exists selects it with no new field.
+POINT_STOCK_METHOD = "point_stock"
 
 
 @dataclass(frozen=True)
@@ -859,6 +870,19 @@ MEASUREMENT_METHODS: dict[str, MeasurementMethod] = {
             "explode multi-part features into one point each, keep the points contained "
             "in the unit in EPSG:3116, count them, and divide the count by the area of "
             "the unit"
+        ),
+    ),
+    POINT_STOCK_METHOD: MeasurementMethod(
+        name=POINT_STOCK_METHOD,
+        geometry=POINT_GEOMETRY,
+        measure_unit="count",
+        value_unit="points per km2",
+        computation=(
+            "locate the inventory in the unit in EPSG:3116 to get the stock at the year "
+            "the inventory is as of, then for every later year add the interventions "
+            "declared to add and subtract those declared to remove, each located the same "
+            "way; the result is the stock in place that year, divided by the area of the "
+            "unit"
         ),
     ),
     LINE_LENGTH_METHOD: MeasurementMethod(
@@ -1043,6 +1067,108 @@ class RepeatedYears:
     reason: str
 
 
+# -- a series delivered as an inventory plus its movements -------------------
+# The vertical signage does not arrive one file per year the way the cycleway
+# does. It arrives as one inventory and then one file of interventions per year,
+# which is a different shape and needs a different declaration: the year a file
+# is named for is not the year its contents describe.
+@dataclass(frozen=True)
+class StockSeries:
+    """A layer delivered as a base inventory plus the movements that follow it.
+
+    The stock of any year is the inventory plus what was added and minus what was
+    removed up to that year. Which actions add, remove or leave the count alone is
+    declared here rather than inferred from the value, because the classification
+    is the measurement: reading REEMPLAZAR as an addition would invent a sign.
+
+    Every action present in the data has to be named in one of the three tuples.
+    An unclassified value stops the run rather than being ignored, which is rule 4
+    of this project applied to a column that is not a vehicle type: never let an
+    unmapped value become a silent zero.
+    """
+
+    inventory_file: str
+    # The year the inventory describes, which is NOT the year its file is named
+    # for. The delivered file is called 2016 and every one of its 67,265 records
+    # carries an installation date between 1991-05-01 and 2015-12-04, with none in
+    # 2016 at all: it is the stock as it stood at the end of 2015. The legacy code
+    # read the file name instead and produced negative densities.
+    inventory_as_of_year: int
+    intervention_files: Mapping[int, str]  # year -> file, one per year of movements
+    years: tuple[int, ...]  # the years the variable covers, inventory year included
+    action_column: str
+    adds: tuple[str, ...]  # actions that put a new object in place
+    removes: tuple[str, ...]  # actions that take one away
+    # Actions that change something about an object without changing how many
+    # there are. Declared explicitly rather than left as "everything else", so a
+    # new action value in a future delivery is unclassified and stops the run.
+    neutral: tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        groups = {"adds": self.adds, "removes": self.removes, "neutral": self.neutral}
+        seen: dict[str, str] = {}
+        for name, values in groups.items():
+            for value in values:
+                if value in seen:
+                    raise ValueError(
+                        f"action {value!r} is declared both as {seen[value]} and as {name}"
+                    )
+                seen[value] = name
+        if self.years[0] != self.inventory_as_of_year:
+            raise ValueError(
+                f"the series starts at {self.years[0]} but its inventory is as of "
+                f"{self.inventory_as_of_year}; the first year it can report is the "
+                "inventory's own"
+            )
+        unknown = sorted(set(self.intervention_files) - set(self.years))
+        if unknown:
+            raise ValueError(
+                f"interventions declared for {unknown}, which the series does not cover"
+            )
+
+    @property
+    def classified_actions(self) -> dict[str, str]:
+        """Every declared action value, mapped to what it does to the count."""
+        return {
+            **{value: "add" for value in self.adds},
+            **{value: "remove" for value in self.removes},
+            **{value: "neutral" for value in self.neutral},
+        }
+
+
+# Measured on 2026-09-21, not read off the column names. The 2016 file holds
+# 67,265 records, all of them ACCION=INVENTARIO and FASE=INVENTARIO, dated
+# 1991-05-01 to 2015-12-04 with none in 2016. The seven files from 2017 on hold
+# only FASE=IMPLEMENTACION, and every one of their dates falls inside the year
+# their file is named for — 5,151 of 5,151 in 2017, and so on for every year.
+#
+# There is no intervention file for 2016, so 2016 carries the inventory unchanged.
+# That is one year with no movements, declared, and not a series invented.
+#
+# REUBICAR is the one that needed looking at, and it is stock-neutral for a
+# reason worth writing down. A relocation appears as a single row, never as a
+# pair: across the 104 of them in seven years, not one has its identifier repeated
+# within REUBICAR or matching another action in the same year. So the delivery
+# records one location per move and does not say whether it is where the sign came
+# from or where it went. It cannot move a count between two units, because there
+# is only one unit in the record. At 104 against a stock of 77,000 — 0.13% — that
+# is small, and the measurement reports it on every run rather than assuming it
+# away.
+VERTICAL_SIGNAGE_STOCK = StockSeries(
+    inventory_file="Intervenciones_señalización_vertical_2016.shp",
+    inventory_as_of_year=2015,
+    intervention_files={
+        year: f"Intervenciones_señalización_vertical_{year}.shp"
+        for year in range(2017, 2024)
+    },
+    years=tuple(range(2015, 2024)),
+    action_column="ACCION",
+    adds=("INSTALACION",),
+    removes=("RETIRAR",),
+    neutral=("REEMPLAZAR", "REUBICAR"),
+)
+
+
 CYCLEWAY_REPEATED_YEARS: tuple[RepeatedYears, ...] = (
     RepeatedYears(
         earlier=2013,
@@ -1100,8 +1226,13 @@ class StaticPredictor:
     # rather than letting `source_file` hold a template with the year in it, is what
     # makes a year present in the delivery and a year the study measures the same
     # list — there is nowhere to express one without the other.
+    # Exactly one of these three says where the data is. A snapshot names one
+    # file; a series that arrives one file per year names them by year; a series
+    # that arrives as an inventory plus its movements declares that instead,
+    # because there the year a file is named for is not the year it describes.
     source_file: str | None = None  # the file inside that layer's folder
     source_files: Mapping[int, str] | None = None  # year -> file, for a series
+    stock_series: StockSeries | None = None  # inventory plus movements
     # Pairs of years the delivery is known to have published twice. Declared so a
     # repetition that is already understood is reported as such instead of raising
     # the same warning on every run, while an undeclared one still warns.
@@ -1148,20 +1279,35 @@ class StaticPredictor:
         # as a series; a snapshot with several would have years nothing selects
         # between. Both are silent failures, and both are impossible from here.
         expects_series = self.time_coverage == ANNUAL_SERIES_COVERAGE
-        if expects_series and not self.source_files:
+        has_series = bool(self.source_files) or self.stock_series is not None
+        if expects_series and not has_series:
             raise ValueError(
-                f"{self.name}: declared as an {ANNUAL_SERIES_COVERAGE} but names no "
-                "source_files; a series is one file per year"
+                f"{self.name}: declared as an {ANNUAL_SERIES_COVERAGE} but names neither "
+                "source_files nor a stock_series, which are the two shapes a series arrives in"
             )
-        if not expects_series and self.source_files:
+        if not expects_series and has_series:
             raise ValueError(
-                f"{self.name}: names source_files but is declared as {self.time_coverage!r}; "
-                f"only an {ANNUAL_SERIES_COVERAGE} is measured once per year"
+                f"{self.name}: names a series source but is declared as "
+                f"{self.time_coverage!r}; only an {ANNUAL_SERIES_COVERAGE} is measured "
+                "once per year"
             )
-        if bool(self.source_file) == bool(self.source_files):
+        declared_sources = sum(
+            1 for source in (self.source_file, self.source_files, self.stock_series) if source
+        )
+        if declared_sources != 1:
             raise ValueError(
-                f"{self.name}: name exactly one of source_file and source_files, "
-                "not both and not neither"
+                f"{self.name}: name exactly one of source_file, source_files and "
+                f"stock_series; {declared_sources} were given"
+            )
+        if self.stock_series is not None and self.method != POINT_STOCK_METHOD:
+            raise ValueError(
+                f"{self.name}: declares a stock_series but the method {self.method!r}; "
+                f"a stock is accumulated, which is what {POINT_STOCK_METHOD!r} does"
+            )
+        if self.method == POINT_STOCK_METHOD and self.stock_series is None:
+            raise ValueError(
+                f"{self.name}: declares the method {POINT_STOCK_METHOD!r} and no "
+                "stock_series, so there is no inventory to accumulate onto"
             )
         # A declared repetition has to name two years the variable actually
         # covers, and consecutive ones: the check that reads it compares each year
@@ -1188,10 +1334,42 @@ class StaticPredictor:
         runs can be diffed line by line — the same reason the predictors themselves
         are declared in a fixed order rather than listed from a directory.
         """
+        if self.stock_series is not None:
+            return self.stock_series.years
         return tuple(sorted(self.source_files)) if self.source_files else ()
 
     def file_for(self, year: int | None = None) -> str:
-        """The file to read, for a snapshot or for one year of a series."""
+        """The file to read, for a snapshot or for one year of a series.
+
+        A stock series has no single file per year — the stock of 2019 is the
+        inventory plus three years of movements — so it answers with the file
+        whose movements that year adds, and with the inventory for the year the
+        inventory is as of. What reads it is the measurement, which needs every
+        file up to the year anyway and asks for them by name.
+        """
+        if self.stock_series is not None:
+            series = self.stock_series
+            if year is None:
+                raise ValueError(
+                    f"{self.name}: a stock series has no single file; ask for a year"
+                )
+            if year == series.inventory_as_of_year:
+                return series.inventory_file
+            try:
+                return series.intervention_files[year]
+            except KeyError:
+                if year in series.years:
+                    # A year the series covers with no movements of its own. The
+                    # stock is the previous year's, and naming the inventory here
+                    # would claim a file that says nothing about this year.
+                    raise ValueError(
+                        f"{self.name}: {year} is covered but has no intervention file; "
+                        "its stock is carried from the year before"
+                    ) from None
+                raise ValueError(
+                    f"{self.name}: no file declared for {year}; the series covers "
+                    f"{', '.join(str(y) for y in self.years)}"
+                ) from None
         if not self.source_files:
             if year is not None:
                 raise ValueError(
@@ -1214,8 +1392,36 @@ class StaticPredictor:
 
     def path_for(self, year: int | None = None) -> Path:
         """Where a source file is, built from the declared layer and geometry."""
-        folder = PREDICTORS_DIR / GEOMETRY_FOLDERS[self.geometry] / self.source_layer
-        return folder / self.file_for(year)
+        return self.folder / self.file_for(year)
+
+    @property
+    def folder(self) -> Path:
+        """The directory the layer's files live in."""
+        return PREDICTORS_DIR / GEOMETRY_FOLDERS[self.geometry] / self.source_layer
+
+    def declared_files(self) -> tuple[tuple[str, Path], ...]:
+        """Every file this variable reads, labelled, whatever shape it declares.
+
+        One entry for a snapshot, one per year for a file-per-year series, and for
+        a stock series the inventory plus one per year of movements. The check that
+        every declared file is on disk walks this, so a series whose 2019 file had
+        gone cannot pass on the strength of its 2012 one.
+        """
+        if self.stock_series is not None:
+            series = self.stock_series
+            return (
+                (f"inventory as of {series.inventory_as_of_year}",
+                 self.folder / series.inventory_file),
+                *(
+                    (f"movements {year}", self.folder / name)
+                    for year, name in sorted(series.intervention_files.items())
+                ),
+            )
+        if self.source_files:
+            return tuple(
+                (str(year), self.path_for(year)) for year in self.years
+            )
+        return (("the layer", self.path_for()),)
 
     @property
     def path(self) -> Path:
@@ -1485,6 +1691,25 @@ STATIC_PREDICTORS: tuple[StaticPredictor, ...] = (
         # The network did not reach every unit in the early years, and it still
         # does not reach some. A zero is an observation here, not a failure.
         zero_is_implausible=False,
+    ),
+    # The second variable with a year, and the one that arrives as an inventory
+    # plus its movements rather than as one file per year. It is the fourth of the
+    # delivered line-and-point series and the last that can be measured: the two
+    # horizontal marking layers have no inventory in any year (D46).
+    StaticPredictor(
+        name="VERTICAL_SIGNAGE_DENSITY",
+        label="Vertical signage",
+        label_es="Señalización vertical",
+        source_layer="Señalizacion_Vertical",
+        source_citation=("SenalizacionSemaforizacionPMT",),
+        stock_series=VERTICAL_SIGNAGE_STOCK,
+        geometry=POINT_GEOMETRY,
+        method=POINT_STOCK_METHOD,
+        measures="traffic signs in place per square kilometre, the stock accumulated that year",
+        time_coverage=ANNUAL_SERIES_COVERAGE,
+        # 67,265 signs over 30 units: a unit with none of them would mean the
+        # inventory did not reach it, not that the unit has no signs.
+        zero_is_implausible=True,
     ),
 )
 

@@ -120,18 +120,18 @@ python -m src.run_pipeline --help     # the routes available, with a line each
 ```
 
 `predictors` is the other half of the study: the features of a unit that the
-casualty rates are to be regressed against. It measures **fourteen variables over
-twelve layers** — five surfaces as a share of the unit, eight point layers as a
-density over it, and one line layer as kilometres over it — against every unit,
-and emits the wide table
+casualty rates are to be regressed against. It measures **fifteen variables over
+thirteen layers** — five surfaces as a share of the unit, eight point layers as a
+density over it, one line layer as kilometres over it and one point layer as an
+accumulated stock — against every unit, and emits the wide table
 the figures are drawn from, the long table the dashboard joins, a histogram per
 variable, the Pearson correlation matrix and a master table figure of the thirty
 units against the variables, shaded column by column because the variables are
 not on a common scale.
 
 Measuring a variable and putting it in a model are two decisions and the route
-keeps them apart: everything declared is measured on every run, and **nine of
-the fourteen enter the models.** The figures therefore come out in two sets, in
+keeps them apart: everything declared is measured on every run, and **ten of
+the fifteen enter the models.** The figures therefore come out in two sets, in
 separate folders and with the set in every file name — the complete one, which
 is the backing evidence because it holds the variables the models exclude, and
 the model one, which is what the documents use. The correlation of the model set
@@ -146,19 +146,24 @@ dispatches every computation through it, and refuses at import to hold a layer
 whose origin is not declared — so a wrong entry stops the run instead of
 misinforming a reader.
 
-**One variable carries a year and three layers are still to come.** The cycleway
-is measured over thirteen years, 2012 to 2024, and is the first variable with a
-time dimension: a variable declares one file per year, the measurement runs once
+**Two variables carry a year, and the four delivered series are resolved.** The
+cycleway is measured over thirteen years, 2012 to 2024, and is the first variable
+with a time dimension: a variable declares one file per year, the measurement runs once
 per year, and the long table fills the year column it already carried. Each
 year's file was checked to be the network in place rather than what was built
 that year before any of it was declared. Where the delivery published one state
 twice — 2013 and 2014 are the same file — the repetition is declared beside the
 years and reported on every run, and an undeclared one is a warning.
 
-Of the three signage layers left, vertical signage has a full inventory to
-accumulate onto and needs a stock builder; the two horizontal marking layers
-arrive as flows with no inventory in any year, and three independent attempts to
-recover a stock for them failed.
+The vertical signage arrives in a different shape and is measured over nine
+years, 2015 to 2023: one inventory dated to the end of 2015 and then one file of
+interventions per year, accumulated as installations minus removals. Its city
+totals reconcile with an external control to the record.
+
+The two horizontal marking layers are **not** measured and will not be. They are
+flows with no inventory in any year, so no year of them is usable — not one of
+the years a model would need — and an inventory of marking in place is a request
+to the secretariat rather than a computation.
 
 `exposure` is a route of its own because exposure is not a predictor. A predictor
 says what a place is built like; exposure says how much travel there is in it to

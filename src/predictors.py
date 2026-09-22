@@ -45,6 +45,7 @@ Run it on its own:
 from __future__ import annotations
 
 import itertools
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
@@ -247,6 +248,12 @@ def _read_source(
     # carries fifteen columns over 1.5 million rows, so reading the lot would cost
     # a few hundred megabytes to throw them away immediately.
     wanted = [predictor.source_filter.column] if predictor.source_filter else []
+    # A stock series needs the column that says what each record does, on every
+    # file but the inventory — where every record is the inventory itself and the
+    # column carries one value. Asked for on that one too, so the reader does not
+    # have to know which file it is holding.
+    if predictor.stock_series is not None:
+        wanted.append(predictor.stock_series.action_column)
     layer = gpd.read_file(path, columns=wanted)
     read = len(layer)
 
@@ -397,6 +404,371 @@ def measure_point_layer(
     return measured.rename(config.PREDICTOR_MEASURE_COL).reset_index()
 
 
+@dataclass(frozen=True)
+class _Located:
+    """What locating a set of points cost, so the caller's funnel can balance."""
+
+    unusable: int  # no geometry at all
+    from_multipart: int  # gained by exploding, normally zero for these layers
+    outside: int  # located, but in none of the units
+
+    @property
+    def net(self) -> int:
+        """How many of the original records ended up counted, as a difference."""
+        return self.from_multipart - self.unusable - self.outside
+
+
+def _locate_points(
+    layer: gpd.GeoDataFrame,
+    units: gpd.GeoDataFrame,
+    name: str,
+    log: RunLog,
+) -> tuple[pd.Series, _Located]:
+    """Count the points of a layer inside each unit, and say what was lost.
+
+    Returns the per-unit counts and an account of what did not survive. The losses
+    are returned rather than logged here because the caller is accumulating nine
+    years, and one line per year per category would bury the arithmetic it exists
+    to show.
+    """
+    usable = layer[layer.geometry.notna() & ~layer.geometry.is_empty]
+    unusable = len(layer) - len(usable)
+
+    points = usable[["geometry"]].explode(index_parts=False).reset_index(drop=True)
+    from_multipart = len(points) - len(usable)
+    points = points.to_crs(epsg=config.PROJECTED_CRS)
+    joined = gpd.sjoin(
+        points,
+        units[[config.AREA_CODE_COL, "geometry"]],
+        how="inner",
+        predicate=config.SPATIAL_JOIN_PREDICATE,
+    )
+    # Only possible where unit polygons overlap, and resolved the way every other
+    # join in this pipeline resolves it, so one sign cannot be counted twice.
+    ambiguous = int(joined.index.duplicated().sum())
+    if ambiguous:
+        log.warn(
+            "%s: %d point(s) fall inside more than one unit; keeping the lowest unit code",
+            name,
+            ambiguous,
+        )
+        joined = joined.sort_values(config.AREA_CODE_COL, kind="stable")
+        joined = joined[~joined.index.duplicated(keep="first")]
+
+    outside = len(points) - len(joined)
+    return (
+        joined.groupby(config.AREA_CODE_COL).size(),
+        _Located(unusable=unusable, from_multipart=from_multipart, outside=outside),
+    )
+
+
+def measure_point_stock(
+    predictor: config.StaticPredictor,
+    units: gpd.GeoDataFrame,
+    log: RunLog,
+    year: int | None = None,
+) -> pd.DataFrame:
+    """The stock of objects in place in each unit, at the end of a given year.
+
+    The inventory located in the units is the stock at the year it is as of. Every
+    later year adds the interventions declared to add and subtracts those declared
+    to remove, each located the same way. A year with no intervention file carries
+    the previous year unchanged, which is a declared gap and not an assumption.
+
+    **Every action value in the data has to be classified by the declaration.** An
+    unrecognised one stops the run here rather than being counted as nothing,
+    which is rule 4 of this project: an unmapped value must never become a silent
+    zero in a groupby.
+
+    Accumulating from the inventory every time this is called for a year would read
+    the same files nine times over. It does not: the whole series is built once and
+    the requested year is returned from it, which is why `measure` asks for each
+    year in turn and this stays cheap.
+    """
+    series = predictor.stock_series
+    if series is None:  # guaranteed by the declaration; stated for the reader
+        raise ValueError(f"{predictor.name}: the stock method needs a stock_series")
+    if year is None:
+        raise ValueError(f"{predictor.name}: a stock series is measured for a year")
+
+    stock = _stock_by_year(predictor, units, log)
+    counts = stock[year]
+    return counts.rename(config.PREDICTOR_MEASURE_COL).reset_index()
+
+
+def _stock_by_year(
+    predictor: config.StaticPredictor,
+    units: gpd.GeoDataFrame,
+    log: RunLog,
+) -> dict[int, pd.Series]:
+    """The whole series, built once and cached on the predictor's own identity.
+
+    Nine years off one inventory of 67,265 points and seven files of movements.
+    Rebuilding it per year would be nine passes over the same data for one answer
+    each, and the arithmetic that has to be reported — how the stock moves year by
+    year — only exists once the whole thing is built.
+    """
+    cached = _STOCK_CACHE.get(predictor.name)
+    if cached is not None:
+        return cached
+
+    series = predictor.stock_series
+    assert series is not None
+    classified = series.classified_actions
+
+    inventory = _read_source(predictor, log, series.inventory_as_of_year)
+    located, lost = _locate_points(inventory, units, f"{predictor.name} inventory", log)
+    # Every unit carries a number from the first year, including the ones the
+    # inventory does not reach: a unit absent from the index would silently
+    # reappear as a null the first time a movement landed in it.
+    base = located.reindex(units[config.AREA_CODE_COL], fill_value=0).astype("int64")
+    base.index.name = config.AREA_CODE_COL
+
+    stock: dict[int, pd.Series] = {series.inventory_as_of_year: base}
+    movements: list[dict[str, object]] = []
+    # Kept so the accumulation can be checked by a second route that applies
+    # every year at once. Held rather than recomputed: re-reading the files
+    # would make the check test the reader twice instead of the arithmetic.
+    per_year_located: list[tuple[pd.Series, pd.Series]] = []
+    log.record(
+        f"measure {predictor.name} {series.inventory_as_of_year}",
+        rows_in=len(inventory),
+        rows_out=int(base.sum()),
+        changes=[
+            (-lost.unusable, "inventory records with no usable geometry, which cannot be located"),
+            (lost.from_multipart, "points gained by exploding multi-part records into one each"),
+            (-lost.outside, "inventory records falling outside every unit, counted in no unit"),
+        ],
+        notes=[
+            f"source={predictor.source_layer}/{series.inventory_file}, "
+            f"the stock as of {series.inventory_as_of_year}",
+            f"{int(base.sum()):,} of {len(inventory):,} located inside the units "
+            f"({100 * int(base.sum()) / len(inventory):.2f}%)",
+        ],
+    )
+
+    running = base
+    for year in series.years:
+        if year == series.inventory_as_of_year:
+            continue
+        file_name = series.intervention_files.get(year)
+        if file_name is None:
+            # Declared and empty: the delivery has no movements for this year, so
+            # the stock is the previous one. Said out loud, because a year that
+            # repeats its predecessor is exactly what the series check reports.
+            stock[year] = running
+            log.info(
+                "%s: no intervention file for %d, so its stock is %d's, carried unchanged",
+                predictor.name,
+                year,
+                year - 1,
+            )
+            continue
+
+        interventions = _read_source(predictor, log, year)
+        actions = interventions[series.action_column].astype(str).str.strip()
+        unknown = sorted(set(actions) - set(classified))
+        if unknown:
+            counts = actions.value_counts()
+            raise ValueError(
+                f"{predictor.name}: {year} holds action(s) the declaration does not "
+                f"classify: "
+                + ", ".join(f"{value!r} ({int(counts[value]):,} rows)" for value in unknown)
+                + ". Every action has to be declared as adding, removing or neutral, "
+                "because an unclassified one would silently count as nothing"
+            )
+
+        kinds = actions.map(classified)
+        added, adds_lost = _locate_points(
+            interventions[kinds == "add"], units, f"{predictor.name} {year} adds", log
+        )
+        removed, rems_lost = _locate_points(
+            interventions[kinds == "remove"], units, f"{predictor.name} {year} removals", log
+        )
+        neutral = int((kinds == "neutral").sum())
+        unlocated = (
+            adds_lost.unusable + adds_lost.outside + rems_lost.unusable + rems_lost.outside
+        )
+        previous_total = int(running.sum())
+
+        running = (
+            running
+            .add(added.reindex(running.index, fill_value=0), fill_value=0)
+            .sub(removed.reindex(running.index, fill_value=0), fill_value=0)
+            .astype("int64")
+        )
+        stock[year] = running
+        per_year_located.append((added, removed))
+
+        movements.append(
+            {
+                "year": year,
+                "added": int(added.sum()),
+                "removed": int(removed.sum()),
+                "neutral": neutral,
+                "lost": unlocated,
+                "total": int(running.sum()),
+            }
+        )
+        # The funnel balances the stock and not the file: what enters is last
+        # year's stock, what leaves is this year's, and the causes are the located
+        # additions and removals. The file's own row count is a different
+        # quantity — an intervention is not a sign — and putting it here would
+        # make the balance fail for a reason that is not a defect.
+        log.record(
+            f"measure {predictor.name} {year}",
+            rows_in=previous_total,
+            rows_out=int(running.sum()),
+            changes=[
+                (int(added.sum()), f"objects added by {', '.join(series.adds)}"),
+                (-int(removed.sum()), f"objects removed by {', '.join(series.removes)}"),
+            ],
+            notes=[
+                f"source={predictor.source_layer}/{file_name}, "
+                f"{len(interventions):,} intervention record(s)",
+                f"{neutral:,} of them declared neutral ({', '.join(series.neutral)}), "
+                "which change no count",
+                f"{unlocated:,} could not be located in any unit and move nothing",
+                f"stock at the end of {year}: {int(running.sum()):,}",
+            ],
+        )
+
+    _check_accumulation(predictor, base, stock, per_year_located, log)
+    _report_stock(predictor, stock, movements, log)
+    _STOCK_CACHE[predictor.name] = stock
+    return stock
+
+
+def _check_accumulation(
+    predictor: config.StaticPredictor,
+    base: pd.Series,
+    stock: dict[int, pd.Series],
+    per_year_located: list[tuple[pd.Series, pd.Series]],
+    log: RunLog,
+) -> None:
+    """Reach the last year's stock by a different route and require the same answer.
+
+    The loop above adds and subtracts one year at a time. This adds every year's
+    additions together, subtracts every year's removals together, and applies both
+    once. The two must agree per unit, and they agree for a different reason than
+    that the code is correct: addition commutes, so a mismatch is an alignment
+    defect — a reindex that dropped a unit, an index that stopped matching — which
+    is the one failure that would otherwise produce a plausible wrong number.
+
+    A check that recomputed the same way would prove nothing. This is the same
+    principle as the model correlation being computed twice by two routes.
+    """
+    if not per_year_located:
+        return
+    # Concatenated and grouped, never summed with `+`. Adding two Series aligns
+    # them on their indexes and yields a null wherever one of them lacks a unit,
+    # and a year in which nothing was installed in a unit is exactly that case —
+    # so the naive sum would turn every partial year into nulls everywhere.
+    all_added = pd.concat([added for added, _ in per_year_located]).groupby(level=0).sum()
+    all_removed = pd.concat([removed for _, removed in per_year_located]).groupby(level=0).sum()
+    once = (
+        base
+        .add(all_added.reindex(base.index, fill_value=0), fill_value=0)
+        .sub(all_removed.reindex(base.index, fill_value=0), fill_value=0)
+        .astype("int64")
+    )
+    last = stock[max(stock)]
+    disagreeing = last.index[last.ne(once.reindex(last.index))]
+    if len(disagreeing):
+        raise RuntimeError(
+            f"{predictor.name}: accumulating year by year and applying every movement at "
+            f"once disagree in {len(disagreeing)} unit(s): "
+            + ", ".join(
+                f"{code} {int(last[code])} vs {int(once[code])}" for code in disagreeing[:5]
+            )
+            + ". Addition commutes, so this is an alignment defect and not arithmetic"
+        )
+    log.info(
+        "%s: accumulating year by year and applying all %d year(s) of movements at once "
+        "agree in every unit, at a total of %d",
+        predictor.name,
+        len(per_year_located),
+        int(last.sum()),
+    )
+
+
+def _report_stock(
+    predictor: config.StaticPredictor,
+    stock: dict[int, pd.Series],
+    movements: list[dict[str, object]],
+    log: RunLog,
+) -> None:
+    """The accumulation as a table, and the one thing that would invalidate it.
+
+    A unit whose stock goes negative means more removals were recorded there than
+    the inventory ever held, which cannot be true of a stock and says the
+    accumulation has drifted from what the delivery describes. It is reported
+    loudly and never corrected: clamping it at zero would hide exactly the defect
+    worth knowing about.
+    """
+    header = (
+        f"{'year':>6}  {'added':>8}  {'removed':>8}  {'neutral':>8}  "
+        f"{'unlocated':>9}  {'stock':>9}  {'units at 0':>10}"
+    )
+    lines = [header, "-" * len(header)]
+    first = min(stock)
+    lines.append(
+        f"{first:>6}  {'':>8}  {'':>8}  {'':>8}  {'':>9}  "
+        f"{int(stock[first].sum()):>9,}  {int((stock[first] == 0).sum()):>10}"
+    )
+    by_year = {int(m["year"]): m for m in movements}
+    for year in sorted(stock):
+        if year == first:
+            continue
+        m = by_year.get(year)
+        counts = stock[year]
+        if m is None:
+            lines.append(
+                f"{year:>6}  {'-':>8}  {'-':>8}  {'-':>8}  {'-':>9}  "
+                f"{int(counts.sum()):>9,}  {int((counts == 0).sum()):>10}   (no file; carried)"
+            )
+            continue
+        lines.append(
+            f"{year:>6}  {int(m['added']):>8,}  {int(m['removed']):>8,}  "
+            f"{int(m['neutral']):>8,}  {int(m['lost']):>9,}  "
+            f"{int(counts.sum()):>9,}  {int((counts == 0).sum()):>10}"
+        )
+    log.table(
+        f"{predictor.name}: the stock accumulated from the inventory of {first}:",
+        "\n".join(lines),
+    )
+
+    negative = {
+        year: counts[counts < 0] for year, counts in stock.items() if (counts < 0).any()
+    }
+    if negative:
+        for year, counts in sorted(negative.items()):
+            log.warn(
+                "%s: %d unit(s) have a negative stock in %d (%s); more removals were "
+                "recorded there than the inventory ever held, which cannot be true of a "
+                "stock and is left uncorrected so it is not hidden",
+                predictor.name,
+                len(counts),
+                year,
+                ", ".join(f"{code} {int(value)}" for code, value in counts.items()),
+            )
+    else:
+        log.info(
+            "%s: no unit goes negative in any of the %d years; every removal lands "
+            "where there was something to remove",
+            predictor.name,
+            len(stock),
+        )
+
+
+# Built once per run and kept, because every year of a stock series is produced
+# by the same pass over the same files. Keyed on the variable's name, which is
+# unique by construction. Cleared between runs by the process ending, and the one
+# thing that would make it wrong — two runs in one process against different unit
+# layers — is not something any route does.
+_STOCK_CACHE: dict[str, dict[int, pd.Series]] = {}
+
+
 def usable_lines(layer: gpd.GeoDataFrame, name: str, log: RunLog) -> tuple[gpd.GeoDataFrame, int]:
     """Drop the lines with no geometry, and say how many went.
 
@@ -512,6 +884,7 @@ MEASUREMENTS: dict[
 ] = {
     config.AREA_SHARE_METHOD: measure_area_layer,
     config.POINT_DENSITY_METHOD: measure_point_layer,
+    config.POINT_STOCK_METHOD: measure_point_stock,
     config.LINE_LENGTH_METHOD: measure_line_layer,
 }
 
@@ -612,6 +985,20 @@ def _report_repeated_years(
     """
     years = predictor.years
     declared = {(repeat.earlier, repeat.later): repeat.reason for repeat in predictor.repeated_years}
+
+    # A year of a stock series with no movements of its own repeats the year
+    # before it by construction, so the declaration already says so and nobody has
+    # to remember to write it twice. Derived rather than listed, which makes it
+    # true of any gap year a future delivery has.
+    series = predictor.stock_series
+    if series is not None:
+        for earlier, later in zip(years, years[1:]):
+            if later not in series.intervention_files:
+                declared[(earlier, later)] = (
+                    f"the delivery has no intervention file for {later}, so its stock is "
+                    f"{earlier}'s carried unchanged"
+                )
+
     found: set[tuple[int, int]] = set()
 
     for (earlier, first), (later, second) in zip(zip(years, blocks), zip(years[1:], blocks[1:])):
@@ -1030,13 +1417,15 @@ def dictionary_table() -> pd.DataFrame:
                 # A series has one file per year and no single one to name, so the
                 # cell names the whole set. Writing the first year's file here
                 # would read as the source of every row of the variable.
-                config.SOURCE_FILE_COL: (
-                    predictor.source_file
-                    if not predictor.years
-                    else ", ".join(predictor.source_files[y] for y in predictor.years)
+                # Every file the variable reads, however it declares them: one
+                # for a snapshot, one per year for a file-per-year series, and the
+                # inventory plus its movements for a stock. Naming only the first
+                # would read as the source of every row of the variable.
+                config.SOURCE_FILE_COL: ", ".join(
+                    path.name for _, path in predictor.declared_files()
                 ),
                 config.SOURCE_PATH_COL: (
-                    predictor.path if not predictor.years else predictor.path_for(predictor.years[0]).parent
+                    predictor.path if not predictor.years else predictor.folder
                 )
                 .relative_to(config.PROJECT_ROOT)
                 .as_posix(),
@@ -1740,14 +2129,17 @@ def verify(
     # declaration still points at something real.
     # Every file of every year, not one per variable: a series whose 2019 file had
     # gone missing would otherwise pass on the strength of its 2012 one.
+    # Asked of the declaration rather than built from the years, because the three
+    # shapes name their files differently: a stock series has an inventory and one
+    # file per year of movements, and some of its years have no file of their own.
     declared_files = [
-        (p.name, year, p.path_for(year))
-        for p in config.STATIC_PREDICTORS
-        for year in (p.years or (None,))
+        (predictor.name, label, path)
+        for predictor in config.STATIC_PREDICTORS
+        for label, path in predictor.declared_files()
     ]
     missing = [
-        f"{name}{'' if year is None else f' {year}'}"
-        for name, year, path in declared_files
+        f"{name} ({label})"
+        for name, label, path in declared_files
         if not config.resolve_source_path_or_none(path)
     ]
     checks.append(

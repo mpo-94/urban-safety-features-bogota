@@ -103,7 +103,7 @@ a layer, so the folder is a path segment and the verification happens elsewhere.
 
 ## The layers inside the predictor bundle
 
-Fourteen variables are measured over twelve layers, one of them with a year. The
+Fifteen variables are measured over thirteen layers, two of them with a year. The
 declaration in `config.STATIC_PREDICTORS` is authoritative; this is the
 arrangement on disk.
 
@@ -129,9 +129,10 @@ import rather than reaching chapter 3.
 | `points/estacion_localidad` | point | TransMilenio station density |
 | `points/arbolado_urbano` | point | the three tree variables |
 | `lines/ciclo_lines` | line | cycleway length per unit area, **thirteen years, 2012-2024** |
+| `points/Señalizacion_Vertical` | point | vertical signage density, **nine years, 2015-2023**, as a stock |
 | `lines/Líneas de deseo Matriz Origen Destino` | line | **nothing, since 2019 landed** — the retired exposure layer |
 
-### Delivered and not read
+### The two series, and the two that stay unread
 
 **The cycleway is now read**, and it is the first variable with a year: all
 thirteen files, measured as the network in place that year. `cicl2014_lines` is a
@@ -139,13 +140,17 @@ byte-for-byte copy of `cicl2013_lines` — identical SHA-256 on both the .shp an
 the .dbf — and the year is declared anyway, with the repetition declared beside it
 so every run states it. 2015 measures within 62 metres of both. See D45.
 
-Three layers are still **delivered and pending**, and they are pending on two
-different things. `points/Señalizacion_Vertical` has a stock — its 2016 file is a
-full `INVENTARIO` of 67,265 records — and needs a reader that accumulates the
-yearly interventions onto it. `lines/Señalizacion_Horizontal` and
-`lines/Señalizacion_Horizontal_ZonasEscolares` are flows with no inventory in any
-year, so **no year of them is usable** — not 2015, and not 2019 or 2023 either.
-They stay on disk because the layers are real and an inventory would make them
+**The vertical signage is now read too**, and it is the fourth and last of the
+delivered series to be resolved. It does not arrive one file per year: its 2016
+file is a full `INVENTARIO` of 67,265 records dated to the end of 2015, and the
+seven files from 2017 on are that year's interventions. The stock of any year is
+the inventory plus installations minus removals, accumulated. See D47.
+
+**Two layers are delivered and will stay unread.**
+`lines/Señalizacion_Horizontal` and `lines/Señalizacion_Horizontal_ZonasEscolares`
+are flows with no inventory in any year, so **no year of them is usable** — not
+2015, and not 2019 or 2023 either. They stay on disk because the layers are real
+and an inventory of marking in place, for any single year, would make them
 measurable overnight. D46 is the evidence and the reasoning.
 
 Two more are **delivered and not declared**, and are recorded in

@@ -289,7 +289,7 @@ section 3 keeps out of the offset. **Fifteen candidates.**
 | 10 | TransMilenio station density | static |
 | 11 | tree density | static |
 | 12 | **cycleway length per unit area** | series, **built** |
-| 13 | **vertical signage density** | series, to build |
+| 13 | **vertical signage density** | series, **built** |
 | 14 | counterpart exposure | from the exposure stage |
 | 15 | resident population | from the population panel |
 
@@ -414,7 +414,14 @@ a `year` parameter through the three measurement functions, the year loop in
 `wide_table`, a year in the summary statistics, and five checks. No new route and
 no new module.
 
-**The vertical signage is the one still to build.** Before measuring anything, the stock has
+**The vertical signage is built**, on 2026-09-22, and with it **every one of the
+fifteen candidates exists**. It needed a declaration the cycleway's could not
+express — an inventory as of a year, plus one file of movements per year — and a
+measurement method rather than the file-per-year mapping, because a removal
+cannot be matched to the record it removes. The city totals reconcile with the
+control to the record. See D47 and section 20 of the verification report.
+
+What it was before that: Before measuring anything, the stock has
 to be built: assign the inventory to units, then accumulate installs minus
 removals per unit and year. Only then does the point density run.
 
@@ -457,9 +464,9 @@ reaches them by another route, by summing thirty units:
 | cycleway 2015, city | 163.1 km | 163.1 km, **reconciled** |
 | cycleway 2019 | 386.1 km | 385.7 km, **reconciled** |
 | cycleway 2023 | 474.6 km | 474.2 km, **reconciled** |
-| vertical signage stock 2015 | 67,265 |
-| stock 2019 | 74,801 |
-| stock 2023 | 77,690 |
+| vertical signage stock 2015 | 67,265 | 66,012 inside the units, **reconciled** |
+| stock 2019 | 74,801 | 73,420, **reconciled** |
+| stock 2023 | 77,690 | 76,167, **reconciled** |
 
 ### What stops the run
 

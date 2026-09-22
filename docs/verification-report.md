@@ -3859,3 +3859,101 @@ it carries `SHAPE_Leng` and `SHAPE_Area` twice, the second pair renamed
 behind. The geometry is the Malla Vial Integral and the classification that
 selects the arterial subset is Decreto 555 of 2021, stamped on all 33,015 records.
 
+---
+
+## 20. The vertical signage stock, and the last of the four series
+
+Route `predictors`, run `run_20260922_001256`. **Every check passed.** The
+decision is D47, and D46 closes the two layers that will never be measured.
+
+The long table goes from 780 rows to 1,050: thirteen variables over thirty units,
+the cycleway over thirteen years and the signage over nine. **All fifteen
+candidates of the regression inventory now exist**, and the three regression years
+carry every one of them.
+
+### The delivery, measured rather than read off the column names
+
+| Claim | How it was established |
+|---|---|
+| The 2016 file is the stock as of **2015** | All 67,265 records carry `ACCION = INVENTARIO` and `FASE = INVENTARIO`, dated 1991-05-01 to 2015-12-04, **none in 2016** |
+| The other seven are that year's interventions | All carry `FASE = IMPLEMENTACION`, and every date falls inside the file's own year — 5,151 of 5,151 in 2017, and so on |
+| Identifiers cannot be followed | Only 972 of 2017's 5,150 and 1,556 of 2018's 6,485 appear in the inventory |
+| A relocation moves no count | None of the 104 has its identifier repeated within `REUBICAR` or matching another action in the same year: one row, one location, no pair |
+
+The four actions, over the seven intervention years: `INSTALACION` 14,266,
+`REEMPLAZAR` 6,539, `RETIRAR` 3,841, `REUBICAR` 104. All four are classified in
+the declaration, and one the declaration did not name would stop the run.
+
+### The accumulation
+
+```
+year     added   removed   neutral  unlocated      stock  units at 0
+2015                                              66,012           0
+2016         -         -         -          -     66,012           0   (no file; carried)
+2017     3,245       795     1,048         63     68,462           0
+2018     4,180       815     1,408         82     71,827           0
+2019     2,038       445       700         11     73,420           0
+2020     3,773     1,378     2,691        183     75,815           0
+2021       267       241       375          0     75,841           0
+2022       400       130       361          5     76,111           0
+2023        56         0        60          0     76,167           0
+```
+
+**The external control reconciles to the record.** The city totals were computed
+outside the pipeline on 2026-09-21. The pipeline reaches its own by another route,
+summing thirty units, and the whole difference is what lies outside them:
+
+| Year | City total | Inside the thirty units | Difference |
+|---:|---:|---:|---:|
+| 2015 | 67,265 | 66,012 | 1,253 |
+| 2017 | 69,768 | 68,462 | 1,306 |
+| 2019 | 74,801 | 73,420 | 1,381 |
+| 2023 | 77,690 | 76,167 | 1,523 |
+
+And the differences themselves reconcile. 1,253 of the inventory fall outside the
+units; 2017 adds 58 installations outside and takes away 5 removals outside, so
+1,253 + 58 − 5 = 1,306, which is what 69,768 − 68,462 comes to. The share landing
+outside runs between 0.38 % and 2.45 % across the eight files, which is the same
+rural footprint every other layer shows.
+
+### The three checks, and why only one of them is worth much
+
+**Reaching the answer twice by different routes** is the one that could fail. The
+loop accumulates a year at a time; the check adds every year's additions together,
+subtracts every year's removals together, and applies both once. Addition
+commutes, so a disagreement is an alignment defect — a reindex that dropped a unit
+— and that is the failure that would otherwise produce a plausible wrong number.
+They agree in all thirty units.
+
+**It failed on its first run, and the fault was in the check.** It summed pandas
+Series with `+`, which aligns on the index and yields a null wherever one side
+lacks a unit — and a year in which nothing was installed in a unit is exactly that
+case, so every partial year became nulls everywhere. Concatenating and grouping
+fixed it. Worth recording because a verification that fails loudly and is wrong is
+better than one that never fires, and only one of the two gets noticed.
+
+**No unit goes negative in any year**, which would have meant more removals
+recorded in a unit than the inventory ever held there. It is reported and never
+corrected; clamping at zero would hide exactly what is worth knowing.
+
+**The funnel balances the stock and not the file**, which is what it had to be
+taught. What enters a year is last year's stock, what leaves is this year's, and
+the causes are the located additions and removals. An intervention is not a sign,
+so the file's row count in the funnel made the balance fail for a reason that was
+not a defect — 5,151 in, 68,462 out, on the first attempt.
+
+### What the variable looks like
+
+Across the thirty units in 2019 the density runs from **2.1 signs per km² in
+Torca** to **566 in Chapinero**, at a median of 139. Torca is the largest unit at
+53.8 km² and the least urbanised, and it is the same unit that holds no signalised
+intersection at all, so the low end is a fact about the place rather than a gap in
+the inventory. No unit is at zero in any of the nine years, which matters because
+this variable is declared `zero_is_implausible`.
+
+**It is collinear with two others and the models will have to say so.** In 2019 it
+correlates at 0.884 with arterial road area share and 0.877 with signalised
+intersection density — signs go where roads and signals are. Both are above the
+declared 0.7 threshold, so a selected model holding either pair carries the flag
+the regression stage raises, which is what that flag exists for.
+

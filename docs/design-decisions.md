@@ -73,6 +73,7 @@ carried, so the second is larger for the same underlying records.
 | D44 | The casualty map places every casualty where it happened, and is not a map of risk | Methodological | Closed on what it is and on the recipe | Yes, for the observed set |
 | D45 | The first variable with a year, and the shape a series takes | Methodological and structural | Closed on the mechanism, on the stock reading and on 2014 | Yes, the cycleway over thirteen years |
 | D46 | The two horizontal marking layers are flows with no inventory, and no year of them is usable | Methodological | Closed | No, and deliberately |
+| D47 | A series delivered as an inventory plus its movements, and why the stock is a method | Methodological and structural | Closed | Yes, the vertical signage over nine years |
 
 Methodological decisions: D1-D7, D9, D10, D11, D15, D17, D18, D19, D21, D22, D32, D35,
 D38, D39, D40, D44.
@@ -2493,11 +2494,11 @@ every reader would spend attention working out which one counts. The answer to
 So the complete set holds eleven variables and not thirteen. "Complete" means
 every measured *variable*, once each, over the eleven source layers.
 
-**Still eleven since D45, now out of fourteen.** The cycleway is measured and is
+**Still eleven since D45 and D47, now out of fifteen.** The two series are measured and are
 in neither set, for a structural reason rather than the editorial one above: a
 figure drawn without a year has no column for a variable that has one. The
-exclusion is derived from the declaration rather than listed, so the signage
-layers need no entry when they arrive, and such a variable is drawn from the
+exclusion is derived from the declaration rather than listed, which is how the
+signage needed no entry of its own when it arrived; such a variable is drawn from the
 cross-section of a chosen year instead.
 
 **Decision — the set names every folder and every file.** The figures go to
@@ -5859,13 +5860,10 @@ the panel unavailable for anything else and would have hidden the one fact that
 validates the whole reading, which is that the total grows. Twelve years cost
 seconds.
 
-**Open — the three signage layers.** Vertical signage has a stock: its 2016 file
-is a full `INVENTARIO` of 67,265 records with `ACCION=INVENTARIO` and dates from
-1991 to 2015, so the stock of any year is computable by accumulating the
-interventions onto it. That is a second reader, not a second declaration, and it
-is the next piece of work. Horizontal marking and school zones have no inventory
-in any year and three independent attempts to estimate their 2015 stock failed;
-they stay undeclared.
+**Resolved — the three signage layers.** Vertical signage was built on
+2026-09-22 and has a decision of its own, D47: it needed a declaration this one
+could not express and a method rather than the file-per-year mapping. Horizontal
+marking and school zones cannot be built at all, which is D46.
 
 ---
 
@@ -5968,3 +5966,114 @@ above for the three layers together, including the cycleway as the control. It
 reads the layers through `config.resolve_source_path`, because two of these
 folder names carry an ñ that this filesystem stores decomposed and a plain glob
 silently finds nothing — which it did, on the first run of this very check.
+
+---
+
+## D47 — A series delivered as an inventory plus its movements, and why the stock is a method
+
+**Kind:** Methodological and structural.
+
+**Status:** Closed. It is the last of the four delivered series that can be
+measured; D46 closes the other two.
+
+**Built:** Yes. `VERTICAL_SIGNAGE_DENSITY`, nine years from 2015 to 2023, in the
+`predictors` route. The long table goes from 780 rows to 1,050.
+
+**Context.** The cycleway arrives one file per year, each holding the network as
+it stood (D45). Vertical signage arrives differently: one inventory and then one
+file of interventions per year. D45's `source_files` cannot describe it, because
+there **the year a file is named for is not the year its contents describe.**
+
+**Decision — the 2016 file is the stock as of 2015, and the declaration says so.**
+All 67,265 of its records carry `ACCION = INVENTARIO` and `FASE = INVENTARIO`,
+with installation dates from 1991-05-01 to 2015-12-04 and **not one in 2016**. The
+seven files from 2017 on carry only `FASE = IMPLEMENTACION`, and every one of
+their dates falls inside the year their file is named for — 5,151 of 5,151 in
+2017, and so on for each. `inventory_as_of_year` is a field of the declaration for
+this reason, so nothing has to infer it from a file name.
+
+This is also the defect the audit found. The legacy code read the inventory as
+"the year 2016" and everything after it as a net change, which is a stock read as
+a flow, and it produced negative densities.
+
+**Decision — the stock is a measurement method, not a builder hung off the
+variable.** The plan for this stage proposed a `stock_builder` field naming a
+function that would assemble the layer before the ordinary point count ran. The
+data says that cannot work: **a removal cannot be matched to the record it
+removes.** Only 972 of 2017's 5,150 identifiers appear in the inventory at all,
+and 1,556 of 2018's 6,485. There is no identity to follow, so no set of points can
+be assembled that is the stock.
+
+What can be built is the count per unit, by locating every intervention and
+accumulating. That is a different way of turning a layer into one number per unit,
+which is precisely what a method is, and the dispatch that already existed selects
+it with no new field. `POINT_STOCK_METHOD` joins the other three, and
+`__post_init__` requires that a variable declaring a stock series declare that
+method and vice versa.
+
+**Decision — every action value is classified by the declaration, and an
+unclassified one stops the run.** `adds`, `removes` and `neutral` are three
+tuples, and the run raises if the data holds an action none of them names. This is
+rule 4 of this project applied to a column that is not a vehicle type: an unmapped
+value must never become a silent zero. The delivery holds four actions, classified
+as follows and measured rather than assumed:
+
+| Action | Rows, 2017–2023 | Effect on the count |
+|---|---:|---|
+| `INSTALACION` | 14,266 | adds |
+| `RETIRAR` | 3,841 | removes |
+| `REEMPLAZAR` | 6,539 | neutral |
+| `REUBICAR` | 104 | neutral |
+
+Declaring `neutral` explicitly rather than treating it as "everything else" is the
+point: a new action in a future delivery falls into no tuple and stops the run,
+where "everything else" would have absorbed it silently.
+
+**Decision — a relocation moves no count, and the reason is in the data.** This is
+the subtlety the plan flagged: if a `REUBICAR` recorded only the new location, the
+unit the sign left would keep counting it. It does not record a move between two
+places at all. **Across all 104 relocations in seven years, not one has its
+identifier repeated within `REUBICAR` or matching another action in the same
+year**: each is a single row at a single location, and the delivery does not say
+whether that is the origin or the destination. A single row cannot move a count
+between two units, because only one unit is named in it. At 104 against a stock of
+77,000 — 0.13 % — the effect is small, and the run reports the count on every
+execution rather than assuming it away.
+
+**Decision — a year with no intervention file carries the previous year, and the
+run says so.** There is no file for 2016, so the stock of 2016 is the stock of
+2015. The repeated-years check of D45 would otherwise warn about it on every run;
+instead the declaration derives it, because a stock year with no movements repeats
+its predecessor by construction. Derived and not listed, so it is true of any gap
+year a future delivery has.
+
+**Verification.** Three checks, and one of them is the only one worth much:
+
+- **The accumulation is reached twice by different routes.** The loop adds and
+  subtracts one year at a time; the check adds every year's additions together,
+  subtracts every year's removals together, and applies both once. Addition
+  commutes, so a disagreement is an alignment defect — a reindex that dropped a
+  unit — which is the one failure that would otherwise produce a plausible wrong
+  number. They agree in all thirty units. A check that recomputed the same way
+  would have proved nothing, and this one **failed on its first run and was
+  right to**: the fault was in the check, which summed Series with `+` and so
+  aligned indexes into nulls wherever a unit had no installation that year.
+- **No unit goes negative in any year.** A negative stock would mean more removals
+  were recorded in a unit than the inventory ever held there, which cannot be true
+  of a stock. None does. It is reported and never corrected: clamping at zero
+  would hide exactly the defect worth knowing about.
+- **The funnel balances the stock and not the file.** What enters a year is last
+  year's stock and what leaves is this year's, with the located additions and
+  removals as the causes. An intervention is not a sign, so putting the file's row
+  count in the funnel would make the balance fail for a reason that is not a
+  defect — which it did, before this was fixed.
+
+**The external control reconciles exactly.** The city totals were computed outside
+the pipeline on 2026-09-21: 67,265 at the end of 2015 rising to 77,690 in 2023.
+The pipeline reaches 66,012 and 76,167 by another route, summing thirty units, and
+the whole difference is what falls outside them — 1,253 of the inventory, and the
+interventions that land outside in each year. For 2017: 1,253 + 58 installations
+− 5 removals = 1,306, and 69,768 − 68,462 = 1,306.
+
+**Open — nothing.** The four delivered series are resolved: two measured, two
+shown to be unmeasurable.
