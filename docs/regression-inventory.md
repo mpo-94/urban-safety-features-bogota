@@ -37,7 +37,7 @@ by side.
 | Candidate predictors | fifteen, listed in section 5; nothing excluded yet |
 | Models per pair and year | 560, all combinations of two or three |
 | Families | least squares and generalised linear model |
-| Datasets | observed and rho-corrected |
+| Datasets | observed and rho-corrected, **both, always** |
 
 **The table is built eight times with thirty rows each, not thirty times with
 eight rows.** Within one unit every predictor has the same value for all eight
@@ -72,6 +72,13 @@ The cell is **oriented**: (motorcycle, car) and (car, motorcycle) are different
 numbers, and both are in the set. That settles what the response is. It is the
 count of **affected parties**, not of crashes — in a two-party crash where both
 were hurt there is one crash and two affected parties, one in each cell.
+
+**Affected parties and not persons, decided on 2026-09-21** and recorded in D3.
+The matrix carries three counts in the same row — affected parties, persons
+injured, persons killed — and the regressions estimate the first. The other two
+stay in the tables: a model on deaths is a separate question, and the
+measurement it would need first is how many of the 720 unit-pair-year cells hold
+a zero, since deaths are about 3% of records.
 
 A regression on thirty units estimates nothing if the response is zero in most of
 them. The threshold the anteproyecto declares is fewer than half the cells at
@@ -201,20 +208,54 @@ segment and no record of anything wearing out. `MVINANTIGU`, which reads like
 is "what was added since 2017", which is not the stock, because the starting point
 is missing and is nowhere in the data.
 
+The year totals are the argument on their own, and they were measured again on
+2026-09-21 with the cycleway beside them as the control:
+
+| Year | Horizontal marking | School zones | Cycleway |
+|---:|---:|---:|---:|
+| 2017 | 436.0 km | 90.9 km | 316.4 km |
+| 2018 | 349.7 | 97.6 | 362.6 |
+| 2019 | 163.2 | 19.5 | 386.1 |
+| 2020 | 511.4 | 82.4 | 400.9 |
+| 2021 | 248.0 | 46.9 | 437.4 |
+| 2022 | **1,064.5** | 139.4 | 446.7 |
+| 2023 | 262.6 | **4.5** | 474.6 |
+
+Read as a stock, Bogotá tripled its road marking in 2020, doubled it again in 2022
+and lost three quarters of it in 2023. Markings do not leave an inventory in that
+quantity — they wear and get repainted, which is what a flow of maintenance work
+looks like. And school zones would mean the city held **4.5 kilometres** of
+school-zone marking in 2023, across more than two thousand schools.
+
+The identifiers say the same thing. Of the 23,947 road codes in horizontal marking
+**85.3 % appear in exactly one year**, and of the 5,220 in school zones **94.3 %**
+do; in neither layer is a single code present in all seven years. The cycleway,
+measured identically, repeats 91.5 % of its codes across years.
+
 Three independent attempts to recover 2015 for these two all failed, and the
 numbers are recorded so nobody repeats them:
 
 | Attempt | Result |
 |---|---|
-| Extrapolate the trend backward | R² of 0.064 and 0.058; prediction intervals nine and four times wider than the prediction, both including negative kilometres |
+| Extrapolate the trend backward | R² of 0.064 and 0.058; 95 % intervals of [−918.6, +1,430.7] km and [−90.0, +280.4] km, both including negative kilometres |
 | Use vertical signage as a correlate | r of −0.122 and +0.324; the two are not the same contract and the data say so |
-| Reconstruct a stock from repeated segments | 85.3 % of segments appear in one year only, so the flow is mostly new work and cannot stand in for what was already painted |
+| Reconstruct a stock from repeated segments | the single-year shares above: the flow is mostly new work and cannot stand in for what was already painted |
 
-**So both are dropped, and not because of 2015.** They measure a flow in every
-year, and a flow does not belong beside quantities. Their weakness is structural.
+**So both are dropped, and the reason is not 2015.** That framing was wrong and is
+worth correcting here, because it made the problem sound like a gap at one end of
+the series: **no year of either layer is usable, 2019 and 2023 included.** The
+delivery never contains an inventory, so there is no year whose total is the
+marking in place, and the regressions would be missing these two variables in all
+three of their years rather than in one.
 
-Reproduce with `deliverables/diseno/` — the measurements live in the scripts named
-in section 9.
+What would change it is an inventory of marking in place, for any single year,
+after which every other year follows by accumulating these same files onto it —
+exactly as vertical signage is built from its 2016 `INVENTARIO`. That is a request
+to the Secretaría Distrital de Movilidad and not a computation.
+
+**D46 is the full record**, with the year-on-year swings, what was rejected and
+why, including the option of using the flow itself as a predictor. Reproduce the
+whole table with `deliverables/diseno/flujos_vs_stock.py`.
 
 ---
 
@@ -258,12 +299,12 @@ than three predictors; the European study faced the same limit with twenty-four
 cities and resolved it the same way, selecting among combinations of two or three
 by AIC.
 
-**The tree census counts once.** Three variants of it are declared and measured —
-the whole census, the census without P1 and the census by U codes — and they are
-three counts of one layer, not three variables. Putting two of them in the same
-model would pair two measurements of the same thing at a correlation near one. The
-whole census is the one that competes; the other two stay available for a
-sensitivity check.
+**The tree census counts once, and it is the whole census.** Decided on
+2026-09-21 and recorded in D32. Three variants are declared and measured — the
+whole census, the census without P1 and the census by U codes — and they are
+three counts of one layer, not three variables. Only the whole census enters a
+model. The other two stay measured and exported as the evidence behind D32 and as
+what a sensitivity check would read, and they enter nothing.
 
 ### What including everything costs, and the instrument that makes it visible
 

@@ -143,9 +143,10 @@ Three layers are still **delivered and pending**, and they are pending on two
 different things. `points/Señalizacion_Vertical` has a stock — its 2016 file is a
 full `INVENTARIO` of 67,265 records — and needs a reader that accumulates the
 yearly interventions onto it. `lines/Señalizacion_Horizontal` and
-`lines/Señalizacion_Horizontal_ZonasEscolares` have no inventory in any year and
-no way to recover one; three independent attempts to estimate their 2015 stock
-failed.
+`lines/Señalizacion_Horizontal_ZonasEscolares` are flows with no inventory in any
+year, so **no year of them is usable** — not 2015, and not 2019 or 2023 either.
+They stay on disk because the layers are real and an inventory would make them
+measurable overnight. D46 is the evidence and the reasoning.
 
 Two more are **delivered and not declared**, and are recorded in
 `config.UNDECLARED_PREDICTOR_LAYERS` so that a later session finds a reason rather

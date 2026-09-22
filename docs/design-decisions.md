@@ -29,7 +29,7 @@ carried, so the second is larger for the same underlying records.
 |---|---|---|---|---|
 | D1 | One row per affected party, not per crash | Methodological | Closed | Yes |
 | D2 | The counting unit is the party, with person counts alongside | Methodological | Closed | Yes |
-| D3 | Casualty severity origin preserved from the first step | Methodological | Closed (aggregation open) | Yes, for loading |
+| D3 | Casualty severity origin preserved from the first step | Methodological | Closed; the models regress affected parties | Yes, for loading |
 | D4 | Vehicle classification by occupant protection | Methodological | Closed | Yes |
 | D5 | Crashes with more than two parties are discarded | Methodological | Closed | Yes |
 | D6 | Spatial join by containment only, no proximity fallback | Methodological | Closed (crash-level handling open) | Yes |
@@ -58,19 +58,21 @@ carried, so the second is larger for the same underlying records.
 | D29 | The deficit is drawn from the side carrying the surplus, by the reference composition | Methodological | Closed | Yes |
 | D30 | 2007 is out of the corrected dataset altogether | Methodological | Closed | Yes |
 | D31 | The corrected set never replaces the observed one, and both are labelled in the data | Implementation | Closed | Yes |
-| D32 | The tree census enters whole, with two narrower variants measured beside it | Methodological | Closed on what is measured; which variant the models use is **open** | Yes |
+| D32 | The tree census enters whole, with two narrower variants measured beside it | Methodological | Closed; the models use the whole census alone | Yes |
 | D33 | The tables the deliverables print are emitted as LaTeX, not transcribed | Implementation | Closed | Yes |
 | D34 | The predictor figures come in two sets, and two variables are in neither | Implementation | Closed | Yes |
 | D35 | The desire lines enter as exposure, apportioned by share of length | Methodological | Closed on the rule; the year and the selection are **open** | Yes |
 | D36 | The population enters as a panel, one number per unit and per year | Methodological | Closed; the 2018 census is the only measured year and the rest are the city's projections | Yes |
 | D37 | `data/` is filed by the role the data plays, and every root is declared | Implementation | Closed on the roots; where the exposure layers finally live is **open** | Yes |
-| D38 | Exposure is built from the survey, per unit, year, mode and day type | Methodological | Closed for all five years; which day type the models take is **open** | Yes |
+| D38 | Exposure is built from the survey, per unit, year, mode and day type | Methodological | Closed; the models take the weekday | Yes |
 | D39 | The pedestrian mode is measured twice, and the series is read on the fifteen-minute one | Methodological | Closed | Yes |
 | D40 | Exposure between survey years is interpolated as a rate, not as a level | Methodological | Closed on the method; 2005 joined the series on 2026-09-10 and the weekday held block is gone | Yes |
 | D41 | The panel is compared against the casualty series, and that comparison is a diagnostic and never a constructor | Methodological | Closed on the diagnostic; the pandemic patch it left open is decided by D42 | Yes |
 | D42 | The pandemic years are patched by the mirror assumption, at the city level, in a variant of their own | Methodological | Decided and built on 2026-09-10 | Yes |
 | D43 | The same events get a second cut, by unit, year and month, with no pair attached | Implementation | Closed | Yes |
 | D44 | The casualty map places every casualty where it happened, and is not a map of risk | Methodological | Closed on what it is and on the recipe | Yes, for the observed set |
+| D45 | The first variable with a year, and the shape a series takes | Methodological and structural | Closed on the mechanism, on the stock reading and on 2014 | Yes, the cycleway over thirteen years |
+| D46 | The two horizontal marking layers are flows with no inventory, and no year of them is usable | Methodological | Closed | No, and deliberately |
 
 Methodological decisions: D1-D7, D9, D10, D11, D15, D17, D18, D19, D21, D22, D32, D35,
 D38, D39, D40, D44.
@@ -162,8 +164,10 @@ counts through the pipeline costs two columns and keeps the option open.
 
 **Kind:** Methodological.
 
-**Status:** Closed for loading. The aggregation choice is open, pending with my
-advisor.
+**Status:** Closed for loading, and **closed for the models on 2026-09-21**: the
+response the regressions estimate is the count of affected parties. The column
+stays, and a second family of models on persons killed remains available for
+whenever it is wanted.
 
 **Built:** Yes, for loading. The origin is recorded as each layer is read and
 survives into the concatenated set. Keeping it through the stages that follow is
@@ -197,11 +201,22 @@ zero**: all four were 2024 records, and the updated extract carries each of them
 once (D19). The check is what makes that visible, and it is the reason it is
 reported on every run rather than only when it fails.
 
-**Open.** Which aggregation the models use. To settle with my advisor once the
-matrix exists and the sparsity of the fatality cells can be inspected. The
-duplication above belongs to the same conversation: if someone injured who later
-died should count once as a fatality rather than once in each category, that is
-the same question about what the two layers mean.
+**Settled on 2026-09-21 — the models regress affected parties.** Not persons
+injured, not persons killed, not the two combined. It is the unit of D2 and the
+one the matrix is built in, and it is what the response of the cross-sectional
+regressions counts.
+
+**The column is not spent by this.** Severity origin survives in every table, and
+the sparsity that would decide a fatality model can still be inspected: deaths
+are about 3% of records, so a per-unit, per-pair, per-year count of them would be
+zero in most cells, which is the measurement that has to come before that model
+and not after it. This decision is about which response the current stage
+estimates, and it takes nothing off the table.
+
+The duplication above belongs to the same future conversation: if someone injured
+who later died should count once as a fatality rather than once in each category,
+that is the same question about what the two layers mean, and it only has to be
+answered when a fatality model is built.
 
 ---
 
@@ -2159,10 +2174,15 @@ someone has to take on faith.
 
 **Kind:** Methodological.
 
-**Status:** Closed on what the pipeline measures and on parks leaving the model
-set. **Which of the three tree variables belongs in the final models is with my
-advisor**, and the point of measuring all three is that he decides on figures
-rather than on a description.
+**Status:** Closed. The pipeline measures all three; **the models use the whole
+census and only the whole census**, settled on 2026-09-21. The point of measuring
+all three was that the choice be made on figures rather than on a description,
+and it was.
+
+The two variants stay measured and exported. They are the evidence behind this
+entry, they are quotable in prose, and they are what a sensitivity check would
+read if anyone ever asks whether the result depends on which trees are counted.
+Neither enters a model and neither appears in a figure of a deliverable.
 
 **Built:** Yes. `TREE_DENSITY`, `TREE_DENSITY_WITHOUT_P1` and
 `TREE_DENSITY_U_CODES`, the eleventh, twelfth and thirteenth static predictors,
@@ -5846,3 +5866,105 @@ interventions onto it. That is a second reader, not a second declaration, and it
 is the next piece of work. Horizontal marking and school zones have no inventory
 in any year and three independent attempts to estimate their 2015 stock failed;
 they stay undeclared.
+
+---
+
+## D46 — The two horizontal marking layers are flows with no inventory, and no year of them is usable
+
+**Kind:** Methodological. It decides what two delivered layers can and cannot
+become.
+
+**Status:** Closed. Neither is declared, neither is measured, and the reason is
+not the absence of one year.
+
+**Built:** No, and deliberately. The folders stay in `data/` and the layers are
+named in `data-layout.md` as delivered and pending, so that a later session finds
+a reason rather than an unexplained folder.
+
+**Context.** Four line layers arrived carrying an annual series: the cycleway,
+vertical signage, horizontal road marking (`Señalizacion_Horizontal`) and
+school-zone marking (`Señalizacion_Horizontal_ZonasEscolares`). All four look
+alike from outside — one shapefile per year, named by year — and the cycleway
+turned out to be a stock, so the question for the other three was whether they
+are too.
+
+**The distinction that decides it.** A cross-sectional regression at 2019 asks
+how much marking a unit *has* in 2019. A layer of what was *painted* in 2019
+answers a different question, and the two are not convertible without a base:
+a stock is an inventory plus the accumulated movements, and with no inventory at
+any year there is nothing to accumulate onto.
+
+**Decision — both are flows, established by three tests rather than by the shape
+of the delivery.** The same three the cycleway passed, run on all three layers
+together so the contrast is measured and not asserted:
+
+| | Horizontal marking | School zones | Cycleway (control) |
+|---|---:|---:|---:|
+| Files | 7, 2017–2023 | 7, 2017–2023 | 13, 2012–2024 |
+| Total in the first year | 436.0 km | 90.9 km | 161.3 km |
+| Total in the last year | 262.6 km | 4.5 km | 474.6 km |
+| Largest year-on-year swing | **+816.6 then −802.0 km** | +92.5 then −134.8 km | +117.4 km, and never negative by more than 0.9 |
+| Identifiers appearing in exactly one year | **85.3%** of 23,947 | **94.3%** of 5,220 | 8.5% of 7,725 |
+| Identifiers present in every year | **0** | **0** | 0, but for a recoding between 2012 and 2013 |
+| Does each year contain the previous? | never; loses thousands each year | never | mostly, losing tens |
+
+The year-by-year totals are the argument on their own. Horizontal marking runs
+436.0, 349.7, 163.2, 511.4, 248.0, 1,064.5, 262.6 km. Read as a stock, Bogotá
+would have tripled its road marking in 2020, doubled it again in 2022 and then
+lost three quarters of it in 2023. **Road markings do not leave an inventory in
+that quantity**; they wear out and get repainted, which is exactly what a flow of
+maintenance work looks like.
+
+School zones are starker. Its last year holds **72 segments and 4.5 kilometres**
+for the whole city. As a stock that would say Bogotá had four and a half
+kilometres of school-zone marking in 2023, which is not true of a city with more
+than two thousand schools. As a flow it says the programme painted little that
+year, which is an ordinary fact about a budget.
+
+**Decision — the failure is not about 2015, and this is the part that was easy to
+get wrong.** For a long time this was filed as "the 2015 stock cannot be
+estimated", which made it sound like a gap at one end of the series. It is worse
+than that: **no year of either layer is usable**, 2019 and 2023 included. The
+delivery never contains an inventory, so there is no year whose total is the
+marking in place. The regressions would be missing these variables in all three
+of their years, not in one.
+
+**Rejected — extrapolate the trend backwards to recover a base.** Attempted, and
+it fails in the way that is worth recording rather than in the way that invites
+another attempt. Fitting the annual totals against the year and predicting 2015:
+
+| Layer | R² | Slope | 95% interval for 2015 |
+|---|---:|---:|---|
+| Horizontal marking | **0.064** | +35.5 km/yr | **[−918.6, +1,430.7] km** |
+| School zones | **0.058** | −5.3 km/yr | **[−90.0, +280.4] km** |
+| Cycleway, for scale | 0.927 | +32.2 km/yr | [136.5, 308.5] km |
+
+Both intervals include negative kilometres, which is the arithmetic saying the
+series carries no trend at all. And the objection is prior to the fit: even a
+perfect extrapolation of a flow gives a flow, not the stock the regression needs.
+
+**Rejected — infer the stock from a correlated layer.** Vertical signage has a
+real inventory and is installed by the same secretariat, so it was tried as a
+proxy. Against horizontal marking it correlates at **−0.122** and against school
+zones at **+0.324** over the shared years. Neither is a basis for anything, and a
+proxy that strong would be a poor substitute even if it were positive.
+
+**Rejected — use the flow itself as the predictor.** Defensible in a different
+study and not in this one. "Kilometres painted this year" is a measure of
+maintenance activity, which in a road safety model is closer to a response to
+observed danger than to a cause of it: a corridor gets repainted because it is
+worn or because something happened on it. Putting it beside variables that are
+all built-environment stock would mix the two directions in one specification
+without saying so.
+
+**What would change this.** An inventory, for any single year, of marking in
+place. The stock of every other year then follows by accumulating these same
+files onto it, exactly as vertical signage will be built from its 2016
+`INVENTARIO`. That is a request to the Secretaría Distrital de Movilidad and not
+a computation, and until it arrives the layers stay delivered and unread.
+
+**Reproduce it.** `deliverables/diseno/flujos_vs_stock.py` prints the whole table
+above for the three layers together, including the cycleway as the control. It
+reads the layers through `config.resolve_source_path`, because two of these
+folder names carry an ñ that this filesystem stores decomposed and a plain glob
+silently finds nothing — which it did, on the first run of this very check.
