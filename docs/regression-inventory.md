@@ -126,6 +126,36 @@ Only one assertion is defensible here.
   different question from risk per trip, and the two must not be multiplied into
   one denominator.
 
+### Which day, which is still open
+
+The exposure panel is one number per unit, year, actor type **and kind of day**,
+and the offset needs one number. The kind of day is not a detail: in 2019 the
+city makes 1.94 million bicycle trips on a Sunday against 1.58 million on a
+weekday, a difference of 23%, and the ranking between modes moves with it.
+
+What settles it is not preference but which of the three is a measurement in all
+three regression years. Counting the 120 unit-actor rows of each cell:
+
+| Year | Weekday | Saturday | Sunday |
+|---|---|---|---|
+| 2015 | measured | measured | held |
+| 2019 | measured | interpolated | held |
+| 2023 | measured | measured | measured |
+
+**The weekday is the only one measured in all three.** Sunday is carried from
+elsewhere in two of the three years, so a Sunday offset would put a held value in
+the denominator of two thirds of the study. Casualty exposure on a weekday is
+also the quantity the two Bogotá antecedents use.
+
+**Open, and it is a decision**: the weekday alone, or a weighted week of the
+three. The weighted week is more of the travel that happens, and it buys that by
+importing the held Sundays into every year.
+
+The exposure variant, by contrast, is settled by arithmetic: across the 1,080
+unit-actor-day rows of the three years, `INTERPOLATED` and `PANDEMIC_PATCHED`
+differ by 0.000000. All three are survey years, so the pandemic patch reaches
+none of them, and either column gives the same regression.
+
 Least squares admits no offset, so there the response is a rate: the count divided
 by the exposure. The two families therefore answer the same question on different
 scales, and their coefficients compare in sign and significance, not in magnitude.
