@@ -597,33 +597,68 @@ def _report_repeated_years(
     blocks: list[pd.DataFrame],
     log: RunLog,
 ) -> None:
-    """Say so when two consecutive years measure identically in every unit.
+    """Report every pair of consecutive years that measures identically.
 
-    2014 was found this way before it was declared — its file is a copy of 2013's
-    — and it is left out for that reason. This is the instrument that would catch
-    the next one, in a year whose file is not byte-identical but whose contents
-    were never updated. Two consecutive years agreeing to the last metre across
-    thirty units is not something a growing network does.
+    2014 was found this way: its file is a byte-for-byte copy of 2013's. The year
+    is declared all the same, because a panel with a hole costs a reader an
+    explanation and a repetition can simply be stated — so this is what states it,
+    on every run, instead of leaving the reader to find out.
+
+    A repetition the declaration already names is reported as a fact of the
+    delivery, with the reason it gives. One it does not name is a warning, because
+    two consecutive years agreeing to the last metre across thirty units is not
+    something a growing network does, and the second occurrence of that would be a
+    file nobody had looked at.
     """
     years = predictor.years
+    declared = {(repeat.earlier, repeat.later): repeat.reason for repeat in predictor.repeated_years}
+    found: set[tuple[int, int]] = set()
+
     for (earlier, first), (later, second) in zip(zip(years, blocks), zip(years[1:], blocks[1:])):
         aligned = first.set_index(config.AREA_CODE_COL)[config.PREDICTOR_MEASURE_COL]
         against = second.set_index(config.AREA_CODE_COL)[config.PREDICTOR_MEASURE_COL]
-        if aligned.index.symmetric_difference(against.index).empty and np.allclose(
+        if not aligned.index.symmetric_difference(against.index).empty or not np.allclose(
             aligned.to_numpy(dtype=float),
             against.reindex(aligned.index).to_numpy(dtype=float),
             rtol=0,
             atol=config.SERIES_IDENTICAL_TOLERANCE,
         ):
+            continue
+
+        found.add((earlier, later))
+        if (earlier, later) in declared:
+            log.info(
+                "%s: %d and %d measure identically in all %d units, as declared — %s",
+                predictor.name,
+                earlier,
+                later,
+                len(aligned),
+                declared[(earlier, later)],
+            )
+        else:
             log.warn(
-                "%s: %d and %d measure identically in all %d units, to within %g; "
-                "either the network did not move at all or one file is a copy of the "
-                "other, and the second is what happened to 2014",
+                "%s: %d and %d measure identically in all %d units, to within %g, and "
+                "the declaration does not say they should; either the network did not "
+                "move at all or one file is a copy of the other",
                 predictor.name,
                 earlier,
                 later,
                 len(aligned),
                 config.SERIES_IDENTICAL_TOLERANCE,
+            )
+
+    # A declared repetition that is no longer there is worth as much as one that
+    # appears: it means the delivery changed under a declaration that still
+    # explains the old one.
+    for pair, reason in declared.items():
+        if pair not in found:
+            log.warn(
+                "%s: %d and %d are declared as the same state (%s), but they no longer "
+                "measure the same; the delivery has changed or the declaration is stale",
+                predictor.name,
+                pair[0],
+                pair[1],
+                reason,
             )
 
 

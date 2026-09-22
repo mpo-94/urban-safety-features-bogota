@@ -126,7 +126,7 @@ Only one assertion is defensible here.
   different question from risk per trip, and the two must not be multiplied into
   one denominator.
 
-### Which day, which is still open
+### Which day, and why the weekday
 
 The exposure panel is one number per unit, year, actor type **and kind of day**,
 and the offset needs one number. The kind of day is not a detail: in 2019 the
@@ -147,9 +147,10 @@ elsewhere in two of the three years, so a Sunday offset would put a held value i
 the denominator of two thirds of the study. Casualty exposure on a weekday is
 also the quantity the two Bogotá antecedents use.
 
-**Open, and it is a decision**: the weekday alone, or a weighted week of the
-three. The weighted week is more of the travel that happens, and it buys that by
-importing the held Sundays into every year.
+**Settled on 2026-09-21: the weekday alone.** A weighted week would carry more
+of the travel that happens and would buy it by importing the held Sundays into
+every year. The decision lives in `config.MODEL_EXPOSURE_DAY_TYPE`, so the
+regression stage reads it rather than restating it.
 
 The exposure variant, by contrast, is settled by arithmetic: across the 1,080
 unit-actor-day rows of the three years, `INTERPOLATED` and `PANDEMIC_PATCHED`
@@ -358,11 +359,10 @@ snapshot carries no year.
 Two things were missing, and they were not the same size.
 
 **The cycleway is built**, on 2026-09-21, and it is the first variable in the
-study with a year. Twelve of the thirteen delivered files are declared and
-measured; 2014 is not, because its file is a byte-for-byte copy of 2013's. Each
-file was checked to be a stock and not a flow before anything was declared, by
-three tests that agree. The long table goes from 390 rows to 750 and no figure of
-any deliverable changed. See D45.
+study with a year. All thirteen delivered files are declared and measured. Each
+was checked to be a stock and not a flow before anything was declared, by three
+tests that agree. The long table goes from 390 rows to 780 and no figure of any
+deliverable changed. See D45.
 
 What it cost, which is the estimate the signage work should be planned against:
 `source_files` and `source_citation` on `StaticPredictor` with their validation,
@@ -440,14 +440,13 @@ falls short of the city total, correctly, because 18.27 km² of urban area lies
 outside the units. What has to be reported is how much falls outside each year,
 and that it does not move: three per cent one year and twelve the next is a
 defect. **Built and reporting**: the cycleway captures between 99.87% and 100.00%
-of its layer across the twelve years, a spread of 0.13 points, and a spread above
+of its layer across the thirteen years, a spread of 0.13 points, and a spread above
 five points is a warning.
 
-**The 2014 cycleway file is a byte-for-byte copy of 2013**, and it is therefore
-not declared. The instrument that would catch the next one is built: if two
-consecutive years of a series measure identically in every unit, to within a
-nanometre, the run says so. It was tested by declaring 2014 on purpose, and it
-fires.
+**The 2014 cycleway file is a byte-for-byte copy of 2013**, and the year is
+declared with that repetition declared beside it, so every run states it. An
+undeclared repetition is a warning instead, and so is a declared one that stops
+being true.
 
 **Relocations**, quantified rather than assumed.
 
@@ -456,9 +455,12 @@ fires.
 2014, which is the same file as 2013, the delivery looks like one state of the
 network labelled three times. It is exported as 2015 because that is what the
 delivery calls it, but a cycleway coefficient estimated at 2015 may be reading a
-2013 network against 2015 casualties. **This is open and it is a decision, not a
-measurement**: either the chapter says it, or the year moves. See section 19 of
-the verification report.
+2013 network against 2015 casualties.
+
+**Settled on 2026-09-21**: the years keep their own labels, 2013, 2014 and 2015,
+and the text says they carry the same values where it matters. The repetition is
+declared in `config.CYCLEWAY_REPEATED_YEARS` and reported on every run, so it is
+stated rather than discovered. See section 19 of the verification report.
 
 **Units with no cycleway**, because a variable that is zero in many units has
 little variance, and that has to be known before its coefficient is interpreted.

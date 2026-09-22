@@ -996,13 +996,20 @@ TIME_COVERAGES: tuple[str, ...] = (SNAPSHOT_COVERAGE, ANNUAL_SERIES_COVERAGE)
 # with 85.3% of their segments appearing once — which is why they are still not
 # measured and this is.
 #
-# 2014 IS DELIBERATELY ABSENT. `cicl2014_lines` is a byte-for-byte copy of
-# `cicl2013_lines`: identical SHA-256 on both the .shp and the .dbf, identical
-# file sizes, the same 5,898 segments and the same 1,931 codes. That is a file
-# copied in the delivery, not a year in which the network did not change, and
-# declaring it would manufacture an observation of a year nobody measured. The
-# gap is the honest reading, and it is the same principle as D10: a value that is
-# missing must not be made to look like a value that was observed.
+# THIRTEEN YEARS, 2014 INCLUDED, AND ITS REPETITION DECLARED BESIDE IT.
+# `cicl2014_lines` is a byte-for-byte copy of `cicl2013_lines` — identical SHA-256
+# on both the .shp and the .dbf, the same 5,898 segments, the same 1,931 codes —
+# and 2015 measures within 62 metres of both. The three labels cover one state of
+# the network.
+#
+# It was briefly left out, on the reasoning that declaring it would manufacture an
+# observation nobody made. My advisor and I settled it the other way on
+# 2026-09-21: a panel with a hole in it costs a reader an explanation every time,
+# and the repetition is a fact about the delivery that can simply be stated. So
+# the year is declared and what it repeats is declared with it, in
+# CYCLEWAY_REPEATED_YEARS below. **Declaring a repetition is not the same as
+# hiding one**, and what makes it the first rather than the second is that it is
+# written down and reported on every run.
 # How far the share of a layer falling inside the units may move across the years
 # of one series before the run says so. The footprint is fixed, so the share is a
 # property of the layer: a couple of points of drift is the network extending
@@ -1016,9 +1023,36 @@ SERIES_IDENTICAL_TOLERANCE = 1e-9
 
 
 CYCLEWAY_FILES_BY_YEAR: Mapping[int, str] = {
-    year: f"cicl{year}_lines.shp"
-    for year in (2012, 2013, 2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024)
+    year: f"cicl{year}_lines.shp" for year in range(2012, 2025)
 }
+
+
+@dataclass(frozen=True)
+class RepeatedYears:
+    """Two years of a series known to carry the same state, and why.
+
+    Every series has its consecutive years compared, and any pair measuring
+    identically in every unit is reported. Without a place to declare the ones
+    already understood, the cycleway would raise the same warning on every run
+    forever, which is how a warning stops being read. Declared here it is reported
+    as a fact of the delivery; anything undeclared is still a warning.
+    """
+
+    earlier: int
+    later: int
+    reason: str
+
+
+CYCLEWAY_REPEATED_YEARS: tuple[RepeatedYears, ...] = (
+    RepeatedYears(
+        earlier=2013,
+        later=2014,
+        reason=(
+            "the 2014 file is a byte-for-byte copy of the 2013 one, same SHA-256 on the "
+            ".shp and on the .dbf; the delivery published one state of the network twice"
+        ),
+    ),
+)
 
 
 @dataclass(frozen=True)
@@ -1068,6 +1102,10 @@ class StaticPredictor:
     # list — there is nowhere to express one without the other.
     source_file: str | None = None  # the file inside that layer's folder
     source_files: Mapping[int, str] | None = None  # year -> file, for a series
+    # Pairs of years the delivery is known to have published twice. Declared so a
+    # repetition that is already understood is reported as such instead of raising
+    # the same warning on every run, while an undeclared one still warns.
+    repeated_years: tuple[RepeatedYears, ...] = ()
     # Set only where the variable is measured on part of its layer. Defaulted so
     # that the nine variables measured whole say nothing about a rule they do not
     # have, and the one that has a rule states it.
@@ -1125,6 +1163,22 @@ class StaticPredictor:
                 f"{self.name}: name exactly one of source_file and source_files, "
                 "not both and not neither"
             )
+        # A declared repetition has to name two years the variable actually
+        # covers, and consecutive ones: the check that reads it compares each year
+        # against the one before it, so a pair it would never look at is a
+        # declaration that silences nothing.
+        for repeat in self.repeated_years:
+            unknown = [y for y in (repeat.earlier, repeat.later) if y not in self.years]
+            if unknown:
+                raise ValueError(
+                    f"{self.name}: declares {repeat.earlier} and {repeat.later} as the same "
+                    f"state, but {', '.join(str(y) for y in unknown)} is not a year it covers"
+                )
+            if self.years.index(repeat.later) - self.years.index(repeat.earlier) != 1:
+                raise ValueError(
+                    f"{self.name}: declares {repeat.earlier} and {repeat.later} as the same "
+                    "state, but they are not consecutive in the declared years"
+                )
 
     @property
     def years(self) -> tuple[int, ...]:
@@ -1423,6 +1477,7 @@ STATIC_PREDICTORS: tuple[StaticPredictor, ...] = (
         source_layer="ciclo_lines",
         source_citation=("CiclorrutaBogotaDC",),
         source_files=CYCLEWAY_FILES_BY_YEAR,
+        repeated_years=CYCLEWAY_REPEATED_YEARS,
         geometry=LINE_GEOMETRY,
         method=LINE_LENGTH_METHOD,
         measures="kilometres of cycleway per square kilometre, the network in place that year",
@@ -2400,6 +2455,15 @@ WEEKDAY_TYPE = "WEEKDAY"
 SATURDAY_TYPE = "SATURDAY"
 SUNDAY_TYPE = "SUNDAY"
 DAY_TYPES: tuple[str, ...] = (WEEKDAY_TYPE, SATURDAY_TYPE, SUNDAY_TYPE)
+
+# The one kind of day the models put in the offset, settled on 2026-09-21. The
+# exposure panel holds three numbers per unit, year and actor type and a regression
+# needs one, and the choice is not arbitrary: across 2015, 2019 and 2023 the
+# weekday is the only kind of day measured in all three. Sunday is a held value in
+# 2015 and 2019, Saturday is interpolated in 2019, and either would put a value
+# nobody surveyed into the denominator of two thirds of the study. It is also the
+# quantity both Bogotá antecedents use.
+MODEL_EXPOSURE_DAY_TYPE = WEEKDAY_TYPE
 
 # What each is called in a figure that goes into the thesis. "Día típico" and not
 # "día hábil": the survey's own vocabulary is the working-day mobility of a

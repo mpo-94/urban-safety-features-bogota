@@ -128,16 +128,16 @@ import rather than reaching chapter 3.
 | `points/camaras_salvavidas_bogota` | point | speed camera density |
 | `points/estacion_localidad` | point | TransMilenio station density |
 | `points/arbolado_urbano` | point | the three tree variables |
-| `lines/ciclo_lines` | line | cycleway length per unit area, **twelve years, 2012-2024** |
+| `lines/ciclo_lines` | line | cycleway length per unit area, **thirteen years, 2012-2024** |
 | `lines/Líneas de deseo Matriz Origen Destino` | line | **nothing, since 2019 landed** — the retired exposure layer |
 
 ### Delivered and not read
 
-**The cycleway is now read**, and it is the first variable with a year: twelve of
-its thirteen files, measured as the network in place that year. `cicl2014_lines`
-is deliberately not declared — it is a byte-for-byte copy of `cicl2013_lines`,
-identical SHA-256 on both the .shp and the .dbf, so it is a file duplicated in the
-delivery and not an observation of 2014. See D45.
+**The cycleway is now read**, and it is the first variable with a year: all
+thirteen files, measured as the network in place that year. `cicl2014_lines` is a
+byte-for-byte copy of `cicl2013_lines` — identical SHA-256 on both the .shp and
+the .dbf — and the year is declared anyway, with the repetition declared beside it
+so every run states it. 2015 measures within 62 metres of both. See D45.
 
 Three layers are still **delivered and pending**, and they are pending on two
 different things. `points/Señalizacion_Vertical` has a stock — its 2016 file is a

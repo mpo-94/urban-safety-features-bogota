@@ -3727,11 +3727,10 @@ writes, at the start and at the end, and warns when it writes only one.
 
 ## 19. The cycleway series, the first variable with a year
 
-Run `run_20260921_215112`, route `predictors`. **Every one of the nineteen checks
-passed.** The decision is D45.
+Route `predictors`, run `run_20260921_223055`. **Every check passed.** The decision is D45.
 
-The long table goes from 390 rows to 750: thirteen variables over thirty units,
-plus one variable over thirty units and twelve years. No figure of any deliverable
+The long table goes from 390 rows to 780: thirteen variables over thirty units,
+plus one variable over thirty units and thirteen years. No figure of any deliverable
 changed, because a wide table built without a year still carries exactly the
 thirteen variables that have none.
 
@@ -3751,24 +3750,30 @@ The two horizontal marking layers were put through the same tests and fail all
 three — **85.3%** of their segments appear in a single year — which is the
 difference between a layer that is measured here and two that are not.
 
-### 2014 is a copy of 2013, and is not declared
+### 2014 is a copy of 2013, and is declared as such
 
 `cicl2014_lines` has the same SHA-256 as `cicl2013_lines` on both the `.shp`
 (`0b003619337f4a13…`, 3,227,156 bytes) and the `.dbf`
 (`9c450a25bdecdb9f…`, 643,140 bytes), the same 5,898 segments and the same 1,931
 codes. A file duplicated in the delivery is not a year in which a growing network
-stood still, and declaring it would have put an observation in the panel that
-nobody measured.
+stood still.
 
-**The instrument that would catch the next one is built and was tested.** If two
-consecutive years of a series measure identically in every unit, to within
-1e-9 km, the run warns. Declaring 2014 on purpose fires it:
+**The year is declared all the same, and so is the repetition.** Settled on
+2026-09-21: a panel with a hole costs a reader an explanation, and the repetition
+is a fact that can be stated. `CYCLEWAY_REPEATED_YEARS` declares which years
+repeat and why, and every run says so:
 
 ```
 CYCLEWAY_LENGTH_DENSITY: 2013 and 2014 measure identically in all 27 units,
-to within 1e-09; either the network did not move at all or one file is a copy
-of the other, and the second is what happened to 2014
+as declared - the 2014 file is a byte-for-byte copy of the 2013 one, same
+SHA-256 on the .shp and on the .dbf
 ```
+
+**An undeclared repetition is still a warning**, because the second occurrence
+would be a file nobody had looked at, and so is a declared one that stops being
+true. The declaration is checked at import: it has to name two consecutive years
+the variable actually covers, so a pair the check would never reach cannot
+silence anything.
 
 ### What the pipeline measured, against the control
 
@@ -3780,6 +3785,7 @@ route, summing thirty units, and the gap is the cycleway that lies outside them.
 |---:|---:|---:|---:|---:|
 | 2012 | 161.3 km | 161.3 km | 100.00% | 26 |
 | 2013 | 163.2 km | 163.2 km | 100.00% | 27 |
+| 2014 | 163.2 km | 163.2 km | 100.00% | 27 |
 | 2015 | 163.1 km | 163.1 km | 100.00% | 27 |
 | 2016 | 199.0 km | 199.0 km | 100.00% | 29 |
 | 2017 | 316.4 km | 316.0 km | 99.87% | 30 |
@@ -3830,10 +3836,11 @@ casualties, and the chapter has to say so or the year has to move.
 
 | Check | What it caught if it failed |
 |---|---|
-| The grid holds exactly the declared cells given each variable's years | 750 of 750 |
+| The grid holds exactly the declared cells given each variable's years | 780 of 780 |
 | A snapshot carries no year and a series carries one on every row | both directions, so neither kind slips through |
 | The series carries exactly the years it declares | in both directions: a year measured but not declared could only come from an undeclared file, and one declared but not measured is a silent gap |
-| Every file of every year exists on disk | 25 files, not 14: a series whose 2019 file had gone would have passed on its 2012 one |
+| A declared repetition is found, and an undeclared one is not | checked at import to name two consecutive declared years, and at run time in both directions |
+| Every file of every year exists on disk | 26 files, not 14: a series whose 2019 file had gone would have passed on its 2012 one |
 | The dictionary covers the wide table, minus the variables with a year | a variable that belongs in no table with no year in it |
 
 ### Every layer now declares where it came from

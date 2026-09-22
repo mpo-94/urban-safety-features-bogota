@@ -138,12 +138,13 @@ whose origin is not declared — so a wrong entry stops the run instead of
 misinforming a reader.
 
 **One variable carries a year and three layers are still to come.** The cycleway
-is measured over twelve years, 2012 to 2024, and is the first variable with a
+is measured over thirteen years, 2012 to 2024, and is the first variable with a
 time dimension: a variable declares one file per year, the measurement runs once
 per year, and the long table fills the year column it already carried. Each
 year's file was checked to be the network in place rather than what was built
-that year before any of it was declared. 2014 is deliberately absent, because its
-file is a byte-for-byte copy of 2013's.
+that year before any of it was declared. Where the delivery published one state
+twice — 2013 and 2014 are the same file — the repetition is declared beside the
+years and reported on every run, and an undeclared one is a warning.
 
 Of the three signage layers left, vertical signage has a full inventory to
 accumulate onto and needs a stock builder; the two horizontal marking layers

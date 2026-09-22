@@ -5729,8 +5729,8 @@ deliberately rather than by extension.
 2014. **Open** on the three signage layers, which need the same mechanism and a
 stock they do not have.
 
-**Built:** Yes. `CYCLEWAY_LENGTH_DENSITY`, twelve years, in the `predictors`
-route. The long table goes from 390 rows to 750.
+**Built:** Yes. `CYCLEWAY_LENGTH_DENSITY`, thirteen years, in the `predictors`
+route. The long table goes from 390 rows to 780.
 
 **Context.** Thirteen variables were measured as single snapshots, and the long
 table carried a `YEAR` column that was null on every row, put there so that the
@@ -5755,15 +5755,31 @@ detail of bookkeeping: a regression on a stock asks how much cycleway a unit has
 and a regression on a flow asks how much was built last year, and those are
 different questions with different coefficients.
 
-**Decision — 2014 is not declared, because there is no 2014.**
+**Decision — 2014 is declared, and what it repeats is declared beside it.**
 `cicl2014_lines` is a byte-for-byte copy of `cicl2013_lines`: identical SHA-256
 on both the `.shp` and the `.dbf`, identical file sizes, the same 5,898 segments,
-the same 1,931 codes. That is a file duplicated in the delivery and not a year in
-which a growing network did not move. Declaring it would manufacture an
-observation of a year nobody measured, and the reader of the panel could not tell
-it from a real one. The gap is the honest reading, and it is D10 again: a value
-that is missing must not be made to look like a value that was observed. Four
-lines of configuration reverse it if the copy ever turns out to be deliberate.
+the same 1,931 codes. And 2015 measures within 62 metres of both, so three labels
+cover one state of the network.
+
+The year was briefly left out, on the reasoning that declaring it would
+manufacture an observation nobody made. **My advisor and I settled it the other
+way on 2026-09-21.** A panel with a hole costs a reader an explanation every time
+they meet it, and the repetition is a plain fact about the delivery that can be
+stated instead. So the years are all thirteen, and `CYCLEWAY_REPEATED_YEARS`
+declares which of them repeat and why.
+
+**Declaring a repetition is not the same as hiding one**, and what makes it the
+first is that the run says so every time. The check that compares consecutive
+years reports a declared repetition as a fact of the delivery, with the reason
+the declaration gives; an undeclared one is still a warning, because the second
+occurrence would be a file nobody had looked at. A declared repetition that stops
+being true is also a warning, because that means the delivery changed under a
+declaration that still explains the old one.
+
+This is not a departure from D10. D10 says a missing value must not be made to
+look like an observed one, and nothing here does: the value in 2014 *was*
+observed, once, and published twice. What D10 forbids is the silence, and the
+declaration is the opposite of silence.
 
 **Decision — the year lives in the declaration, not in a filename template.** A
 series declares `source_files`, a mapping of year to file, and `__post_init__`
@@ -5771,8 +5787,8 @@ requires that a variable declared as a series have one and that a snapshot have 
 single `source_file` instead. The two statements — what the variable covers in
 time, and which files it reads — cannot then disagree. A template like
 `cicl{year}_lines.shp` with a range beside it would have been shorter and would
-have had nowhere to say that 2014 is absent: the gap would have had to live in a
-comment, where nothing reads it.
+have had nowhere to say which years repeat: that fact would have had to live in a
+comment, where nothing reads it and nothing checks it.
 
 **Decision — the measurement takes a year it is allowed to ignore.** All three
 measurement functions gained a `year` parameter and `measure` loops over the
@@ -5794,7 +5810,7 @@ have been a methodological choice hidden in a function signature.
 
 **Decision — a series is summarised per year, never pooled.** The statistics
 table gains a `YEAR` column and reports one row per variable and year. Pooling
-twelve years would report a minimum from 2012 and a maximum from 2023, so the
+thirteen years would report a minimum from 2012 and a maximum from 2023, so the
 spread it published would be the growth of the network rather than its spread
 across the city.
 
