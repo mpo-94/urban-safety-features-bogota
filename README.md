@@ -432,4 +432,20 @@ with no raster layer in them; everything else is PNG.
 
 ## Status
 
-Work in progress.
+Work in progress. What exists and runs: the casualty matrix in both its observed
+and rho-corrected forms, the fifteen urban predictors over thirteen layers, the
+travel exposure built from five mobility surveys and interpolated across the
+years between them, the resident population panel, and the maps.
+
+**The models are next, and the first of them is a step rather than the answer.**
+Before the panel model the study is designed around, there is a set of
+cross-sectional regressions at three years — least squares and a count GLM, on
+both casualty datasets, one regression per pair of road user types. They are what
+says which associations are worth carrying into the panel, and what the panel will
+have to account for: whether the residuals are spatially structured, which
+candidates survive selection in independent contexts, and how much of the
+apparent signal is the change in recording practice rather than the city.
+
+`docs/regression-inventory.md` is the plan they are written against, and
+`docs/design-decisions.md` D48 is why this step is separate from the methodology
+the thesis declares.

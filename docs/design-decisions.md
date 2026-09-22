@@ -74,6 +74,7 @@ carried, so the second is larger for the same underlying records.
 | D45 | The first variable with a year, and the shape a series takes | Methodological and structural | Closed on the mechanism, on the stock reading and on 2014 | Yes, the cycleway over thirteen years |
 | D46 | The two horizontal marking layers are flows with no inventory, and no year of them is usable | Methodological | Closed | No, and deliberately |
 | D47 | A series delivered as an inventory plus its movements, and why the stock is a method | Methodological and structural | Closed | Yes, the vertical signage over nine years |
+| D48 | The cross-sections are a first step, not the methodology, and the offset is declared rather than fixed | Methodological | Closed on scope and on the offsets | Pending: this is what the stage is written against |
 
 Methodological decisions: D1-D7, D9, D10, D11, D15, D17, D18, D19, D21, D22, D32, D35,
 D38, D39, D40, D44.
@@ -6077,3 +6078,114 @@ interventions that land outside in each year. For 2017: 1,253 + 58 installations
 
 **Open — nothing.** The four delivered series are resolved: two measured, two
 shown to be unmeasurable.
+
+---
+
+## D48 — The cross-sections are a first step, not the methodology, and the offset is declared rather than fixed
+
+**Kind:** Methodological. It decides what this stage is for, and therefore what
+belongs in it.
+
+**Status:** Closed on scope, on which parts of the declared methodology apply and
+on the offsets. The panel is deferred by decision and not by difficulty.
+
+**Built:** Pending. This entry is what the implementation is written against.
+
+**Context.** The anteproyecto declares one model: a count GLM on the UPL-by-year
+panel, with the family chosen by overdispersion, fixed against random effects
+decided by Hausman, correlated random effects if Hausman rejects, AIC and BIC
+between non-nested specifications, and Moran's I on the residuals. That is the
+methodology of the thesis and it has not changed.
+
+**These regressions are not that.** My advisor and the panel adviser asked for a
+first step before the panel is built: least squares and a GLM at 2015, 2019 and
+2023, on both casualty datasets, with a table of coefficients and a figure of
+observed against predicted for each of the eight pairs. That is what this stage
+produces. Writing it down matters because the chapter has to present it as a step
+and not as the study's answer, and because a reader who knows the anteproyecto
+will otherwise ask why Hausman is missing.
+
+**Decision — what does not apply, and the reason is structural.** Hausman, fixed
+effects, random effects and correlated random effects all exist to separate
+variation between units from variation within a unit over time. **A cross-section
+has no within-unit variation**: each unit contributes one row. There is no unit
+effect to absorb or to correlate. These are not omitted for convenience; applying
+them here would not give a poor answer, it would give an impossible one. They
+belong to the panel and they wait for it.
+
+An earlier version of this plan proposed fitting the declared panel here anyway,
+to produce the table that justifies choosing cross-sections instead. That was
+wrong and is recorded as such: it answers a question nobody has asked yet. The
+panel is the next stage, not an alternative being rejected.
+
+**Decision — what applies because it is the regression and not an addition.**
+Two things look like methodological ceremony and are not:
+
+- **Poisson against negative binomial.** A count GLM is one of the two, so
+  choosing is answering a question the request itself poses. It is not cosmetic:
+  fitting Poisson to overdispersed counts makes the standard errors too small,
+  and then every interval and every p-value in the table is wrong. The run fits
+  Poisson, reads the dispersion and refits as negative binomial when it exceeds
+  the declared threshold.
+- **Selection among subsets by AIC.** Forced by the data, not chosen. Fifteen
+  candidates against thirty observations cannot be fitted together — half as many
+  degrees of freedom as parameters, with pairs correlated at 0.88 — so the search
+  runs over combinations of two and three, which is the usual limit of about ten
+  observations per predictor. Once there are 560 fits there has to be a criterion
+  that ends the search in one model, and that one model is what the figure draws.
+
+**Decision — Moran's I is kept, and it is kept for the next stage.** It is not a
+panel diagnostic: Moran's I is defined on a cross-section, and the thirty units
+are contiguous. It changes no coefficient. What it does is say whether the
+residuals carry spatial structure, which is what has to be known **before** the
+panel is built — if the cross-section is spatially autocorrelated, the panel will
+need a spatial term, and finding that out now is cheaper than after. The
+anteproyecto's own limitations anticipate it.
+
+**Decision — the offset is declared, and a quantity in it leaves the predictors.**
+The anteproyecto fixes the offset as the exposure of the affected mode. That stays
+the first one, and it is no longer the only one the code can express, because the
+advisor may ask for the same regressions under a different denominator. An
+`OffsetSpec` names the quantities whose logarithms it sums, and three are declared:
+
+| Offset | What the coefficients then read as |
+|---|---|
+| exposure of the affected mode | risk per trip of the mode that is hurt — the anteproyecto's |
+| that exposure times the counterpart's | risk per trip, with the counterpart's volume held proportional |
+| resident population | burden per resident, comparable with the regional literature |
+
+**A quantity that enters the offset leaves the candidate predictors**, because
+putting it in both estimates its coefficient and fixes it at one at the same time.
+The candidate set is therefore derived from the offset and not maintained by hand:
+fifteen candidates and 560 models under the first, fourteen and 455 under the
+other two.
+
+**The offset also changes the least squares response.** Least squares admits no
+offset, so the response there is the count divided by the same product. Changing
+the offset moves both families coherently, which is what keeps them comparable.
+
+**One run, not three.** The offsets are a column of every exported table, not
+separate executions, because the point of running three is to compare them.
+
+**Decision — the exported figures carry results, not attestations.** An earlier
+version of this plan proposed four table-figures documenting that each
+methodological commitment had been honoured. Three of them were ceremony and are
+dropped: the pair threshold is one sentence, since all eight pairs pass in all
+three years; the family choice is a column of the models table; and whether the
+declared set was walked exhaustively is a check on the run, not something an
+advisor should have to look at. **The fourth stays because it is a result**: which
+variable won how many times across the forty-eight combinations of pair, year,
+dataset and family. If the winner changes every time, the selection is noise and
+the chapter has to say so; if one variable wins in independent contexts, that is
+evidence, and more convincing than any single p-value.
+
+**The p-values are not honest p-values, and the tables say so.** The best of 560
+models is chosen and the significance of the winner is then reported, which
+inflates significance by construction. The European study being replicated has the
+same defect. It is not fixed by more computation; it is fixed by stating it, so
+the coefficients table carries the caveat beside the column.
+
+**What is deferred, explicitly, so the chapter can say so.** The panel with its
+fixed or random effects and its Hausman test; whether a second family of models on
+persons killed is built (D3); and which of the fifteen candidates are finally
+excluded, which my advisor will decide.

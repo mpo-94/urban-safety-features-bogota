@@ -15,17 +15,23 @@ year. Finding that out before building anything is what this document is for.
 
 ## 0. The design, in one page
 
-Three separate cross-sections, not a panel. One regression per pair of actor
-types, per year: **thirty rows, one per unit.**
+**This is a first step and not the methodology.** The anteproyecto declares one
+model — a count GLM on the UPL-by-year panel, with Hausman deciding between fixed
+and random effects. That has not changed and it is still what the thesis
+estimates. What my advisor and the panel adviser asked for, before the panel is
+built, is this: least squares and a GLM at 2015, 2019 and 2023, on both casualty
+datasets, with a table of coefficients and a figure of observed against predicted
+for each pair. **The panel is the next stage, not an alternative being rejected
+here.** D48 is the decision, and the chapter has to present this the same way.
 
-The panel was abandoned for a reason the audit had already found and this stage
-confirms: a fixed-effects model cannot estimate the coefficient of a variable
-that does not change in time, so thirteen of the fifteen candidates would be
-absorbed by the unit effect. **A cross-section has no such problem**, because
-there is no unit effect to absorb anything. Three cross-sections are therefore
-not a fallback: they are the design these data support, and they still allow the
-year-to-year comparison, by putting three separately estimated coefficients side
-by side.
+Three separate cross-sections. One regression per pair of actor types, per year:
+**thirty rows, one per unit.**
+
+A cross-section is also what lets every candidate be estimated at all. A
+fixed-effects model cannot estimate the coefficient of a variable that does not
+change in time, so thirteen of the fifteen would be absorbed by the unit effect;
+here there is no unit effect to absorb anything. The year-to-year comparison
+survives, by putting three separately estimated coefficients side by side.
 
 | | |
 |---|---|
@@ -33,9 +39,9 @@ by side.
 | Response | affected parties of type *i* whose counterpart was type *j* |
 | Pairs | eight, listed in section 2 |
 | Years | 2015, 2019, 2023 |
-| Offset | the exposure of the affected mode |
-| Candidate predictors | fifteen, listed in section 5; nothing excluded yet |
-| Models per pair and year | 560, all combinations of two or three |
+| Offsets | three, declared in section 3; the anteproyecto's is the first |
+| Candidate predictors | fifteen, listed in section 5, less whatever the offset takes |
+| Models per pair and year | 560 under the first offset, 455 under the other two |
 | Families | least squares and generalised linear model |
 | Datasets | observed and rho-corrected, **both, always** |
 
@@ -109,7 +115,7 @@ Reproduce with `tools/respuesta.py`.
 
 ---
 
-## 3. The exposure, and the one offset
+## 3. The exposure, and the offsets
 
 The exposure is built and checked: five survey years, 2005, 2011, 2015, 2019 and
 2023, declared in `config` and measured on `run_20260910_154319`. All three
@@ -118,20 +124,43 @@ regression years are survey years.
 **An offset is a term whose coefficient is fixed at one.** Several quantities can
 be placed in it, because the logarithm of a product is the sum of the logarithms,
 but doing so asserts a proportionality for each of them rather than estimating it.
-Only one assertion is defensible here.
 
-- **The offset is the exposure of the affected mode**, `E_i`. The coefficients then
-  read as risk per trip of the mode that is hurt. Both Bogotá antecedents do this:
-  the pedestrian one uses walking trips, the cyclist one bicycle-kilometres.
-- **The counterpart's exposure, `E_j`, is a candidate predictor**, not part of the
-  offset. Forcing it into the offset would assert an exponent of one, which the
-  literature this work cites contradicts: the safety-in-numbers exponent is around
-  0.4. Estimated instead, its coefficient *is* a measurement of that exponent.
-- **Population is a candidate predictor too**, for the same reason. A second
-  model family with population in the offset is a legitimate separate question —
-  burden per resident, comparable with the regional literature — but it is a
-  different question from risk per trip, and the two must not be multiplied into
-  one denominator.
+**The anteproyecto fixes one: the exposure of the affected mode**, `E_i`, and the
+coefficients then read as risk per trip of the mode that is hurt. Both Bogotá
+antecedents do this — the pedestrian one uses walking trips, the cyclist one
+bicycle-kilometres — and it is the first of the three declared here.
+
+It is no longer the only one the code can express, because my advisor may ask for
+the same regressions under a different denominator. An `OffsetSpec` names the
+quantities whose logarithms it sums, and three are declared:
+
+| Offset | Quantities | The coefficients then read as |
+|---|---|---|
+| `MODE_EXPOSURE` | `E_i` | risk per trip of the mode that is hurt — the anteproyecto's |
+| `BOTH_EXPOSURES` | `E_i` × `E_j` | risk per trip, with the counterpart's volume held proportional |
+| `POPULATION` | residents | burden per resident, comparable with the regional literature |
+
+**A quantity that enters the offset leaves the candidate predictors.** Putting it
+in both would estimate its coefficient and fix it at one at the same time. So the
+candidate set is derived from the offset and never maintained by hand: fifteen
+candidates and 560 models under the first, fourteen and 455 under the other two.
+
+That derivation is also what the second offset asserts and the first does not.
+Forcing `E_j` into the offset claims an exponent of one for the counterpart's
+volume, which the literature contradicts — the safety-in-numbers exponent is
+around 0.4. Under `MODE_EXPOSURE` it is a candidate instead, and **its estimated
+coefficient is a measurement of that exponent**. The two offsets therefore ask
+different questions of the same data, which is the reason for running both rather
+than choosing.
+
+**The offset also changes the least squares response.** Least squares admits no
+offset, so there the response is the count divided by the same product. Changing
+the offset moves both families coherently, which is what keeps their coefficients
+comparable in sign and significance.
+
+**Three offsets are one run and not three.** They are a column of every exported
+table, because the point of running three is to compare them, and three runs would
+put them in three directories and leave the comparison to be done by hand.
 
 ### Which day, and why the weekday
 
@@ -385,7 +414,7 @@ notes should record the finding so the next search does not repeat this one.
 
 Reproduce with `deliverables/diseno/fuentes_variables.py`, which stays with the
 thesis because it reads the vault and chapter 2 rather than the data. See
-section 9.
+section 10.
 
 ---
 
@@ -548,22 +577,96 @@ is computed anyway.
 
 ---
 
-## 8. What the run exports
+## 8. Which parts of the declared methodology this step applies
+
+Settled on 2026-09-22 and recorded as D48. The anteproyecto's Phase 2 is written
+for the panel, so most of it is about a dimension this step does not have. What
+follows is the whole list, with what happens to each and why, because this is what
+the methodology chapter has to be able to say.
+
+| Declared in the anteproyecto | Here | Why |
+|---|---|---|
+| Pair threshold: fewer than half the cells at zero | **reported** | Already measured; all eight pairs pass in all three years, so it drops nothing |
+| Poisson against negative binomial by overdispersion | **applied** | Not ceremony: see below |
+| AIC and BIC between non-nested specifications | **applied** | Forced by fifteen candidates on thirty rows |
+| Moran's I on the residuals | **applied** | Defined on a cross-section, and it informs the panel |
+| 95 % intervals, significance at p < 0.05 | **applied, with a caveat** | How a coefficient is reported |
+| Hausman | **deferred** | Panel |
+| Fixed against random effects | **deferred** | Panel |
+| Correlated random effects | **deferred** | Panel |
+
+### The three that are deferred are deferred structurally
+
+Hausman, fixed effects, random effects and correlated random effects all exist to
+separate variation *between* units from variation *within* a unit over time. **A
+cross-section has no within-unit variation**: each unit contributes one row. There
+is no unit effect to absorb or to correlate. They are not left out for
+convenience — applying them here would not give a poor answer, it would give an
+impossible one.
+
+### Two that look optional and are not
+
+**Poisson against negative binomial.** A count GLM is one of the two, so choosing
+is answering a question the request itself poses rather than adding a criterion to
+it. And the choice is not cosmetic: fitting Poisson to overdispersed counts makes
+the standard errors **too small**, and then every interval and every p-value in
+the table is wrong in the direction that flatters the result. The run fits
+Poisson, reads the dispersion and refits as negative binomial above the declared
+threshold, and the models table records which family each row came from.
+
+**Selection among subsets by AIC.** Forced by the data and not chosen. Fifteen
+candidates against thirty observations cannot be fitted together: half as many
+degrees of freedom as parameters, with pairs correlated at 0.884. The usual limit
+of about ten observations per predictor gives three, which is why the search runs
+over combinations of two and three. And once there are 560 fits, **something has
+to end the search in one model** — and that one model is what the observed-against-
+predicted figure draws. Without a criterion there is no model to plot.
+
+### One that is kept for the stage after this one
+
+**Moran's I** is not a panel diagnostic. It is defined on a cross-section, and the
+thirty units are contiguous. It changes no coefficient; what it says is whether
+the residuals carry spatial structure. That is what has to be known **before** the
+panel is built: if the cross-section is spatially autocorrelated, the panel will
+need a spatial term, and finding out now costs one line per model instead of a
+rebuild later. The anteproyecto's own limitations already anticipate it.
+
+### The p-values are not honest p-values
+
+The best of 560 models is selected and the significance of the winner is then
+reported, which inflates significance by construction. This is a known defect of
+the method and the European study being replicated carries it too. **It is not
+fixed by more computation.** It is fixed by saying so, which is why the
+coefficients table carries the caveat beside the column and the selection
+frequency table exists: a variable that wins in independent contexts is better
+evidence than any single p-value in the table beside it.
+
+---
+
+## 9. What the run exports
 
 Four tables, because they have four different grains, and a table at the wrong
 grain either repeats values or leaves holes.
 
 | Table | One row per | Carries |
 |---|---|---|
-| `analysis__regression_data` | unit × pair × year | the response, the exposure and the fifteen candidates |
+| `analysis__regression_data` | unit × pair × year | the response, every offset quantity and the fifteen candidates |
 | `analysis__regression_coefficients` | variable × model | the estimate, its standard error, its interval and its p-value |
-| `analysis__regression_models` | model | which variables won, AIC, BIC, n, family, dispersion, Moran's I on residuals |
+| `analysis__regression_models` | model | which variables won, AIC, BIC, n, family, dispersion, Moran's I on residuals, the collinearity flag |
 | `analysis__regression_predictions` | unit × model | observed, predicted, residual |
 
-Each with its `__rho_corrected` counterpart, and a column saying which family.
-They join on the columns `analysis__matrix_long.csv` already uses, which is a
-requirement and not a preference: the dashboard joins these and a table that
-cannot be joined is of no use there.
+Each with its `__rho_corrected` counterpart. **A model is identified by pair,
+year, family and offset**, and all four are columns, so the three offsets and the
+two families are blocks of one table that can be compared rather than separate
+runs that cannot. They join on the columns `analysis__matrix_long.csv` already
+uses, which is a requirement and not a preference: the dashboard joins these and a
+table that cannot be joined is of no use there.
+
+`analysis__regression_data` carries **every** offset quantity in its own column —
+the affected mode's exposure, the counterpart's, the population — rather than one
+column holding whichever the run used. A reader can then recompute any of the
+three denominators from the table itself, and the table does not change shape when
+an offset is added.
 
 Figures follow the existing convention, `figures/<grouping>/<year>/<kind>__<year>`:
 
@@ -577,7 +680,22 @@ figures/regressions/2015/    fit_glm__2015.png          panel of 2 by 4
 figures/regressions/2019/    same
 figures/regressions/2023/    same
 figures/regressions/all_years/  coefficients_glm__all_years.png
+                                table_selection_frequency.png
 ```
+
+**The figures carry results, not attestations.** An earlier version of this plan
+proposed four table-figures showing that each methodological commitment had been
+honoured. Three were ceremony and were dropped on 2026-09-22: the pair threshold
+is one sentence, since all eight pass in all three years; the family choice is a
+column of the models table; and whether the declared set was walked exhaustively
+is a check on the run, not something an advisor should have to look at. They are
+in section 7 as checks, where they belong.
+
+**`table_selection_frequency.png` stays because it is a result.** Which variable
+won how many times across the forty-eight combinations of pair, year, dataset and
+family. If the winner changes every time, the selection is noise and the chapter
+has to say so; if one variable wins in independent contexts, that is evidence, and
+more convincing than any single p-value in the tables beside it.
 
 **The predictor block is the same for all eight pairs of a year**, because the
 predictors are properties of the unit. So a year needs two input tables, not
@@ -594,9 +712,18 @@ The fit figure draws the 45-degree line as the reference, never a line fitted to
 the cloud. The coefficient figure draws the vertical line at zero, so that an
 interval crossing it is visible without reading the table.
 
+**Each figure names its family and its offset in the file name**, for the same
+reason both predictor figure sets carry their set: two figures about to sit side
+by side must not be told apart by which one lacks a suffix.
+
+**The coefficients table-figure carries the caveat about its own p-values**, in a
+note under it and not only in the documentation. A table read on its own must not
+let a reader take a starred coefficient for a finding that survived a test, when
+it is the winner of a search over 560 models.
+
 ---
 
-## 9. How to reproduce every figure here
+## 10. How to reproduce every figure here
 
 All of these run from the project root, read only, and write nothing:
 
