@@ -13,6 +13,7 @@ import datetime as dt
 import math
 import re
 import unicodedata
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -95,6 +96,21 @@ def resolve_source_path(declared: Path) -> Path:
             )
         resolved = matches[0]
     return resolved
+
+
+def resolve_source_path_or_none(declared: Path) -> Path | None:
+    """The same lookup, answering "is it there?" instead of raising.
+
+    For the checks that ask whether every declared file is on disk. They want to
+    report all the missing ones at once, and a resolver that raises would stop at
+    the first — which is the least useful moment to stop, because the answer a
+    reader needs is the whole list.
+    """
+    try:
+        return resolve_source_path(declared)
+    except FileNotFoundError:
+        return None
+
 
 # ---------------------------------------------------------------------------
 # Source files
@@ -971,6 +987,40 @@ ANNUAL_SERIES_COVERAGE = "annual series"
 TIME_COVERAGES: tuple[str, ...] = (SNAPSHOT_COVERAGE, ANNUAL_SERIES_COVERAGE)
 
 
+# -- the cycleway series ----------------------------------------------------
+# Thirteen files arrive named by year, and the name of a file is not evidence of
+# what it holds. Measured, each one is the network **in place** that year and not
+# what was built in it: the total runs from 161.3 km in 2012 to 474.6 km in 2023,
+# rising every year, and only 8.5% of the 7,725 route codes appear in a single
+# year. The two horizontal marking layers fail both tests — they are pure flows,
+# with 85.3% of their segments appearing once — which is why they are still not
+# measured and this is.
+#
+# 2014 IS DELIBERATELY ABSENT. `cicl2014_lines` is a byte-for-byte copy of
+# `cicl2013_lines`: identical SHA-256 on both the .shp and the .dbf, identical
+# file sizes, the same 5,898 segments and the same 1,931 codes. That is a file
+# copied in the delivery, not a year in which the network did not change, and
+# declaring it would manufacture an observation of a year nobody measured. The
+# gap is the honest reading, and it is the same principle as D10: a value that is
+# missing must not be made to look like a value that was observed.
+# How far the share of a layer falling inside the units may move across the years
+# of one series before the run says so. The footprint is fixed, so the share is a
+# property of the layer: a couple of points of drift is the network extending
+# towards the edge of the city, and a jump is the layer having changed.
+SERIES_COVERAGE_SPREAD_LIMIT = 0.05  # five percentage points
+
+# Two consecutive years agreeing to within this in every unit are reported as
+# possibly the same file twice. In kilometres, and far below anything a real year
+# of construction would produce.
+SERIES_IDENTICAL_TOLERANCE = 1e-9
+
+
+CYCLEWAY_FILES_BY_YEAR: Mapping[int, str] = {
+    year: f"cicl{year}_lines.shp"
+    for year in (2012, 2013, 2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024)
+}
+
+
 @dataclass(frozen=True)
 class StaticPredictor:
     """One urban feature layer, measured once against every unit.
@@ -990,15 +1040,34 @@ class StaticPredictor:
     # somewhere else and forgotten when a variable is added.
     label_es: str
     source_layer: str  # the layer as the delivered data names it, in Spanish
-    source_file: str  # the file inside that layer's folder
     geometry: str
     method: str
     measures: str  # one line: what the number is, for the run log and the docs
     time_coverage: str
+    # The references.bib key of the layer's published source. Required, and
+    # required for a reason: the study went a long way with no record of where any
+    # of these layers came from, and chapter 3 could not have been written from the
+    # declarations. Carrying the key here rather than in a document means the table
+    # of sources is generated from the same place the measurement reads, so the two
+    # cannot drift. See docs/layer-provenance.md for how each one was established.
+    #
+    # A tuple because one layer takes two: the arterial road file is a join of the
+    # Malla Vial Integral, which supplies the geometry, and the POT decree, which
+    # supplies the classification that selects the arterial subset. Writing it as a
+    # single key would have to drop one of them.
+    source_citation: tuple[str, ...]
     # True where a unit of zero would mean the measurement failed rather than that
     # the feature is absent. An urban planning unit with no roadway is not a fact
     # about Bogotá. Reported loudly; never corrected automatically.
     zero_is_implausible: bool
+    # Exactly one of these two says which file to read, and which one is set has to
+    # agree with `time_coverage`. A snapshot names its single file; an annual series
+    # names one file per year and is measured once per year. Keeping them apart,
+    # rather than letting `source_file` hold a template with the year in it, is what
+    # makes a year present in the delivery and a year the study measures the same
+    # list — there is nowhere to express one without the other.
+    source_file: str | None = None  # the file inside that layer's folder
+    source_files: Mapping[int, str] | None = None  # year -> file, for a series
     # Set only where the variable is measured on part of its layer. Defaulted so
     # that the nine variables measured whole say nothing about a rule they do not
     # have, and the one that has a rule states it.
@@ -1022,11 +1091,82 @@ class StaticPredictor:
                 f"{self.name}: method {self.method!r} measures {self.measurement.geometry} "
                 f"geometry, but the layer is declared as {self.geometry}"
             )
+        if not self.source_citation:
+            raise ValueError(
+                f"{self.name}: no source_citation; every layer has to name the "
+                "references.bib entry it is cited from, so that chapter 3 is written "
+                "from the declaration and not from memory"
+            )
+        # A bare string would pass the emptiness check above and then iterate as
+        # characters wherever the keys are read, which is the one way this field
+        # can be wrong without anything failing.
+        if isinstance(self.source_citation, str):
+            raise ValueError(
+                f"{self.name}: source_citation is a tuple of keys, not a string; "
+                f'write ("{self.source_citation}",) with the trailing comma'
+            )
+        # The shape of the declaration and what it claims about time have to be the
+        # same statement. A series with one file would be measured once and labelled
+        # as a series; a snapshot with several would have years nothing selects
+        # between. Both are silent failures, and both are impossible from here.
+        expects_series = self.time_coverage == ANNUAL_SERIES_COVERAGE
+        if expects_series and not self.source_files:
+            raise ValueError(
+                f"{self.name}: declared as an {ANNUAL_SERIES_COVERAGE} but names no "
+                "source_files; a series is one file per year"
+            )
+        if not expects_series and self.source_files:
+            raise ValueError(
+                f"{self.name}: names source_files but is declared as {self.time_coverage!r}; "
+                f"only an {ANNUAL_SERIES_COVERAGE} is measured once per year"
+            )
+        if bool(self.source_file) == bool(self.source_files):
+            raise ValueError(
+                f"{self.name}: name exactly one of source_file and source_files, "
+                "not both and not neither"
+            )
+
+    @property
+    def years(self) -> tuple[int, ...]:
+        """The years this variable is measured for, empty for a snapshot.
+
+        Sorted, so the long table comes out in the same order on every run and two
+        runs can be diffed line by line — the same reason the predictors themselves
+        are declared in a fixed order rather than listed from a directory.
+        """
+        return tuple(sorted(self.source_files)) if self.source_files else ()
+
+    def file_for(self, year: int | None = None) -> str:
+        """The file to read, for a snapshot or for one year of a series."""
+        if not self.source_files:
+            if year is not None:
+                raise ValueError(
+                    f"{self.name}: asked for the file of {year}, but this is a "
+                    f"{self.time_coverage} and has only one"
+                )
+            assert self.source_file is not None  # guaranteed by __post_init__
+            return self.source_file
+        if year is None:
+            raise ValueError(
+                f"{self.name}: an {ANNUAL_SERIES_COVERAGE} has no single file; ask for a year"
+            )
+        try:
+            return self.source_files[year]
+        except KeyError:
+            raise ValueError(
+                f"{self.name}: no file declared for {year}; the series covers "
+                f"{', '.join(str(y) for y in self.years)}"
+            ) from None
+
+    def path_for(self, year: int | None = None) -> Path:
+        """Where a source file is, built from the declared layer and geometry."""
+        folder = PREDICTORS_DIR / GEOMETRY_FOLDERS[self.geometry] / self.source_layer
+        return folder / self.file_for(year)
 
     @property
     def path(self) -> Path:
-        """Where the source file is, built from the declared layer and geometry."""
-        return PREDICTORS_DIR / GEOMETRY_FOLDERS[self.geometry] / self.source_layer / self.source_file
+        """Where the source file is, for a snapshot. A series has one path per year."""
+        return self.path_for()
 
     @property
     def family(self) -> str:
@@ -1073,6 +1213,7 @@ STATIC_PREDICTORS: tuple[StaticPredictor, ...] = (
         label_es="Andén",
         source_layer="andenes_x_localidad",
         source_file="andenes_x_localidad.shp",
+        source_citation=("AndenBogotaDC",),
         geometry=AREA_GEOMETRY,
         method=AREA_SHARE_METHOD,
         measures="share of the unit covered by sidewalk surface",
@@ -1086,6 +1227,7 @@ STATIC_PREDICTORS: tuple[StaticPredictor, ...] = (
         label_es="Vía arterial",
         source_layer="avenidas_corregidas",
         source_file="avenidas_corregidas.shp",
+        source_citation=("MallaVialArterial", "DecretoPOTBogota"),
         geometry=AREA_GEOMETRY,
         method=AREA_SHARE_METHOD,
         measures="share of the unit covered by arterial road surface",
@@ -1100,6 +1242,7 @@ STATIC_PREDICTORS: tuple[StaticPredictor, ...] = (
         label_es="Calzada",
         source_layer="calzada_x_localidad",
         source_file="calzada_x_localidad.shp",
+        source_citation=("CalzadaBogotaDC",),
         geometry=AREA_GEOMETRY,
         method=AREA_SHARE_METHOD,
         measures="share of the unit covered by carriageway surface",
@@ -1114,6 +1257,7 @@ STATIC_PREDICTORS: tuple[StaticPredictor, ...] = (
         label_es="Parque urbano",
         source_layer="parques_urb",
         source_file="parques_urb.shp",
+        source_citation=("ParquesPOTBogota",),
         geometry=AREA_GEOMETRY,
         method=AREA_SHARE_METHOD,
         measures="share of the unit covered by urban park",
@@ -1127,6 +1271,7 @@ STATIC_PREDICTORS: tuple[StaticPredictor, ...] = (
         label_es="Puente",
         source_layer="puentes",
         source_file="puentes.shp",
+        source_citation=("PuenteBogotaDC",),
         geometry=AREA_GEOMETRY,
         method=AREA_SHARE_METHOD,
         measures="share of the unit covered by bridge deck",
@@ -1139,6 +1284,7 @@ STATIC_PREDICTORS: tuple[StaticPredictor, ...] = (
         label_es="Paraderos SITP",
         source_layer="Paraderos_SITP",
         source_file="Paraderos_SITP.shp",
+        source_citation=("ParaderosSITPBogota",),
         geometry=POINT_GEOMETRY,
         method=POINT_DENSITY_METHOD,
         measures="SITP bus stops per square kilometre",
@@ -1151,6 +1297,7 @@ STATIC_PREDICTORS: tuple[StaticPredictor, ...] = (
         label_es="Semáforos",
         source_layer="Red_Semaforica",
         source_file="Red_Semaforica.shp",
+        source_citation=("RedSemaforicaBogota",),
         geometry=POINT_GEOMETRY,
         method=POINT_DENSITY_METHOD,
         measures="traffic-light controlled intersections per square kilometre",
@@ -1163,6 +1310,7 @@ STATIC_PREDICTORS: tuple[StaticPredictor, ...] = (
         label_es="Cruces peatonales",
         source_layer="crossings",
         source_file="crossings.shp",
+        source_citation=("OSMBogotaCiudad",),
         geometry=POINT_GEOMETRY,
         method=POINT_DENSITY_METHOD,
         measures="pedestrian crossings per square kilometre, extracted from OpenStreetMap",
@@ -1177,6 +1325,7 @@ STATIC_PREDICTORS: tuple[StaticPredictor, ...] = (
         label_es="Cámaras",
         source_layer="camaras_salvavidas_bogota",
         source_file="Camaras_Salvavidas_Bogota.shp",
+        source_citation=("CamarasSalvavidasBogota",),
         geometry=POINT_GEOMETRY,
         method=POINT_DENSITY_METHOD,
         measures="speed enforcement cameras per square kilometre",
@@ -1190,6 +1339,7 @@ STATIC_PREDICTORS: tuple[StaticPredictor, ...] = (
         label_es="TransMilenio",
         source_layer="estacion_localidad",
         source_file="estacion_localidad.shp",
+        source_citation=("EstacionesTroncalesTRANSMILENIO",),
         geometry=POINT_GEOMETRY,
         method=POINT_DENSITY_METHOD,
         measures="TransMilenio trunk stations per square kilometre",
@@ -1217,6 +1367,7 @@ STATIC_PREDICTORS: tuple[StaticPredictor, ...] = (
         label_es="Arbolado completo",
         source_layer="arbolado_urbano",
         source_file="arbolado_urbano.shp",
+        source_citation=("ArboladoUrbanoBogota",),
         geometry=POINT_GEOMETRY,
         method=POINT_DENSITY_METHOD,
         measures="trees per square kilometre, the whole census",
@@ -1236,6 +1387,7 @@ STATIC_PREDICTORS: tuple[StaticPredictor, ...] = (
         label_es="Arbolado sin P1",
         source_layer="arbolado_urbano",
         source_file="arbolado_urbano.shp",
+        source_citation=("ArboladoUrbanoBogota",),
         geometry=POINT_GEOMETRY,
         method=POINT_DENSITY_METHOD,
         measures="trees per square kilometre, the census without the P1 emplacement",
@@ -1249,6 +1401,7 @@ STATIC_PREDICTORS: tuple[StaticPredictor, ...] = (
         label_es="Arbolado códigos U",
         source_layer="arbolado_urbano",
         source_file="arbolado_urbano.shp",
+        source_citation=("ArboladoUrbanoBogota",),
         geometry=POINT_GEOMETRY,
         method=POINT_DENSITY_METHOD,
         measures="trees per square kilometre, only the fifteen U emplacement codes",
@@ -1259,6 +1412,24 @@ STATIC_PREDICTORS: tuple[StaticPredictor, ...] = (
         # worth looking at.
         zero_is_implausible=True,
         source_filter=URBAN_TREES_FILTER,
+    ),
+    # The first variable with a year, and the first line layer measured. It goes
+    # at the end for the same reason the trees did: appending leaves every column
+    # of the wide table and every row of the correlation matrix where it was.
+    StaticPredictor(
+        name="CYCLEWAY_LENGTH_DENSITY",
+        label="Cycleway",
+        label_es="Ciclorruta",
+        source_layer="ciclo_lines",
+        source_citation=("CiclorrutaBogotaDC",),
+        source_files=CYCLEWAY_FILES_BY_YEAR,
+        geometry=LINE_GEOMETRY,
+        method=LINE_LENGTH_METHOD,
+        measures="kilometres of cycleway per square kilometre, the network in place that year",
+        time_coverage=ANNUAL_SERIES_COVERAGE,
+        # The network did not reach every unit in the early years, and it still
+        # does not reach some. A zero is an observation here, not a failure.
+        zero_is_implausible=False,
     ),
 )
 
@@ -1376,6 +1547,28 @@ FIGURE_EXCLUSIONS: tuple[PredictorExclusion, ...] = (
     ),
 )
 
+# A variable with a year is excluded from these sets too, and derived rather than
+# listed so the three signage layers need no entry of their own when they arrive.
+# The reason is structural and not editorial: these figures are drawn from a wide
+# table that has no year in it, so it has no column for a variable that does, and
+# stacking a series' years into one histogram would picture the network growing
+# rather than how it is spread across the city. Such a variable gets its figures
+# from the cross-section of a chosen year, which is the regression stage's work.
+SERIES_FIGURE_EXCLUSIONS: tuple[PredictorExclusion, ...] = tuple(
+    PredictorExclusion(
+        predictor=predictor.name,
+        reason=(
+            f"carries a year ({predictor.years[0]}-{predictor.years[-1]}, "
+            f"{len(predictor.years)} of them) and these figures are drawn without one; "
+            "it is drawn in the cross-section of a chosen year instead"
+        ),
+    )
+    for predictor in STATIC_PREDICTORS
+    if predictor.years
+)
+
+FIGURE_EXCLUSIONS = FIGURE_EXCLUSIONS + SERIES_FIGURE_EXCLUSIONS
+
 FIGURE_EXCLUSION_REASONS: dict[str, str] = {e.predictor: e.reason for e in FIGURE_EXCLUSIONS}
 
 for _excluded in FIGURE_EXCLUSION_REASONS:
@@ -1463,6 +1656,13 @@ PREDICTOR_LABEL_COL = "PREDICTOR_LABEL"
 SOURCE_LAYER_COL = "SOURCE_LAYER"
 SOURCE_FILE_COL = "SOURCE_FILE"
 SOURCE_PATH_COL = "SOURCE_PATH"
+# Empty for a snapshot. A variable with a series lists the years it declares
+# rather than their range, because the cycleway has a gap at 2014 and a range
+# would close it without saying so.
+SOURCE_YEARS_COL = "SOURCE_YEARS"
+# The references.bib key or keys the layer is cited from, so the table of sources
+# in the thesis is generated from the declaration instead of typed beside it.
+SOURCE_CITATION_COL = "SOURCE_CITATION"
 GEOMETRY_COL = "GEOMETRY"
 MEASURES_COL = "MEASURES"
 COMPUTATION_COL = "COMPUTATION"

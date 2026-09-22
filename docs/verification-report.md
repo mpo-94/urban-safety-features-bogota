@@ -905,7 +905,9 @@ says so per variable, in its `FIGURE_SETS` column, which reads `none` for these
 two.
 
 The complete set is eleven and not thirteen for that reason: it is every measured
-variable once each, across the eleven source layers.
+variable once each, across the eleven source layers. Since D45 it is eleven out
+of fourteen: the cycleway carries a year and no figure here has one. See
+section 19.
 
 ### The printed correlation and the drawn one are the same numbers
 
@@ -3720,3 +3722,133 @@ named in D28 and D31 as the route the correction was built in, and this report
 cites past runs by their route. Renaming would falsify records of runs that
 already happened. What is fixed instead is that every run states which datasets it
 writes, at the start and at the end, and warns when it writes only one.
+
+---
+
+## 19. The cycleway series, the first variable with a year
+
+Run `run_20260921_215112`, route `predictors`. **Every one of the nineteen checks
+passed.** The decision is D45.
+
+The long table goes from 390 rows to 750: thirteen variables over thirty units,
+plus one variable over thirty units and twelve years. No figure of any deliverable
+changed, because a wide table built without a year still carries exactly the
+thirteen variables that have none.
+
+### The layer is a stock, and that was established before anything was declared
+
+The thirteen files arrive named by year, and the study's rule is that a name is
+not evidence of what a thing holds. Three independent tests, all agreeing that
+each file is the network **in place** that year rather than what was built in it:
+
+| Test | Result |
+|---|---|
+| Total length by year | 161.3 km in 2012 to 474.6 km in 2023, rising in all but two years, which fall by under a kilometre |
+| Route codes appearing in exactly one year | 656 of 7,725, **8.5%** |
+| Codes carried from one year to the next | mostly contained, losing tens and gaining hundreds |
+
+The two horizontal marking layers were put through the same tests and fail all
+three — **85.3%** of their segments appear in a single year — which is the
+difference between a layer that is measured here and two that are not.
+
+### 2014 is a copy of 2013, and is not declared
+
+`cicl2014_lines` has the same SHA-256 as `cicl2013_lines` on both the `.shp`
+(`0b003619337f4a13…`, 3,227,156 bytes) and the `.dbf`
+(`9c450a25bdecdb9f…`, 643,140 bytes), the same 5,898 segments and the same 1,931
+codes. A file duplicated in the delivery is not a year in which a growing network
+stood still, and declaring it would have put an observation in the panel that
+nobody measured.
+
+**The instrument that would catch the next one is built and was tested.** If two
+consecutive years of a series measure identically in every unit, to within
+1e-9 km, the run warns. Declaring 2014 on purpose fires it:
+
+```
+CYCLEWAY_LENGTH_DENSITY: 2013 and 2014 measure identically in all 27 units,
+to within 1e-09; either the network did not move at all or one file is a copy
+of the other, and the second is what happened to 2014
+```
+
+### What the pipeline measured, against the control
+
+The three control figures in `regression-inventory.md` were measured on the raw
+layer by a script outside the pipeline. The pipeline reaches them by another
+route, summing thirty units, and the gap is the cycleway that lies outside them.
+
+| Year | City total | Inside the thirty units | Captured | Units reached |
+|---:|---:|---:|---:|---:|
+| 2012 | 161.3 km | 161.3 km | 100.00% | 26 |
+| 2013 | 163.2 km | 163.2 km | 100.00% | 27 |
+| 2015 | 163.1 km | 163.1 km | 100.00% | 27 |
+| 2016 | 199.0 km | 199.0 km | 100.00% | 29 |
+| 2017 | 316.4 km | 316.0 km | 99.87% | 30 |
+| 2018 | 362.6 km | 362.2 km | 99.89% | 30 |
+| 2019 | 386.1 km | 385.7 km | 99.90% | 30 |
+| 2020 | 400.9 km | 400.5 km | 99.90% | 30 |
+| 2021 | 437.4 km | 437.0 km | 99.91% | 30 |
+| 2022 | 446.7 km | 446.3 km | 99.91% | 30 |
+| 2023 | 474.6 km | 474.2 km | 99.92% | 30 |
+| 2024 | 473.7 km | 473.3 km | 99.92% | 30 |
+
+**The coverage is stable, which is the point of reporting it.** It runs from
+99.87% to 100.00%, a spread of 0.13 points, and the run warns above five. The
+0.4 km outside from 2017 onwards is the network reaching past the thirty units,
+which is a fact about the footprint and not a loss in the measurement.
+
+The three years the regressions use come out at 0.469, 1.041 and 1.343 km/km² at
+the median, with three units at zero in 2015 and none in 2019 or 2023.
+
+### 2015 is, to sixty-two metres, the network of 2013
+
+Worth stating on its own because 2015 is one of the three years the regressions
+use. Between 2013 and 2015 the whole city changes by **-0.062 km**: fifteen units
+move at all, fourteen of them by less than ten metres, and the entire difference
+is one unit, UPL27, losing 61 metres. The medians of the two years agree to six
+decimal places.
+
+That is not two years of a growing network. Read beside 2014, which is literally
+the same file as 2013, the most economical reading of the delivery is that 2013,
+2014 and 2015 all describe one state of the cycleway network, and that the series
+only starts moving in 2016.
+
+| From | To | Change |
+|---:|---:|---:|
+| 2012 | 2013 | +1.9 km |
+| 2013 | 2015 | **-0.1 km** |
+| 2015 | 2016 | +35.9 km |
+| 2016 | 2017 | +117.0 km |
+| 2017 | 2018 | +46.2 km |
+
+It is measured, declared and exported as 2015, because that is what the delivery
+names it and inventing a different label would be a worse answer than reporting
+this. **What it means for the models is a decision and not a measurement**: a
+cycleway coefficient estimated at 2015 may be reading a 2013 network against 2015
+casualties, and the chapter has to say so or the year has to move.
+
+### The five checks the year added
+
+| Check | What it caught if it failed |
+|---|---|
+| The grid holds exactly the declared cells given each variable's years | 750 of 750 |
+| A snapshot carries no year and a series carries one on every row | both directions, so neither kind slips through |
+| The series carries exactly the years it declares | in both directions: a year measured but not declared could only come from an undeclared file, and one declared but not measured is a silent gap |
+| Every file of every year exists on disk | 25 files, not 14: a series whose 2019 file had gone would have passed on its 2012 one |
+| The dictionary covers the wide table, minus the variables with a year | a variable that belongs in no table with no year in it |
+
+### Every layer now declares where it came from
+
+`source_citation` joined `StaticPredictor` as a required field and a declaration
+without one fails at import. Until this run no predictor layer had a recorded
+origin anywhere in the repository — not in the configuration, not in
+`data-layout.md`, not in `references.bib` — and chapter 3 could not have been
+written from the declarations. Thirteen bibliography entries were added for it;
+`layer-provenance.md` is how each was established and what each delivered file
+says about itself.
+
+The arterial road layer takes two keys, and the reason is visible in its columns:
+it carries `SHAPE_Leng` and `SHAPE_Area` twice, the second pair renamed
+`SHAPE_Le_1` and `SHAPE_Ar_1`, which is what a join of two feature classes leaves
+behind. The geometry is the Malla Vial Integral and the classification that
+selects the arterial subset is Decreto 555 of 2021, stamped on all 33,015 records.
+

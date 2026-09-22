@@ -103,8 +103,17 @@ a layer, so the folder is a path segment and the verification happens elsewhere.
 
 ## The layers inside the predictor bundle
 
-Thirteen variables are measured over eleven layers. The declaration in
-`config.STATIC_PREDICTORS` is authoritative; this is the arrangement on disk.
+Fourteen variables are measured over twelve layers, one of them with a year. The
+declaration in `config.STATIC_PREDICTORS` is authoritative; this is the
+arrangement on disk.
+
+**Where each of these layers came from is a different question, and it is in
+[`layer-provenance.md`](layer-provenance.md).** This file says where a file has
+to sit for the pipeline to find it; that one says who produced it and under
+which entry of the bibliography it can be cited. Every layer the pipeline reads
+has a key as of 2026-09-22, and `config.StaticPredictor` now carries it in a
+required `source_citation` field, so a layer without a declared origin fails at
+import rather than reaching chapter 3.
 
 | Folder | Geometry | Read by |
 |---|---|---|
@@ -119,14 +128,24 @@ Thirteen variables are measured over eleven layers. The declaration in
 | `points/camaras_salvavidas_bogota` | point | speed camera density |
 | `points/estacion_localidad` | point | TransMilenio station density |
 | `points/arbolado_urbano` | point | the three tree variables |
+| `lines/ciclo_lines` | line | cycleway length per unit area, **twelve years, 2012-2024** |
 | `lines/Líneas de deseo Matriz Origen Destino` | line | **nothing, since 2019 landed** — the retired exposure layer |
 
 ### Delivered and not read
 
-Four line layers carry an annual series and are **delivered and pending**, waiting
-on the year rather than on a way of being measured:
-`lines/ciclo_lines`, `lines/Señalizacion_Horizontal`,
-`lines/Señalizacion_Horizontal_ZonasEscolares` and `points/Señalizacion_Vertical`.
+**The cycleway is now read**, and it is the first variable with a year: twelve of
+its thirteen files, measured as the network in place that year. `cicl2014_lines`
+is deliberately not declared — it is a byte-for-byte copy of `cicl2013_lines`,
+identical SHA-256 on both the .shp and the .dbf, so it is a file duplicated in the
+delivery and not an observation of 2014. See D45.
+
+Three layers are still **delivered and pending**, and they are pending on two
+different things. `points/Señalizacion_Vertical` has a stock — its 2016 file is a
+full `INVENTARIO` of 67,265 records — and needs a reader that accumulates the
+yearly interventions onto it. `lines/Señalizacion_Horizontal` and
+`lines/Señalizacion_Horizontal_ZonasEscolares` have no inventory in any year and
+no way to recover one; three independent attempts to estimate their 2015 stock
+failed.
 
 Two more are **delivered and not declared**, and are recorded in
 `config.UNDECLARED_PREDICTOR_LAYERS` so that a later session finds a reason rather

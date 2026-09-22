@@ -75,6 +75,13 @@ _FRAGMENT_AREA_COL = "_FRAGMENT_AREA_KM2"
 # still working data and still never reaches an exported table.
 FRAGMENT_LENGTH_COL = "_FRAGMENT_LENGTH_KM"
 
+# How much of the layer fell inside the units, carried on the returned frame
+# rather than in a column: it is one number about the measurement and not a value
+# per unit, and `measure` reads it to judge whether a series is stable across its
+# years. Attached through `attrs`, which is pandas' place for exactly this and
+# which never reaches an exported table.
+CAPTURED_FRACTION = "captured_fraction"
+
 
 # ---------------------------------------------------------------------------
 # Units
@@ -208,7 +215,11 @@ def _apply_filter(
     return kept
 
 
-def _read_source(predictor: config.StaticPredictor, log: RunLog) -> gpd.GeoDataFrame:
+def _read_source(
+    predictor: config.StaticPredictor,
+    log: RunLog,
+    year: int | None = None,
+) -> gpd.GeoDataFrame:
     """Read the layer a predictor declares, and hold the declaration to account.
 
     The path is built from the declared layer name and geometry, so a wrong name
@@ -216,13 +227,19 @@ def _read_source(predictor: config.StaticPredictor, log: RunLog) -> gpd.GeoDataF
     file actually holds are checked against the declared kind. This is what keeps
     the data dictionary from drifting: it is not a description of the pipeline,
     it is what the pipeline reads.
+
+    `year` selects one file of a series and must be absent for a snapshot. The
+    declaration decides which of the two is legal, so asking a snapshot for a year
+    raises there rather than silently reading the only file it has.
     """
+    declared = predictor.path_for(year)
+    source_file = predictor.file_for(year)
     try:
-        path = config.resolve_source_path(predictor.path)
+        path = config.resolve_source_path(declared)
     except FileNotFoundError as missing:
         raise FileNotFoundError(
-            f"{predictor.name}: the declared source {predictor.path} does not exist; "
-            f"layer {predictor.source_layer!r}, file {predictor.source_file!r}"
+            f"{predictor.name}: the declared source {declared} does not exist; "
+            f"layer {predictor.source_layer!r}, file {source_file!r}"
         ) from missing
 
     # Only the geometry and, where there is a selection rule, the one column that
@@ -247,13 +264,14 @@ def _read_source(predictor: config.StaticPredictor, log: RunLog) -> gpd.GeoDataF
             "the file disagree, and the measurement would be meaningless either way"
         )
     log.info(
-        "%s: read %s from %s/%s (%s)",
+        "%s%s: read %s from %s/%s (%s)",
         predictor.name,
+        "" if year is None else f" {year}",
         f"{read:,} features"
         if predictor.source_filter is None
         else f"{read:,} features, {len(layer):,} of them kept by the selection rule",
         predictor.source_layer,
-        predictor.source_file,
+        source_file,
         predictor.geometry,
     )
     return layer
@@ -263,6 +281,7 @@ def measure_area_layer(
     predictor: config.StaticPredictor,
     units: gpd.GeoDataFrame,
     log: RunLog,
+    year: int | None = None,
 ) -> pd.DataFrame:
     """Surface of the layer inside each unit, in square kilometres.
 
@@ -270,7 +289,7 @@ def measure_area_layer(
     feature straddling a boundary contributes its own part to each unit it
     reaches, which is why the fragment count exceeds the feature count.
     """
-    raw = _read_source(predictor, log)
+    raw = _read_source(predictor, log, year)
     polygons, dropped = _repair(raw, predictor, log)
 
     # Attributes are not used by any of the five area variables — the surface is
@@ -294,7 +313,7 @@ def measure_area_layer(
     captured_km2 = float(fragments[_FRAGMENT_AREA_COL].sum())
 
     log.record(
-        f"measure {predictor.name}",
+        f"measure {predictor.name}{'' if year is None else f' {year}'}",
         rows_in=len(raw),
         rows_out=len(fragments),
         changes=[
@@ -303,7 +322,7 @@ def measure_area_layer(
             (split, "fragments gained where a feature crosses a unit boundary and is split between units"),
         ],
         notes=[
-            f"source={predictor.source_layer}/{predictor.source_file}, {predictor.measures}",
+            f"source={predictor.source_layer}/{predictor.file_for(year)}, {predictor.measures}",
             f"{captured_km2:,.4f} km2 captured inside the units of "
             f"{total_km2:,.4f} km2 in the layer "
             f"({100 * captured_km2 / total_km2:.2f}%)" if total_km2 > 0 else "layer has no area",
@@ -318,6 +337,7 @@ def measure_point_layer(
     predictor: config.StaticPredictor,
     units: gpd.GeoDataFrame,
     log: RunLog,
+    year: int | None = None,
 ) -> pd.DataFrame:
     """Number of points of the layer inside each unit.
 
@@ -325,7 +345,7 @@ def measure_point_layer(
     of platforms counts once per platform rather than once per record — which is
     what a density of stations is asking for.
     """
-    raw = _read_source(predictor, log)
+    raw = _read_source(predictor, log, year)
     usable, dropped = _repair(raw, predictor, log)
 
     exploded = usable[["geometry"]].explode(index_parts=False).reset_index(drop=True)
@@ -362,12 +382,12 @@ def measure_point_layer(
     changes.append((-outside, "points falling outside every unit, counted in no unit"))
 
     log.record(
-        f"measure {predictor.name}",
+        f"measure {predictor.name}{'' if year is None else f' {year}'}",
         rows_in=len(raw),
         rows_out=len(joined),
         changes=changes,
         notes=[
-            f"source={predictor.source_layer}/{predictor.source_file}, {predictor.measures}",
+            f"source={predictor.source_layer}/{predictor.file_for(year)}, {predictor.measures}",
             f"{len(joined):,} of {len(points):,} points fall inside a unit "
             f"({100 * len(joined) / len(points):.2f}%)" if len(points) else "layer has no points",
         ],
@@ -437,6 +457,7 @@ def measure_line_layer(
     predictor: config.StaticPredictor,
     units: gpd.GeoDataFrame,
     log: RunLog,
+    year: int | None = None,
 ) -> pd.DataFrame:
     """Length of the layer inside each unit, in kilometres.
 
@@ -446,7 +467,7 @@ def measure_line_layer(
     lost. The four layers with an annual series — cycleways and the three signage
     layers — are line layers and will be measured by this.
     """
-    raw = _read_source(predictor, log)
+    raw = _read_source(predictor, log, year)
     usable, dropped = usable_lines(raw, predictor.name, log)
 
     lines = usable[["geometry"]].to_crs(epsg=config.PROJECTED_CRS).reset_index(drop=True)
@@ -461,7 +482,7 @@ def measure_line_layer(
     captured_km = float(fragments[FRAGMENT_LENGTH_COL].sum())
 
     log.record(
-        f"measure {predictor.name}",
+        f"measure {predictor.name}{'' if year is None else f' {year}'}",
         rows_in=len(raw),
         rows_out=len(fragments),
         changes=[
@@ -470,21 +491,25 @@ def measure_line_layer(
             (split, "fragments gained where a feature crosses a unit boundary and is split between units"),
         ],
         notes=[
-            f"source={predictor.source_layer}/{predictor.source_file}, {predictor.measures}",
+            f"source={predictor.source_layer}/{predictor.file_for(year)}, {predictor.measures}",
             f"{captured_km:,.4f} km captured inside the units of {total_km:,.4f} km in the layer "
             f"({100 * captured_km / total_km:.2f}%)" if total_km > 0 else "layer has no length",
         ],
     )
 
     measured = fragments.groupby(config.AREA_CODE_COL)[FRAGMENT_LENGTH_COL].sum()
-    return measured.rename(config.PREDICTOR_MEASURE_COL).reset_index()
+    table = measured.rename(config.PREDICTOR_MEASURE_COL).reset_index()
+    table.attrs[CAPTURED_FRACTION] = captured_km / total_km if total_km > 0 else float("nan")
+    return table
 
 
 # The method a variable declares is the key that selects the function which runs.
 # A method described in the configuration and bound to nothing here fails at the
 # variable that declares it, which is the point: the sentence in the dictionary
 # and the code that produces the number are selected by one key.
-MEASUREMENTS: dict[str, Callable[[config.StaticPredictor, gpd.GeoDataFrame, RunLog], pd.DataFrame]] = {
+MEASUREMENTS: dict[
+    str, Callable[[config.StaticPredictor, gpd.GeoDataFrame, RunLog, int | None], pd.DataFrame]
+] = {
     config.AREA_SHARE_METHOD: measure_area_layer,
     config.POINT_DENSITY_METHOD: measure_point_layer,
     config.LINE_LENGTH_METHOD: measure_line_layer,
@@ -492,7 +517,14 @@ MEASUREMENTS: dict[str, Callable[[config.StaticPredictor, gpd.GeoDataFrame, RunL
 
 
 def measure(predictor: config.StaticPredictor, units: gpd.GeoDataFrame, log: RunLog) -> pd.DataFrame:
-    """The raw magnitude of one predictor per unit, for the units it reaches."""
+    """The raw magnitude of one predictor per unit and year, for the units it reaches.
+
+    A snapshot is measured once and comes back with a null year; a series is
+    measured once per declared year and comes back with one block per year. The
+    loop is here rather than inside each measurement so that a variable acquiring
+    a series later needs no change in the function that measures its geometry —
+    which is the whole reason the three measurements take a year they may ignore.
+    """
     try:
         measurement = MEASUREMENTS[predictor.method]
     except KeyError:
@@ -500,7 +532,99 @@ def measure(predictor: config.StaticPredictor, units: gpd.GeoDataFrame, log: Run
             f"predictor {predictor.name!r} declares the method {predictor.method!r}, "
             "which is described in the configuration but bound to no function here"
         ) from None
-    return measurement(predictor, units, log)
+
+    # `years` is empty for a snapshot, and the single None is what a snapshot's
+    # measurement expects. Written this way so there is one code path and not two.
+    blocks = []
+    captured: dict[int, float] = {}
+    for year in predictor.years or (None,):
+        measured = measurement(predictor, units, log, year)
+        if year is not None and CAPTURED_FRACTION in measured.attrs:
+            captured[year] = float(measured.attrs[CAPTURED_FRACTION])
+        measured[config.YEAR_COL] = pd.array(
+            [pd.NA if year is None else year] * len(measured), dtype="Int64"
+        )
+        blocks.append(measured)
+
+    if predictor.years:
+        _report_series_coverage(predictor, captured, log)
+        _report_repeated_years(predictor, blocks, log)
+    return pd.concat(blocks, ignore_index=True)
+
+
+def _report_series_coverage(
+    predictor: config.StaticPredictor,
+    captured: dict[int, float],
+    log: RunLog,
+) -> None:
+    """How much of each year's layer falls inside the units, and whether it moves.
+
+    The shortfall is expected and is not a defect: part of the city lies outside
+    the thirty units, so a share below one is the footprint and not a loss. What
+    would be a defect is the share jumping about between years, because the
+    footprint does not change and a layer whose coverage does is a layer whose
+    geometry moved. Three per cent one year and twelve the next is the case this
+    exists to catch.
+    """
+    if len(captured) < 2:
+        return
+    lowest, highest = min(captured.values()), max(captured.values())
+    spread = highest - lowest
+    if spread > config.SERIES_COVERAGE_SPREAD_LIMIT:
+        log.warn(
+            "%s: the share of the layer falling inside the units moves by %.2f points "
+            "across its years (%.2f%% to %.2f%%); the footprint does not change, so a "
+            "coverage that does points at the layer",
+            predictor.name,
+            100 * spread,
+            100 * lowest,
+            100 * highest,
+        )
+    else:
+        log.info(
+            "%s: %.2f%% to %.2f%% of the layer falls inside the units across its "
+            "%d years, a spread of %.2f points",
+            predictor.name,
+            100 * lowest,
+            100 * highest,
+            len(captured),
+            100 * spread,
+        )
+
+
+def _report_repeated_years(
+    predictor: config.StaticPredictor,
+    blocks: list[pd.DataFrame],
+    log: RunLog,
+) -> None:
+    """Say so when two consecutive years measure identically in every unit.
+
+    2014 was found this way before it was declared — its file is a copy of 2013's
+    — and it is left out for that reason. This is the instrument that would catch
+    the next one, in a year whose file is not byte-identical but whose contents
+    were never updated. Two consecutive years agreeing to the last metre across
+    thirty units is not something a growing network does.
+    """
+    years = predictor.years
+    for (earlier, first), (later, second) in zip(zip(years, blocks), zip(years[1:], blocks[1:])):
+        aligned = first.set_index(config.AREA_CODE_COL)[config.PREDICTOR_MEASURE_COL]
+        against = second.set_index(config.AREA_CODE_COL)[config.PREDICTOR_MEASURE_COL]
+        if aligned.index.symmetric_difference(against.index).empty and np.allclose(
+            aligned.to_numpy(dtype=float),
+            against.reindex(aligned.index).to_numpy(dtype=float),
+            rtol=0,
+            atol=config.SERIES_IDENTICAL_TOLERANCE,
+        ):
+            log.warn(
+                "%s: %d and %d measure identically in all %d units, to within %g; "
+                "either the network did not move at all or one file is a copy of the "
+                "other, and the second is what happened to 2014",
+                predictor.name,
+                earlier,
+                later,
+                len(aligned),
+                config.SERIES_IDENTICAL_TOLERANCE,
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -525,27 +649,41 @@ def build_long_table(
     projected = prepare_units(units)
     unit_codes = projected[config.AREA_CODE_COL].tolist()
 
-    measurements: list[pd.DataFrame] = []
+    # One grid per variable, because a variable now decides how many rows it has:
+    # thirty for a snapshot, thirty times its declared years for a series. Merging
+    # each measurement against its own grid also keeps the null year of a snapshot
+    # out of every merge key, and a merge on a key that is null on both sides is
+    # exactly the kind of thing that works until the day it does not.
+    blocks: list[pd.DataFrame] = []
+    measured_rows = 0
     for predictor in config.STATIC_PREDICTORS:
-        measured = measure(predictor, projected, log)
-        measured[config.PREDICTOR_COL] = predictor.name
-        measurements.append(measured)
-    observed = pd.concat(measurements, ignore_index=True)
+        observed = measure(predictor, projected, log)
+        measured_rows += len(observed)
 
-    grid = pd.DataFrame(
-        itertools.product(unit_codes, config.STATIC_PREDICTOR_NAMES),
-        columns=[config.AREA_CODE_COL, config.PREDICTOR_COL],
-    )
-    long_table = grid.merge(observed, on=[config.AREA_CODE_COL, config.PREDICTOR_COL], how="left")
-
-    unmatched = len(observed) - len(
-        observed.merge(grid, on=[config.AREA_CODE_COL, config.PREDICTOR_COL], how="inner")
-    )
-    if unmatched:
-        raise RuntimeError(
-            f"{unmatched} measured (unit, predictor) combination(s) fall outside the declared grid; "
-            "the unit roster or the predictor list is incomplete"
+        years: tuple[int | None, ...] = predictor.years or (None,)
+        grid = pd.DataFrame(
+            itertools.product(unit_codes, years),
+            columns=[config.AREA_CODE_COL, config.YEAR_COL],
         )
+        grid[config.YEAR_COL] = grid[config.YEAR_COL].astype("Int64")
+        grid[config.PREDICTOR_COL] = predictor.name
+
+        keys = [config.AREA_CODE_COL] + ([config.YEAR_COL] if predictor.years else [])
+        merged = grid.merge(
+            observed.drop(columns=[] if predictor.years else [config.YEAR_COL]),
+            on=keys,
+            how="left",
+        )
+
+        unmatched = len(observed) - len(observed.merge(grid[keys], on=keys, how="inner"))
+        if unmatched:
+            raise RuntimeError(
+                f"{predictor.name}: {unmatched} measured combination(s) fall outside the "
+                "declared grid; the unit roster or the declared years are incomplete"
+            )
+        blocks.append(merged)
+
+    long_table = pd.concat(blocks, ignore_index=True)
 
     filled = int(long_table[config.PREDICTOR_MEASURE_COL].isna().sum())
     long_table[config.PREDICTOR_MEASURE_COL] = long_table[config.PREDICTOR_MEASURE_COL].fillna(0.0).astype(float)
@@ -595,9 +733,9 @@ def build_long_table(
         )
 
     long_table[config.SCALE_COL] = scale.label
-    # No static predictor has a year. The column exists so that the four layers
-    # with an annual series join this table instead of needing one of their own.
-    long_table[config.YEAR_COL] = pd.array([pd.NA] * len(long_table), dtype="Int64")
+    # YEAR comes from the grid each variable built for itself: a year on every row
+    # of a series, null on every row of a snapshot. Nothing writes it here any
+    # more, which is the change the first series brought.
 
     ordered = [
         config.SCALE_COL,
@@ -615,13 +753,23 @@ def build_long_table(
     ]
     long_table = (
         long_table[ordered]
-        .sort_values([config.AREA_CODE_COL, config.PREDICTOR_COL], kind="stable")
+        # Year joins the sort so a series comes out in chronological order inside
+        # its variable instead of in whatever order the blocks were concatenated.
+        .sort_values(
+            [config.AREA_CODE_COL, config.PREDICTOR_COL, config.YEAR_COL],
+            kind="stable",
+            na_position="first",
+        )
         .reset_index(drop=True)
     )
 
+    snapshots = [p for p in config.STATIC_PREDICTORS if not p.years]
+    series = [p for p in config.STATIC_PREDICTORS if p.years]
+    series_cells = sum(len(unit_codes) * len(p.years) for p in series)
+
     log.record(
         "assemble the predictor grid",
-        rows_in=len(observed),
+        rows_in=measured_rows,
         rows_out=len(long_table),
         changes=[
             (
@@ -631,27 +779,61 @@ def build_long_table(
             )
         ],
         notes=[
-            f"grid = {len(unit_codes)} units x {len(config.STATIC_PREDICTORS)} static predictors",
-            f"scale recorded as {scale.label} on every row; year null on every row, "
-            "since every one of them is a single snapshot",
+            f"grid = {len(unit_codes)} units x {len(snapshots)} snapshot variable(s) "
+            f"= {len(unit_codes) * len(snapshots):,} cells, "
+            f"plus {series_cells:,} cells over {len(series)} variable(s) with a year",
+            *(
+                f"{p.name}: {len(p.years)} year(s), {p.years[0]}-{p.years[-1]}"
+                for p in series
+            ),
+            f"scale recorded as {scale.label} on every row",
         ],
     )
     return long_table
 
 
-def wide_table(long_table: pd.DataFrame) -> pd.DataFrame:
+def wide_table(long_table: pd.DataFrame, year: int | None = None) -> pd.DataFrame:
     """One row per unit, one column per variable — what the figures are drawn from.
 
+    A variable with a year has one row per year in the long table and cannot have
+    more than one column here, so `year` says which one to take. The default takes
+    none of them: the figures of the complete set are snapshot figures and were
+    drawn before any series existed, and a default that silently picked a year
+    would change them without anyone asking for it.
+
+    Ask for a year and the table becomes the cross-section of that year: every
+    snapshot as it always was, and each series at the value it had then. That is
+    what a regression on one year reads.
+
     Reshaped with pivot rather than pivot_table: there is exactly one row per unit
-    and predictor, so nothing needs aggregating, and an aggregating reshape would
-    turn a cell that could not be measured into a confident 0.000. pivot also
-    raises if the one-row assumption is ever false instead of quietly averaging.
+    and predictor once the year is settled, so nothing needs aggregating, and an
+    aggregating reshape would turn a cell that could not be measured into a
+    confident 0.000. pivot also raises if the one-row assumption is ever false
+    instead of quietly averaging.
     """
-    wide = long_table.pivot(
+    has_year = long_table[config.YEAR_COL].notna()
+    if year is None:
+        selected = long_table[~has_year]
+        columns = [p.name for p in config.STATIC_PREDICTORS if not p.years]
+    else:
+        missing = [p.name for p in config.STATIC_PREDICTORS if p.years and year not in p.years]
+        if missing:
+            raise ValueError(
+                f"no measurement for {year} in {', '.join(missing)}; that variable covers "
+                + "; ".join(
+                    f"{p.name}: {p.years[0]}-{p.years[-1]}"
+                    for p in config.STATIC_PREDICTORS
+                    if p.name in missing
+                )
+            )
+        selected = long_table[~has_year | (long_table[config.YEAR_COL] == year)]
+        columns = list(config.STATIC_PREDICTOR_NAMES)
+
+    wide = selected.pivot(
         index=config.AREA_CODE_COL,
         columns=config.PREDICTOR_COL,
         values=config.PREDICTOR_VALUE_COL,
-    ).reindex(columns=list(config.STATIC_PREDICTOR_NAMES))
+    ).reindex(columns=columns)
 
     identity = (
         long_table[[config.SCALE_COL, config.AREA_CODE_COL, config.AREA_NAME_COL, config.AREA_UNIT_KM2_COL]]
@@ -666,15 +848,31 @@ def wide_table(long_table: pd.DataFrame) -> pd.DataFrame:
         config.AREA_CODE_COL,
         config.AREA_NAME_COL,
         config.AREA_UNIT_KM2_COL,
-        *config.STATIC_PREDICTOR_NAMES,
+        *columns,
     ]
     return joined[ordered].sort_values(config.AREA_CODE_COL, kind="stable").reset_index(drop=True)
 
 
 def correlation_matrix(wide: pd.DataFrame) -> pd.DataFrame:
-    """Pearson correlation among every declared variable, in the declared order."""
-    values = wide[list(config.STATIC_PREDICTOR_NAMES)]
+    """Pearson correlation among the variables the given wide table carries.
+
+    Read off the table rather than from the declaration, because a wide table
+    built without a year carries only the snapshots and asking it for a column it
+    does not have would fail here rather than say so.
+    """
+    values = wide[[name for name in config.STATIC_PREDICTOR_NAMES if name in wide.columns]]
     return values.corr(method=config.CORRELATION_METHOD)
+
+
+def model_predictors_in(wide: pd.DataFrame) -> list[str]:
+    """The model variables this wide table actually carries, in declared order.
+
+    A table built without a year carries no variable that has one, so the model
+    set and the columns available are not the same list any more. Everything that
+    reads the model set off a table goes through here, so the two answers cannot
+    diverge between the matrix, its export and the check on it.
+    """
+    return [name for name in config.MODEL_PREDICTOR_NAMES if name in wide.columns]
 
 
 def model_correlation_matrix(wide: pd.DataFrame) -> pd.DataFrame:
@@ -685,8 +883,11 @@ def model_correlation_matrix(wide: pd.DataFrame) -> pd.DataFrame:
     not depend on which other columns are present, but computing it from the
     declared model set is what makes the exported table follow the declaration
     instead of a slice someone has to keep in step with it.
+
+    A model variable with a year is absent from a table with no year, and is
+    correlated in the cross-section of whichever year is asked for instead.
     """
-    values = wide[list(config.MODEL_PREDICTOR_NAMES)]
+    values = wide[model_predictors_in(wide)]
     return values.corr(method=config.CORRELATION_METHOD)
 
 
@@ -738,27 +939,38 @@ def summary_statistics(long_table: pd.DataFrame) -> pd.DataFrame:
     """
     rows = []
     for predictor in config.STATIC_PREDICTORS:
-        subset = long_table[long_table[config.PREDICTOR_COL] == predictor.name]
-        values = subset[config.PREDICTOR_VALUE_COL]
-        measured = subset[config.PREDICTOR_STATUS_COL] == config.MEASURED_STATUS
-        rows.append(
-            {
-                config.PREDICTOR_COL: predictor.name,
-                config.PREDICTOR_FAMILY_COL: predictor.family,
-                config.PREDICTOR_VALUE_UNIT_COL: predictor.value_unit,
-                "UNITS_MEASURED": int(measured.sum()),
-                "UNITS_NOT_MEASURED": int((~measured).sum()),
-                "UNITS_AT_ZERO": int((values.fillna(-1) == 0).sum()),
-                "MINIMUM": float(values.min()),
-                "MEDIAN": float(values.median()),
-                "MAXIMUM": float(values.max()),
-                "MEAN": float(values.mean()),
-                "STD_DEV": float(values.std()),
-                "TOTAL_MEASURE": float(subset[config.PREDICTOR_MEASURE_COL].sum()),
-                config.PREDICTOR_MEASURE_UNIT_COL: predictor.measure_unit,
-            }
-        )
-    return pd.DataFrame(rows)
+        block = long_table[long_table[config.PREDICTOR_COL] == predictor.name]
+        # One row per year for a series, one row for a snapshot. Pooling a series
+        # into a single row would give a minimum from its first year and a maximum
+        # from its last, which is a statistic of nothing: the spread it reports
+        # would be the growth of the network and not the spread across the city.
+        for year in predictor.years or (None,):
+            subset = (
+                block if year is None else block[block[config.YEAR_COL] == year]
+            )
+            values = subset[config.PREDICTOR_VALUE_COL]
+            measured = subset[config.PREDICTOR_STATUS_COL] == config.MEASURED_STATUS
+            rows.append(
+                {
+                    config.PREDICTOR_COL: predictor.name,
+                    config.YEAR_COL: pd.NA if year is None else year,
+                    config.PREDICTOR_FAMILY_COL: predictor.family,
+                    config.PREDICTOR_VALUE_UNIT_COL: predictor.value_unit,
+                    "UNITS_MEASURED": int(measured.sum()),
+                    "UNITS_NOT_MEASURED": int((~measured).sum()),
+                    "UNITS_AT_ZERO": int((values.fillna(-1) == 0).sum()),
+                    "MINIMUM": float(values.min()),
+                    "MEDIAN": float(values.median()),
+                    "MAXIMUM": float(values.max()),
+                    "MEAN": float(values.mean()),
+                    "STD_DEV": float(values.std()),
+                    "TOTAL_MEASURE": float(subset[config.PREDICTOR_MEASURE_COL].sum()),
+                    config.PREDICTOR_MEASURE_UNIT_COL: predictor.measure_unit,
+                }
+            )
+    table = pd.DataFrame(rows)
+    table[config.YEAR_COL] = table[config.YEAR_COL].astype("Int64")
+    return table
 
 
 def dictionary_table() -> pd.DataFrame:
@@ -780,8 +992,30 @@ def dictionary_table() -> pd.DataFrame:
                 config.PREDICTOR_LABEL_COL: predictor.label,
                 config.PREDICTOR_FAMILY_COL: predictor.family,
                 config.SOURCE_LAYER_COL: predictor.source_layer,
-                config.SOURCE_FILE_COL: predictor.source_file,
-                config.SOURCE_PATH_COL: predictor.path.relative_to(config.PROJECT_ROOT).as_posix(),
+                # A series has one file per year and no single one to name, so the
+                # cell names the whole set. Writing the first year's file here
+                # would read as the source of every row of the variable.
+                config.SOURCE_FILE_COL: (
+                    predictor.source_file
+                    if not predictor.years
+                    else ", ".join(predictor.source_files[y] for y in predictor.years)
+                ),
+                config.SOURCE_PATH_COL: (
+                    predictor.path if not predictor.years else predictor.path_for(predictor.years[0]).parent
+                )
+                .relative_to(config.PROJECT_ROOT)
+                .as_posix(),
+                # The years the variable is measured for, as the declaration lists
+                # them and not as a range: the cycleway series has a gap at 2014,
+                # and a range would close it silently.
+                config.SOURCE_YEARS_COL: (
+                    ", ".join(str(year) for year in predictor.years) if predictor.years else ""
+                ),
+                # The bibliography key or keys this layer is cited from. This is
+                # what lets the table of sources in chapter 3 be generated rather
+                # than typed, so the document and the pipeline name the same
+                # origin for every variable.
+                config.SOURCE_CITATION_COL: ", ".join(predictor.source_citation),
                 config.GEOMETRY_COL: predictor.geometry,
                 config.MEASURES_COL: predictor.measures,
                 config.PREDICTOR_MEASURE_UNIT_COL: predictor.measure_unit,
@@ -1244,10 +1478,25 @@ def render_figure_set(
     """
     figures_dir = log.run_dir / config.FIGURES_SUBDIR / figure_set.folder
     figures_dir.mkdir(parents=True, exist_ok=True)
-    names = list(figure_set.predictor_names)
+
+    # A variable with a year has no column in a table with no year, and a
+    # histogram of twelve years stacked together would be a picture of the network
+    # growing rather than of how it is spread across the city. The set is drawn
+    # from what the table holds, and what it leaves out is said rather than
+    # silently skipped.
+    drawn = [predictor for predictor in figure_set.predictors if predictor.name in wide.columns]
+    deferred = [predictor for predictor in figure_set.predictors if predictor.name not in wide.columns]
+    if deferred:
+        log.info(
+            "%s set: %s drawn from the cross-section of a chosen year and not from this "
+            "table, which carries no year",
+            figure_set.name,
+            ", ".join(predictor.name for predictor in deferred),
+        )
+    names = [predictor.name for predictor in drawn]
     written = 0
 
-    for predictor in figure_set.predictors:
+    for predictor in drawn:
         values = wide[predictor.name].to_numpy(dtype=float)
         usable = values[np.isfinite(values)]
         if len(usable) != len(values):
@@ -1342,7 +1591,13 @@ def verify(
         )
     )
 
-    expected_rows = len(units) * len(config.STATIC_PREDICTORS)
+    # A variable with a series contributes one cell per unit and year, so the
+    # expected size is read off the declaration rather than assumed uniform.
+    expected_per_predictor = {
+        predictor.name: len(units) * max(len(predictor.years), 1)
+        for predictor in config.STATIC_PREDICTORS
+    }
+    expected_rows = sum(expected_per_predictor.values())
     checks.append(
         (
             "grid has exactly the declared number of cells",
@@ -1352,12 +1607,21 @@ def verify(
     )
 
     per_predictor = long_table.groupby(config.PREDICTOR_COL).size()
-    complete = bool((per_predictor == len(units)).all()) and len(per_predictor) == len(config.STATIC_PREDICTORS)
+    wrong = {
+        name: (int(per_predictor.get(name, 0)), expected)
+        for name, expected in expected_per_predictor.items()
+        if int(per_predictor.get(name, 0)) != expected
+    }
     checks.append(
         (
-            "every predictor covers every unit",
-            complete,
-            f"{len(per_predictor)} predictors, {per_predictor.min()}-{per_predictor.max()} units each",
+            "every predictor covers every unit, in every year it declares",
+            not wrong,
+            f"{len(per_predictor)} predictors"
+            + (
+                "; " + ", ".join(f"{name} has {got} not {want}" for name, (got, want) in wrong.items())
+                if wrong
+                else ""
+            ),
         )
     )
 
@@ -1398,11 +1662,15 @@ def verify(
         )
     )
 
+    # The default wide table is the cross-section of the variables without a year,
+    # which is what every figure of the complete set is drawn from. The series are
+    # checked a few lines below, one year at a time.
+    snapshot_names = [p.name for p in config.STATIC_PREDICTORS if not p.years]
     checks.append(
         (
-            "the wide table is one row per unit and one column per predictor",
-            len(wide) == len(units) and set(config.STATIC_PREDICTOR_NAMES).issubset(wide.columns),
-            f"{len(wide)} rows, {len(config.STATIC_PREDICTOR_NAMES)} predictor columns",
+            "the wide table is one row per unit and one column per snapshot variable",
+            len(wide) == len(units) and set(snapshot_names).issubset(wide.columns),
+            f"{len(wide)} rows, {len(snapshot_names)} of {len(config.STATIC_PREDICTORS)} variables",
         )
     )
 
@@ -1435,25 +1703,64 @@ def verify(
     # Every declared source has to be on disk. Checked here as well as at read
     # time, so a run whose figures came from a cached table still says whether the
     # declaration still points at something real.
-    missing = [p.name for p in config.STATIC_PREDICTORS if not p.path.exists()]
+    # Every file of every year, not one per variable: a series whose 2019 file had
+    # gone missing would otherwise pass on the strength of its 2012 one.
+    declared_files = [
+        (p.name, year, p.path_for(year))
+        for p in config.STATIC_PREDICTORS
+        for year in (p.years or (None,))
+    ]
+    missing = [
+        f"{name}{'' if year is None else f' {year}'}"
+        for name, year, path in declared_files
+        if not config.resolve_source_path_or_none(path)
+    ]
     checks.append(
         (
             "every declared source file exists on disk",
             not missing,
-            f"{len(config.STATIC_PREDICTORS) - len(missing)} of {len(config.STATIC_PREDICTORS)}"
+            f"{len(declared_files) - len(missing)} of {len(declared_files)} files"
             + (f"; missing {', '.join(missing)}" if missing else ""),
         )
     )
 
-    snapshots = {p.name for p in config.STATIC_PREDICTORS if p.time_coverage == config.SNAPSHOT_COVERAGE}
-    dated = long_table[long_table[config.PREDICTOR_COL].isin(snapshots)][config.YEAR_COL].notna().sum()
+    # The declaration says a variable is a snapshot or a series, and the table has
+    # to say the same thing. Both directions, because either one alone would let
+    # the other kind through.
+    snapshots = {p.name for p in config.STATIC_PREDICTORS if not p.years}
+    series = {p.name for p in config.STATIC_PREDICTORS if p.years}
+    dated = int(long_table[long_table[config.PREDICTOR_COL].isin(snapshots)][config.YEAR_COL].notna().sum())
+    undated = int(long_table[long_table[config.PREDICTOR_COL].isin(series)][config.YEAR_COL].isna().sum())
     checks.append(
         (
-            "variables declared as snapshots carry no year",
-            int(dated) == 0,
-            f"{len(snapshots)} snapshot variables, {int(dated)} rows with a year",
+            "a snapshot carries no year and a series carries one on every row",
+            dated == 0 and undated == 0,
+            f"{len(snapshots)} snapshot and {len(series)} series variables; "
+            f"{dated} snapshot rows dated, {undated} series rows undated",
         )
     )
+
+    # The years in the table are the years declared, exactly. A year measured but
+    # not declared could only come from a file the declaration does not name, and
+    # a year declared but not measured is a silent gap in the panel.
+    for predictor in config.STATIC_PREDICTORS:
+        if not predictor.years:
+            continue
+        block = long_table[long_table[config.PREDICTOR_COL] == predictor.name]
+        found = tuple(sorted(int(y) for y in block[config.YEAR_COL].dropna().unique()))
+        checks.append(
+            (
+                f"{predictor.name} carries exactly the years it declares",
+                found == predictor.years,
+                f"{len(found)} measured of {len(predictor.years)} declared"
+                + (
+                    f"; declared not measured {sorted(set(predictor.years) - set(found))}"
+                    f", measured not declared {sorted(set(found) - set(predictor.years))}"
+                    if found != predictor.years
+                    else ""
+                ),
+            )
+        )
 
     if paths is not None:
         dictionary = pd.read_csv(paths["dictionary"])
@@ -1473,13 +1780,19 @@ def verify(
         )
 
         # The wide table is the one the dashboard and the figures read, so its
-        # columns are what a reader will look up in the dictionary.
+        # columns are what a reader will look up in the dictionary. It carries the
+        # variables without a year and no others, so the set it has to match is
+        # the declared one minus the series — which are in the dictionary, and in
+        # the long table, and belong in no column of a table with no year in it.
         wide_variables = [column for column in exported_wide.columns if column in declared]
+        expected_wide = declared - {p.name for p in config.STATIC_PREDICTORS if p.years}
         checks.append(
             (
                 "the dictionary covers every column of the wide table",
-                set(wide_variables) == declared and len(wide_variables) == len(declared),
-                f"{len(wide_variables)} of {len(declared)} columns matched",
+                set(wide_variables) == expected_wide and len(wide_variables) == len(expected_wide),
+                f"{len(wide_variables)} of {len(expected_wide)} columns matched "
+                f"({len(declared) - len(expected_wide)} variable(s) with a year, "
+                "absent from a table with no year)",
             )
         )
 
@@ -1516,7 +1829,7 @@ def verify(
         # they ever stopped agreeing a figure in a document would be quietly
         # wrong with nothing else out of place.
         exported_model = pd.read_csv(paths["model_correlation"], index_col=0)
-        model_names = list(config.MODEL_PREDICTOR_NAMES)
+        model_names = model_predictors_in(exported_wide)
         restricted = pd.read_csv(paths["correlation"], index_col=0).reindex(
             index=model_names, columns=model_names
         )
@@ -1567,12 +1880,23 @@ def report(long_table: pd.DataFrame, log: RunLog) -> None:
     # -- what each variable is and where it comes from -----------------------
     # First in the log because everything after it is numbers, and a number whose
     # source is three files away is not evidence of anything.
-    header = f"{'predictor':<33}  {'source layer':<27}  {'file':<37}  {'geom':<6}  {'value unit':<19}"
+    header = (
+        f"{'predictor':<33}  {'source layer':<27}  {'file':<37}  {'geom':<6}  "
+        f"{'value unit':<19}  {'cited as':<34}"
+    )
     lines = [header, "-" * len(header)]
     for predictor in config.STATIC_PREDICTORS:
+        # A series has no single file; the column says how many years it spans and
+        # the dictionary CSV carries the full list.
+        source = (
+            predictor.source_file
+            if not predictor.years
+            else f"{len(predictor.years)} files, {predictor.years[0]}-{predictor.years[-1]}"
+        )
         lines.append(
-            f"{predictor.name:<33}  {predictor.source_layer:<27}  {predictor.source_file:<37}  "
-            f"{predictor.geometry:<6}  {predictor.value_unit:<19}"
+            f"{predictor.name:<33}  {predictor.source_layer:<27}  {source:<37}  "
+            f"{predictor.geometry:<6}  {predictor.value_unit:<19}  "
+            f"{', '.join(predictor.source_citation):<34}"
         )
     log.table(
         f"static predictor dictionary, {len(config.STATIC_PREDICTORS)} variables "
@@ -1588,8 +1912,11 @@ def report(long_table: pd.DataFrame, log: RunLog) -> None:
     log.table("how each magnitude is computed:", "\n".join(lines))
 
     # -- the table itself, all thirty rows ----------------------------------
+    # The variables without a year. The ones with a year get a table of their own
+    # below, because a cross-section and a series do not fit in the same grid.
+    shown = [predictor for predictor in config.STATIC_PREDICTORS if not predictor.years]
     header = f"{'unit':<6}  {'name':<24}  {'km2':>8}"
-    for predictor in config.STATIC_PREDICTORS:
+    for predictor in shown:
         header += f"  {predictor.label[:11]:>11}"
     lines = [header, "-" * len(header)]
     for _, row in wide.iterrows():
@@ -1597,12 +1924,12 @@ def report(long_table: pd.DataFrame, log: RunLog) -> None:
             f"{row[config.AREA_CODE_COL]:<6}  {str(row[config.AREA_NAME_COL])[:24]:<24}  "
             f"{row[config.AREA_UNIT_KM2_COL]:>8.2f}"
         )
-        for predictor in config.STATIC_PREDICTORS:
+        for predictor in shown:
             line += f"  {_format_value(float(row[predictor.name]), predictor.family):>11}"
         lines.append(line)
     log.table(
         f"static predictors, {len(wide)} {config.active_scale().label} units "
-        f"x {len(config.STATIC_PREDICTORS)} variables "
+        f"x {len(shown)} variables without a year "
         "(area families as a share of the unit, point families per km2):",
         "\n".join(lines),
     )
@@ -1610,35 +1937,65 @@ def report(long_table: pd.DataFrame, log: RunLog) -> None:
     # -- per-variable statistics --------------------------------------------
     summary = summary_statistics(long_table)
     header = (
-        f"{'predictor':<33}  {'unit':<19}  {'minimum':>10}  {'median':>10}  "
+        f"{'predictor':<33}  {'year':>5}  {'unit':<19}  {'minimum':>10}  {'median':>10}  "
         f"{'maximum':>10}  {'zeros':>6}  {'not meas.':>9}"
     )
     lines = [header, "-" * len(header)]
     for _, row in summary.iterrows():
         family = row[config.PREDICTOR_FAMILY_COL]
+        year = row[config.YEAR_COL]
         lines.append(
-            f"{row[config.PREDICTOR_COL]:<33}  {row[config.PREDICTOR_VALUE_UNIT_COL]:<19}  "
+            f"{row[config.PREDICTOR_COL]:<33}  {'' if pd.isna(year) else int(year):>5}  "
+            f"{row[config.PREDICTOR_VALUE_UNIT_COL]:<19}  "
             f"{_format_value(row['MINIMUM'], family):>10}  {_format_value(row['MEDIAN'], family):>10}  "
             f"{_format_value(row['MAXIMUM'], family):>10}  {int(row['UNITS_AT_ZERO']):>6}  "
             f"{int(row['UNITS_NOT_MEASURED']):>9}"
         )
-    log.table("static predictor statistics:", "\n".join(lines))
+    log.table("static predictor statistics, one row per variable and year:", "\n".join(lines))
+
+    # -- what a series does over time ---------------------------------------
+    # The city total per year, which is the one view that says whether a series is
+    # a series at all. A layer whose total does not move is a snapshot copied
+    # across years, and that is not visible in any of the tables above.
+    for predictor in config.STATIC_PREDICTORS:
+        if not predictor.years:
+            continue
+        block = long_table[long_table[config.PREDICTOR_COL] == predictor.name]
+        totals = block.groupby(config.YEAR_COL)[config.PREDICTOR_MEASURE_COL].sum()
+        reached = block[block[config.PREDICTOR_MEASURE_COL] > 0].groupby(config.YEAR_COL).size()
+        header = f"{'year':>6}  {'total ' + predictor.measure_unit:>14}  {'change':>10}  {'units reached':>13}"
+        lines = [header, "-" * len(header)]
+        previous = None
+        for year in predictor.years:
+            total = float(totals.get(year, 0.0))
+            change = "" if previous is None else f"{total - previous:+10.1f}"
+            lines.append(f"{year:>6}  {total:>14,.1f}  {change:>10}  {int(reached.get(year, 0)):>13}")
+            previous = total
+        log.table(
+            f"{predictor.name} over time, {len(predictor.years)} declared years "
+            f"({predictor.years[0]}-{predictor.years[-1]}):",
+            "\n".join(lines),
+        )
 
     # -- the zeros, and whether any of them is impossible --------------------
     lines = []
     suspicious = 0
     for predictor in config.STATIC_PREDICTORS:
-        subset = long_table[long_table[config.PREDICTOR_COL] == predictor.name]
-        at_zero = subset[subset[config.PREDICTOR_VALUE_COL] == 0]
-        if not len(at_zero):
-            continue
-        codes = ", ".join(
-            f"{row[config.AREA_CODE_COL]} {row[config.AREA_NAME_COL]}" for _, row in at_zero.iterrows()
-        )
-        marker = "IMPLAUSIBLE" if predictor.zero_is_implausible else "measured zero"
-        lines.append(f"{predictor.name:<33}  {len(at_zero):>2} unit(s)  [{marker}]  {codes}")
-        if predictor.zero_is_implausible:
-            suspicious += len(at_zero)
+        block = long_table[long_table[config.PREDICTOR_COL] == predictor.name]
+        for year in predictor.years or (None,):
+            subset = block if year is None else block[block[config.YEAR_COL] == year]
+            at_zero = subset[subset[config.PREDICTOR_VALUE_COL] == 0]
+            if not len(at_zero):
+                continue
+            codes = ", ".join(
+                f"{row[config.AREA_CODE_COL]} {row[config.AREA_NAME_COL]}"
+                for _, row in at_zero.iterrows()
+            )
+            marker = "IMPLAUSIBLE" if predictor.zero_is_implausible else "measured zero"
+            label = predictor.name if year is None else f"{predictor.name} {year}"
+            lines.append(f"{label:<38}  {len(at_zero):>2} unit(s)  [{marker}]  {codes}")
+            if predictor.zero_is_implausible:
+                suspicious += len(at_zero)
     if lines:
         log.table("units measured at zero:", "\n".join(lines))
     else:
@@ -1679,8 +2036,16 @@ def report(long_table: pd.DataFrame, log: RunLog) -> None:
         for column in correlation.columns:
             line += f"  {correlation.loc[name, column]:>11.3f}"
         lines.append(line)
+    with_year = [p.name for p in config.STATIC_PREDICTORS if p.years]
     log.table(
-        f"{config.CORRELATION_METHOD} correlation among the {len(correlation)} static predictors:",
+        f"{config.CORRELATION_METHOD} correlation among the {len(correlation)} variables "
+        "without a year"
+        + (
+            f" ({', '.join(with_year)} correlate against a chosen year and are not here)"
+            if with_year
+            else ""
+        )
+        + ":",
         "\n".join(lines),
     )
 

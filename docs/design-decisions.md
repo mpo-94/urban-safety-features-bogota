@@ -2473,6 +2473,13 @@ every reader would spend attention working out which one counts. The answer to
 So the complete set holds eleven variables and not thirteen. "Complete" means
 every measured *variable*, once each, over the eleven source layers.
 
+**Still eleven since D45, now out of fourteen.** The cycleway is measured and is
+in neither set, for a structural reason rather than the editorial one above: a
+figure drawn without a year has no column for a variable that has one. The
+exclusion is derived from the declaration rather than listed, so the signage
+layers need no entry when they arrive, and such a variable is drawn from the
+cross-section of a chosen year instead.
+
 **Decision — the set names every folder and every file.** The figures go to
 `figures/predictors__complete/` and `figures/predictors__model/`, and each file
 carries the same suffix: `histogram__TREE_DENSITY__model.png`,
@@ -5711,3 +5718,115 @@ per trip, by unit, now that the exposure panel and the population panel both
 exist. It answers the question the count map cannot and it is a different figure
 with a different caveat. It is not in this stage's scope and it is worth taking
 deliberately rather than by extension.
+
+---
+
+## D45 — The first variable with a year, and the shape a series takes
+
+**Kind:** Methodological and structural.
+
+**Status:** Closed on the mechanism, on the stock-versus-flow reading and on
+2014. **Open** on the three signage layers, which need the same mechanism and a
+stock they do not have.
+
+**Built:** Yes. `CYCLEWAY_LENGTH_DENSITY`, twelve years, in the `predictors`
+route. The long table goes from 390 rows to 750.
+
+**Context.** Thirteen variables were measured as single snapshots, and the long
+table carried a `YEAR` column that was null on every row, put there so that the
+first variable with a series would join the same table instead of needing one of
+its own. This is that variable, and building it is what said whether the column
+was enough.
+
+**Decision — each file of the series is read as a stock, because it measures as
+one.** The thirteen delivered files are named by year and the name of a file is
+not evidence of what it holds. Three tests, all agreeing:
+
+- the total runs 161.3 km in 2012 to 474.6 km in 2023, rising in every year but
+  two where it falls by less than a kilometre;
+- only 8.5% of the 7,725 route codes appear in a single year;
+- each year's set of codes largely contains the previous year's, losing tens and
+  gaining hundreds.
+
+A flow would show none of that. The two horizontal marking layers, tested the
+same way, fail all three — 85.3% of their segments appear in exactly one year —
+which is why they are still not measured and this is. The distinction is not a
+detail of bookkeeping: a regression on a stock asks how much cycleway a unit has,
+and a regression on a flow asks how much was built last year, and those are
+different questions with different coefficients.
+
+**Decision — 2014 is not declared, because there is no 2014.**
+`cicl2014_lines` is a byte-for-byte copy of `cicl2013_lines`: identical SHA-256
+on both the `.shp` and the `.dbf`, identical file sizes, the same 5,898 segments,
+the same 1,931 codes. That is a file duplicated in the delivery and not a year in
+which a growing network did not move. Declaring it would manufacture an
+observation of a year nobody measured, and the reader of the panel could not tell
+it from a real one. The gap is the honest reading, and it is D10 again: a value
+that is missing must not be made to look like a value that was observed. Four
+lines of configuration reverse it if the copy ever turns out to be deliberate.
+
+**Decision — the year lives in the declaration, not in a filename template.** A
+series declares `source_files`, a mapping of year to file, and `__post_init__`
+requires that a variable declared as a series have one and that a snapshot have a
+single `source_file` instead. The two statements — what the variable covers in
+time, and which files it reads — cannot then disagree. A template like
+`cicl{year}_lines.shp` with a range beside it would have been shorter and would
+have had nowhere to say that 2014 is absent: the gap would have had to live in a
+comment, where nothing reads it.
+
+**Decision — the measurement takes a year it is allowed to ignore.** All three
+measurement functions gained a `year` parameter and `measure` loops over the
+declared years, stamping each block. A snapshot is one pass with `year=None`.
+This is the design the project's own rule asks for — the first of a kind builds
+the machinery and the rest only declare — and the test of it is that the three
+signage layers, when their stock is resolved, are a declaration and no code.
+
+**Decision — a table with no year carries no variable that has one.**
+`wide_table` takes an optional year. Without one it is the cross-section of the
+variables that have none, which is what every figure of the complete and model
+sets is drawn from and what they were drawn from before this existed: no figure
+in any deliverable changed. With a year it is that cross-section plus each series
+at the value it held then, which is what a regression on one year reads.
+
+The alternative — defaulting to some year — would have moved figures already
+quoted in documents without anyone asking, and the year it defaulted to would
+have been a methodological choice hidden in a function signature.
+
+**Decision — a series is summarised per year, never pooled.** The statistics
+table gains a `YEAR` column and reports one row per variable and year. Pooling
+twelve years would report a minimum from 2012 and a maximum from 2023, so the
+spread it published would be the growth of the network rather than its spread
+across the city.
+
+**Decision — every layer now declares where it came from.** `source_citation`
+joins the declaration as a required field, holding the `references.bib` key or
+keys the layer is cited from, and a declaration without one fails at import. It
+is a tuple because the arterial road layer takes two: the file is a join of the
+Malla Vial Integral, which supplies the geometry, and Decreto 555 of 2021, which
+supplies the classification that selects the arterial subset — a join its two
+`SHAPE_Leng`/`SHAPE_Area` column pairs make visible. Until this was added no
+predictor layer had a recorded origin anywhere, and chapter 3 could not have been
+written from the declarations. See `layer-provenance.md`.
+
+**Verification.** The run checks that the grid holds exactly the declared number
+of cells given each variable's years, that a snapshot carries no year and a
+series carries one on every row, that the years in the table are exactly the
+years declared — in both directions, so a year measured but not declared fails as
+loudly as one declared but not measured — and that every file of every year
+exists on disk rather than one file per variable. Between 99.87% and 100% of each
+year's kilometres fall inside the thirty units; what falls outside is cycleway in
+the rural units the study does not cover.
+
+**Rejected — measuring the series only in the years the models use.** 2015, 2019
+and 2023 are what the regressions need, and measuring only those would have made
+the panel unavailable for anything else and would have hidden the one fact that
+validates the whole reading, which is that the total grows. Twelve years cost
+seconds.
+
+**Open — the three signage layers.** Vertical signage has a stock: its 2016 file
+is a full `INVENTARIO` of 67,265 records with `ACCION=INVENTARIO` and dates from
+1991 to 2015, so the stock of any year is computable by accumulating the
+interventions onto it. That is a second reader, not a second declaration, and it
+is the next piece of work. Horizontal marking and school zones have no inventory
+in any year and three independent attempts to estimate their 2015 stock failed;
+they stay undeclared.

@@ -111,17 +111,18 @@ python -m src.run_pipeline --help     # the routes available, with a line each
 ```
 
 `predictors` is the other half of the study: the features of a unit that the
-casualty rates are to be regressed against. It measures **thirteen static
-variables over eleven layers** — five surfaces as a share of the unit, eight
-point layers as a density over it — against every unit, and emits the wide table
+casualty rates are to be regressed against. It measures **fourteen variables over
+twelve layers** — five surfaces as a share of the unit, eight point layers as a
+density over it, and one line layer as kilometres over it — against every unit,
+and emits the wide table
 the figures are drawn from, the long table the dashboard joins, a histogram per
 variable, the Pearson correlation matrix and a master table figure of the thirty
 units against the variables, shaded column by column because the variables are
 not on a common scale.
 
 Measuring a variable and putting it in a model are two decisions and the route
-keeps them apart: everything declared is measured on every run, and **eight of
-the thirteen enter the models.** The figures therefore come out in two sets, in
+keeps them apart: everything declared is measured on every run, and **nine of
+the fourteen enter the models.** The figures therefore come out in two sets, in
 separate folders and with the set in every file name — the complete one, which
 is the backing evidence because it holds the variables the models exclude, and
 the model one, which is what the documents use. The correlation of the model set
@@ -129,15 +130,25 @@ is also emitted as a LaTeX table, so no figure in a deliverable is transcribed b
 hand.
 
 It also exports a data dictionary: one row per variable with its source layer as
-the data names it, its file, its geometry, what it measures, in what units and
-how it is computed. The measurement runs on that declaration — it locates every
-layer and dispatches every computation through it — so a wrong entry stops the
-run instead of misinforming a reader.
+the data names it, its file, its geometry, what it measures, in what units, how
+it is computed, which years it covers and **which bibliography entry it is cited
+from**. The measurement runs on that declaration — it locates every layer,
+dispatches every computation through it, and refuses at import to hold a layer
+whose origin is not declared — so a wrong entry stops the run instead of
+misinforming a reader.
 
-**The four layers that carry an annual series are not measured yet.** All four
-are line layers, and the measurement they will use is written and registered;
-what they still need is the year. The tables already carry the year column they
-will fill.
+**One variable carries a year and three layers are still to come.** The cycleway
+is measured over twelve years, 2012 to 2024, and is the first variable with a
+time dimension: a variable declares one file per year, the measurement runs once
+per year, and the long table fills the year column it already carried. Each
+year's file was checked to be the network in place rather than what was built
+that year before any of it was declared. 2014 is deliberately absent, because its
+file is a byte-for-byte copy of 2013's.
+
+Of the three signage layers left, vertical signage has a full inventory to
+accumulate onto and needs a stock builder; the two horizontal marking layers
+arrive as flows with no inventory in any year, and three independent attempts to
+recover a stock for them failed.
 
 `exposure` is a route of its own because exposure is not a predictor. A predictor
 says what a place is built like; exposure says how much travel there is in it to

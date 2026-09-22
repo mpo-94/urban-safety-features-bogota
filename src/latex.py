@@ -320,16 +320,31 @@ def verify_matrix_table(long_table: pd.DataFrame, dataset: str, log: RunLog) -> 
 
 
 def verify_correlation_table(correlation: pd.DataFrame, log: RunLog) -> bool:
-    """Is the correlation the model set's, and is it a correlation at all?"""
+    """Is the correlation the model set's, and is it a correlation at all?
+
+    A model variable that carries a year has no place in a correlation computed
+    without one: its value depends on which year is asked for, and pooling its
+    years would correlate the growth of a network against a cross-section of the
+    city. So the set this table has to cover is the model set minus those, and the
+    run says which ones that leaves out rather than letting the count drift.
+    """
     passed = True
-    expected = list(config.MODEL_PREDICTOR_NAMES)
+    with_year = {p.name for p in config.STATIC_PREDICTORS if p.years}
+    expected = [name for name in config.MODEL_PREDICTOR_NAMES if name not in with_year]
     if list(correlation.columns) != expected:
         log.warn(
-            "the correlation covers %s, but the model set is %s",
+            "the correlation covers %s, but the model set without a year is %s",
             ", ".join(correlation.columns),
             ", ".join(expected),
         )
         passed = False
+    deferred = [name for name in config.MODEL_PREDICTOR_NAMES if name in with_year]
+    if deferred:
+        log.info(
+            "%s in the model set but not in this table: correlated in the cross-section "
+            "of a chosen year, which this one is not",
+            ", ".join(deferred),
+        )
 
     values = correlation.to_numpy(dtype=float)
     if not np.allclose(values, values.T, equal_nan=True):
