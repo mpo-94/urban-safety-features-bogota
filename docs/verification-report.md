@@ -3957,3 +3957,130 @@ intersection density — signs go where roads and signals are. Both are above th
 declared 0.7 threshold, so a selected model holding either pair carries the flag
 the regression stage raises, which is what that flag exists for.
 
+---
+
+## 21. The cross-sectional regressions
+
+Route `regressions`, run `run_20260922_015155`. **Every check passed.** The
+decisions are D48 for the scope and the offsets; the plan is
+`regression-inventory.md`.
+
+**A first step and not the methodology.** The panel the anteproyecto declares
+comes after this, and everything that needs variation within a unit over time is
+deliberately absent.
+
+### What was fitted
+
+| | |
+|---|---:|
+| Casualty datasets | 2 |
+| Offsets | 3 |
+| Pairs | 8, all passing the zero-cell threshold in all three years |
+| Years | 3 |
+| Families | 3: least squares, Poisson, negative binomial |
+| Specifications declared | 225,890 |
+| Specifications the estimator could fit | 223,045 |
+| Selected models | 430 of a possible 432 |
+| Coefficients | 1,662 |
+| Predictions | 8,580 |
+
+Two cells produced no model: `CAR__CAR` at 2015 under the two-exposure offset,
+negative binomial, in both datasets. Of its 455 specifications none converged
+with usable standard errors, and the run says so rather than leaving a gap.
+
+### Two things the data settled
+
+**The negative binomial is the discrete estimator, not a GLM with alpha
+supplied.** `sm.GLM` with `family=NegativeBinomial(alpha=…)` treats the
+dispersion as given and does not count it as a parameter, so its AIC is two
+points optimistic — which would have favoured it against Poisson **in the same
+column, by construction**. Measured on three real cells before the design was
+settled: GLM-NB reported three parameters where Poisson reported three, and the
+discrete estimator reported four.
+
+**The predictors are standardised before fitting.** They run from area shares
+near 0.001 to signage densities near 600, and across that spread the joint
+estimation of alpha and the coefficients does not converge for a fair share of
+the combinations. The exported table carries both the standardised coefficient
+and the back-transformed one: dividing by the standard deviation is exact for a
+model linear in its predictor, so nothing is lost and the figure can compare
+variables to each other while the table says what a kilometre buys.
+
+### Two checks that found real defects
+
+Worth recording in detail, because a check that never fails has not been shown to
+work.
+
+**The interval check found 28 coefficients whose intervals were not numbers.**
+All negative binomial, in eight models. Their standard errors were `NaN`: alpha
+had gone to a boundary, the Hessian was not invertible, and the results came back
+with coefficients and nothing else. One of those models reported an AIC of
+**28,502** where its neighbours were near 130, and another **−27**, which a count
+model of thirty observations cannot reach. They were winning searches on a number
+that meant nothing. A fit with no usable standard errors is now not a fit and does
+not compete.
+
+**The figure found the other, and a check now catches it.** Every negative
+binomial prediction came out around **−7** against counts running from 3 to 101,
+so the panel drew thirty invisible points below its own axis and only the
+reference line appeared. The cause: the discrete estimators return the **linear
+predictor** from `fittedvalues` where the GLMs return the **mean**. The stage
+reads `predict` everywhere now, and a check refuses a negative count from a count
+family, so the next occurrence does not need a person looking at a picture.
+
+### What the run found
+
+**The counts are overdispersed almost everywhere.** 143 of 144 Poisson models
+exceed the declared threshold of 1.25, at a median of 4.17 and a maximum of
+51.90. Fitting Poisson alone would have reported standard errors far too small,
+which is the whole reason the family is chosen rather than assumed.
+
+**Forty-four per cent of the selected models leave spatial structure behind.**
+191 of 430 have residuals with Moran's I beyond 0.2, reaching 0.575. This is the
+finding that matters for the stage after this one: **the panel will need a
+spatial term**, and knowing it now cost one line per model instead of a rebuild.
+
+**The selection is not noise, and three variables are near-unanimous in sign.**
+Across 430 models — different pairs, years, datasets, offsets and families —
+
+| Variable | Selected | % of models | Sign + | Sign − |
+|---|---:|---:|---:|---:|
+| Pedestrian crossings | 141 | 32.8 % | 97 | 44 |
+| Sidewalk area share | 106 | 24.7 % | 34 | 72 |
+| **TransMilenio stations** | 102 | 23.7 % | **100** | **2** |
+| Roadway area share | 92 | 21.4 % | 68 | 24 |
+| **Tree density** | 90 | 20.9 % | **2** | **88** |
+| Bridge deck | 89 | 20.7 % | 22 | 67 |
+| Signalised intersections | 85 | 19.8 % | 73 | 12 |
+| Arterial road | 77 | 17.9 % | 27 | 50 |
+| **Cycleway** | 68 | 15.8 % | **2** | **66** |
+| Counterpart exposure | 64 | 14.9 % | 52 | 12 |
+| SITP stops | 62 | 14.4 % | 32 | 30 |
+| **Affected exposure** | 60 | 14.0 % | **60** | **0** |
+| Vertical signage | 59 | 13.7 % | 39 | 20 |
+| Speed cameras | 56 | 13.0 % | 10 | 46 |
+| Population | 47 | 10.9 % | 1 | 46 |
+| Urban park | 34 | 7.9 % | 25 | 9 |
+
+The affected mode's own exposure is positive in **all sixty** models that select
+it, which is the sanity check the whole design rests on: more travel, more
+casualties. TransMilenio is positive in 100 of 102, trees negative in 88 of 90,
+cycleway negative in 66 of 68.
+
+**A variable whose sign holds across independent contexts is evidence in a way no
+single p-value here can be.** The p-values are the winner of a search over every
+declared subset and are inflated by the selection itself; the table above is not.
+The run says so and the exported figure carries the same caveat under itself.
+
+### The figures
+
+118 files under `figures/regressions/`. Per year, family, offset and dataset: the
+observed-against-predicted panel in two rows of four, each with its own scale, and
+the coefficient panel with its interval and a vertical at zero. Per year: the
+predictor block and the response block as rendered tables. Over all years: the
+selection frequency and the selected models per family.
+
+They are labelled in Spanish and each names its family, offset and dataset in the
+file name, so two figures about to sit side by side cannot be told apart by which
+one lacks a suffix.
+

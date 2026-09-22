@@ -645,6 +645,9 @@ evidence than any single p-value in the table beside it.
 
 ## 9. What the run exports
 
+**Built on 2026-09-22.** What follows was the plan and is now the description;
+section 21 of the verification report is what the first run produced.
+
 Four tables, because they have four different grains, and a table at the wrong
 grain either repeats values or leaves holes.
 

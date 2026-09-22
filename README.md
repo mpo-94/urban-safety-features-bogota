@@ -437,14 +437,19 @@ and rho-corrected forms, the fifteen urban predictors over thirteen layers, the
 travel exposure built from five mobility surveys and interpolated across the
 years between them, the resident population panel, and the maps.
 
-**The models are next, and the first of them is a step rather than the answer.**
-Before the panel model the study is designed around, there is a set of
-cross-sectional regressions at three years — least squares and a count GLM, on
-both casualty datasets, one regression per pair of road user types. They are what
-says which associations are worth carrying into the panel, and what the panel will
-have to account for: whether the residuals are spatially structured, which
-candidates survive selection in independent contexts, and how much of the
-apparent signal is the change in recording practice rather than the city.
+**The first models are built; the panel is next.** Before the panel model the
+study is designed around, there is a set of cross-sectional regressions at three
+years — least squares and a count GLM, on both casualty datasets, one regression
+per pair of road user types, under three declared offsets. They are what says
+which associations are worth carrying into the panel, and what the panel will have
+to account for.
+
+The first run answered two of those questions. Forty-four per cent of the selected
+models leave residuals with Moran's I beyond 0.2, so **the panel will need a
+spatial term**; and three variables hold their sign across hundreds of independent
+models — TransMilenio stations positive in 100 of 102, tree density negative in 88
+of 90, cycleway negative in 66 of 68 — which is evidence of a kind no single
+p-value in a search of this size can be.
 
 `docs/regression-inventory.md` is the plan they are written against, and
 `docs/design-decisions.md` D48 is why this step is separate from the methodology
