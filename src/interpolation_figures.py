@@ -284,7 +284,7 @@ def _draw_series(
             span = [year for year in patched.index if min(differs) - 1 <= year <= max(differs) + 1]
             axis.plot(
                 span, patched.loc[span].to_numpy(),
-                color=config.EXPOSURE_PROVENANCE_COLORS[config.IMPLIED_FROM_RISK_EXPOSURE],
+                color=config.EXPOSURE_PROVENANCE_COLORS[config.PATCHED_FROM_MOBILITY_EXPOSURE],
                 linewidth=2.6, zorder=2,
                 label=config.EXPOSURE_VARIANT_LABELS_ES[config.PANDEMIC_PATCHED_VARIANT],
             )
@@ -333,9 +333,9 @@ def _draw_series(
         axis.plot(
             differs, patched.loc[differs].to_numpy(), linestyle="none", marker="o",
             markersize=4,
-            color=config.EXPOSURE_PROVENANCE_COLORS[config.IMPLIED_FROM_RISK_EXPOSURE],
+            color=config.EXPOSURE_PROVENANCE_COLORS[config.PATCHED_FROM_MOBILITY_EXPOSURE],
             zorder=4,
-            label=config.EXPOSURE_PROVENANCE_LABELS_ES[config.IMPLIED_FROM_RISK_EXPOSURE],
+            label=config.EXPOSURE_PROVENANCE_LABELS_ES[config.PATCHED_FROM_MOBILITY_EXPOSURE],
         )
 
     axis.set_ylim(bottom=0)
@@ -661,7 +661,7 @@ def _unit_series_sheet(
                 ]
                 axis.plot(
                     span, after.loc[span].to_numpy(),
-                    color=config.EXPOSURE_PROVENANCE_COLORS[config.IMPLIED_FROM_RISK_EXPOSURE],
+                    color=config.EXPOSURE_PROVENANCE_COLORS[config.PATCHED_FROM_MOBILITY_EXPOSURE],
                     linewidth=1.6, zorder=2,
                 )
         axis.plot(
@@ -906,94 +906,100 @@ def _unit_heatmap(
 
 
 def _pandemic_factors(patch, path: Path, log: RunLog) -> None:
-    """The twelve numbers D42 rests on, and the twelve the other dataset gives.
+    """The eight numbers D49 rests on, and how far each sits from the common shock.
 
-    The bars are the declared series and the dashes are the sensitivity. What the
-    figure is for is the comparison between them: where a dash sits on its bar the
-    patch does not depend on the rho question at all, and where it does not the
-    difference is the recording change, which is the car and the motorcycle and
-    nothing else.
+    The bar is the factor that was applied. The dash is what the common shock
+    alone would have given that mode and year. Where the two coincide the factor
+    is the shock and nothing else, which is six of the eight; where they do not,
+    the bar is a mode the shock could not speak for, and the gap between them is
+    the size of that departure.
+
+    The two that depart are the bicycle, and they are the two worth looking at:
+    one is measured from a count, the other is extrapolated from the first.
     """
     table = patch.table
-    modes = [actor for actor in config.ROAD_USER_TYPES if actor in set(table[config.ACTOR_TYPE_COL])]
+    modes = [
+        actor for actor in config.ROAD_USER_TYPES
+        if actor in set(table[config.ACTOR_TYPE_COL])
+    ]
     years = list(config.PANDEMIC_PATCH_YEARS)
-    declared = table[table[config.DATASET_COL] == patch.dataset].set_index(
-        [config.ACTOR_TYPE_COL, config.YEAR_COL]
-    )[config.PANDEMIC_PATCH_FACTOR_COL]
-    others = [name for name in sorted(table[config.DATASET_COL].unique()) if name != patch.dataset]
+    indexed = table.set_index([config.ACTOR_TYPE_COL, config.YEAR_COL])
 
     fig, axis = plt.subplots(figsize=(10, 5.2))
-    positions, labels, heights = [], [], []
+    positions, labels, heights, from_shock, origins = [], [], [], [], []
     position = 0.0
     for actor in modes:
         for year in years:
+            row = indexed.loc[(actor, year)]
             positions.append(position)
             labels.append(str(year))
-            heights.append(float(declared.loc[(actor, year)]))
+            heights.append(float(row[config.PANDEMIC_PATCH_FACTOR_COL]))
+            from_shock.append(float(row["FACTOR_FROM_SHOCK"]))
+            origins.append(str(row["FACTOR_ORIGIN"]))
             position += 1.0
         position += 0.8
 
+    # A factor that is not the common shock is a claim of its own, so it is not
+    # drawn in the same colour as one that is.
+    palette = {
+        "COMMON_SHOCK": config.EXPOSURE_PROVENANCE_COLORS[
+            config.PATCHED_FROM_MOBILITY_EXPOSURE
+        ],
+        "MEASURED": config.EXPOSURE_PROVENANCE_COLORS[config.MEASURED_EXPOSURE],
+        "EXTRAPOLATED": "#9e9e9e",
+    }
     bars = axis.bar(
         positions, heights,
-        color=config.EXPOSURE_PROVENANCE_COLORS[config.IMPLIED_FROM_RISK_EXPOSURE],
+        color=[palette.get(origin, "#9e9e9e") for origin in origins],
         width=0.8, zorder=3,
     )
+    axis.plot(
+        positions, from_shock, linestyle="none", marker="_", markersize=16,
+        markeredgewidth=2, color="#1a1a1a", zorder=4,
+        label="lo que daría el choque común",
+    )
 
-    sensitivities = []
-    for name in others:
-        sensitivity = table[table[config.DATASET_COL] == name].set_index(
-            [config.ACTOR_TYPE_COL, config.YEAR_COL]
-        )[config.PANDEMIC_PATCH_FACTOR_COL]
-        values = [float(sensitivity.loc[(actor, year)]) for actor in modes for year in years]
-        sensitivities.append(values)
-        axis.plot(
-            positions, values, linestyle="none", marker="_", markersize=16, markeredgewidth=2,
-            color="#1a1a1a", zorder=4, label=f"mismo factor sobre {name}",
-        )
-
-    # Above whichever of the two marks is higher, or the label of a bar whose
-    # sensitivity sits above it lands on top of the dash.
-    tops = [
-        max([height] + [values[index] for values in sensitivities])
-        for index, height in enumerate(heights)
-    ]
-    for bar, height, top in zip(bars, heights, tops):
+    for bar, height, shock_value in zip(bars, heights, from_shock):
         axis.text(
-            bar.get_x() + bar.get_width() / 2, top + 0.025, f"{height:.3f}".replace(".", ","),
-            ha="center", va="bottom", fontsize=7,
+            bar.get_x() + bar.get_width() / 2, max(height, shock_value) + 0.02,
+            f"{height:.3f}".replace(".", ","),
+            ha="center", va="bottom", fontsize=8, color="#333333", zorder=5,
         )
 
-    axis.axhline(1.0, color="#1a1a1a", linewidth=1.0, zorder=2)
-    axis.set_xticks(positions)
-    axis.set_xticklabels(labels, fontsize=8)
-    axis.set_ylabel("factor aplicado a la exposición", fontsize=9)
-    axis.set_ylim(0, max(tops) * 1.18)
-    axis.grid(True, axis="y", color="#e4e4e4", linewidth=0.6, zorder=0)
-    axis.set_axisbelow(True)
+    # A factor of one is where the patch does nothing, so it is the line the eye
+    # needs rather than the zero the axis would otherwise anchor on.
+    axis.axhline(1.0, color="#888888", linewidth=1, zorder=2)
+    axis.set_xticks(positions, labels, fontsize=8)
+    axis.set_ylabel("factor aplicado a la exposición")
+    axis.set_ylim(0, max(max(heights), max(from_shock), 1.0) * 1.18)
+    for index, actor in enumerate(modes):
+        centre = (positions[index * len(years)] + positions[index * len(years) + len(years) - 1]) / 2
+        axis.text(
+            centre, -0.10, config.ROAD_USER_LABELS_ES.get(actor, actor),
+            transform=axis.get_xaxis_transform(), ha="center", va="top", fontsize=9,
+        )
+    handles = [
+        plt.Rectangle((0, 0), 1, 1, color=palette["COMMON_SHOCK"]),
+        plt.Rectangle((0, 0), 1, 1, color=palette["MEASURED"]),
+        plt.Rectangle((0, 0), 1, 1, color=palette["EXTRAPOLATED"]),
+    ]
+    axis.legend(
+        handles + axis.get_legend_handles_labels()[0],
+        ["choque común", "medido", "extrapolado", "lo que daría el choque común"],
+        loc="lower right", frameon=False, fontsize=8,
+    )
     for side in ("top", "right"):
         axis.spines[side].set_visible(False)
-
-    # The mode under its three years, once, instead of on every bar.
-    for index, actor in enumerate(modes):
-        centre = float(np.mean(positions[index * len(years):(index + 1) * len(years)]))
-        axis.text(
-            centre, -0.09, config.ROAD_USER_LABELS_ES[actor], ha="center", va="top",
-            fontsize=10, transform=axis.get_xaxis_transform(),
-        )
-    if others:
-        axis.legend(fontsize=8, frameon=False, loc="upper left")
-
-    fig.suptitle(
-        f"El parche de pandemia: qué multiplica cada modo y año (D42)\n"
-        f"derivado de {patch.dataset}; por encima de 1 el parche dice que hubo más viaje "
-        "que la línea recta",
+    axis.set_title(
+        "Los ocho factores del parche de pandemia (D49)\n"
+        f"choque de los informes de movilidad contra {patch.shock.reference_year}, "
+        "corregido por la tendencia de cada modo",
         fontsize=11,
     )
-    fig.tight_layout(rect=(0, 0.05, 1, 0.90))
-    _stamp(fig, log)
-    fig.savefig(path, dpi=config.FIGURE_DPI)
+    fig.tight_layout()
+    fig.savefig(path, dpi=config.FIGURE_DPI, bbox_inches="tight")
     plt.close(fig)
-
+    log.info("wrote %s", path.name)
 
 def _pandemic_before_after(table: pd.DataFrame, path: Path, log: RunLog) -> None:
     """The four modes through the pandemic, each against its own 2019.
@@ -1021,7 +1027,7 @@ def _pandemic_before_after(table: pd.DataFrame, path: Path, log: RunLog) -> None
             axis.plot(
                 span, indexed.to_numpy(), linestyle=styles[actor], linewidth=1.8,
                 color=(
-                    config.EXPOSURE_PROVENANCE_COLORS[config.IMPLIED_FROM_RISK_EXPOSURE]
+                    config.EXPOSURE_PROVENANCE_COLORS[config.PATCHED_FROM_MOBILITY_EXPOSURE]
                     if variant == config.PANDEMIC_PATCHED_VARIANT
                     else config.EXPOSURE_PROVENANCE_COLORS[config.INTERPOLATED_EXPOSURE]
                 ),
@@ -1059,7 +1065,7 @@ def _pandemic_dispersion(diagnostic: pd.DataFrame, patch, path: Path, log: RunLo
     thirty places for three years.
     """
     rows = diagnostic[
-        (diagnostic[config.DATASET_COL] == patch.dataset)
+        (diagnostic[config.DATASET_COL] == config.CORRECTED_DATASET)
         & diagnostic[config.YEAR_COL].isin(list(config.PANDEMIC_PATCH_YEARS))
     ]
     modes = [actor for actor in config.ROAD_USER_TYPES if actor in set(rows[config.ACTOR_TYPE_COL])]
@@ -1079,7 +1085,7 @@ def _pandemic_dispersion(diagnostic: pd.DataFrame, patch, path: Path, log: RunLo
             city = patch.factors[(actor, year)]
             axis.plot(
                 [position - 0.3, position + 0.3], [city, city], linewidth=2.4,
-                color=config.EXPOSURE_PROVENANCE_COLORS[config.IMPLIED_FROM_RISK_EXPOSURE],
+                color=config.EXPOSURE_PROVENANCE_COLORS[config.PATCHED_FROM_MOBILITY_EXPOSURE],
                 zorder=3,
             )
         axis.axhline(1.0, color="#cccccc", linewidth=0.8, zorder=1)
@@ -1308,7 +1314,7 @@ def _volatility_distribution(steps: pd.DataFrame, path: Path, log: RunLog) -> No
                 )
         axis.axhline(
             config.EXPOSURE_STEP_FACTOR,
-            color=config.EXPOSURE_PROVENANCE_COLORS[config.IMPLIED_FROM_RISK_EXPOSURE],
+            color=config.EXPOSURE_PROVENANCE_COLORS[config.PATCHED_FROM_MOBILITY_EXPOSURE],
             linewidth=1.2, zorder=1,
         )
         axis.set_yscale("log", base=2)
@@ -1417,8 +1423,8 @@ def draw(
         _diagnostic_city(diagnostic, path, log)
         written[path.stem] = path
         dataset = (
-            config.PANDEMIC_PATCH_DATASET
-            if config.PANDEMIC_PATCH_DATASET in set(diagnostic[config.DATASET_COL])
+            config.CORRECTED_DATASET
+            if config.CORRECTED_DATASET in set(diagnostic[config.DATASET_COL])
             else sorted(diagnostic[config.DATASET_COL].unique())[0]
         )
         for actor in _modes(diagnostic):

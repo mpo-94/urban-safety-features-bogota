@@ -1869,6 +1869,13 @@ class FigureSet:
     label: str  # how the set names itself in a figure title
     purpose: str  # one line: who reads this set and what for
     predictor_names: tuple[str, ...]
+    # Whether this set's figures are captioned in Spanish. Declared per set and
+    # not switched globally, because the two older sets are the record of the
+    # eleven and the ten that the deliverables already cite, and changing their
+    # captions would change figures already copied into documents. The candidate
+    # set is drawn by the regression stage, whose figures are Spanish throughout,
+    # so it asks for Spanish and says so here rather than at the drawing site.
+    spanish: bool = False
 
     def __post_init__(self) -> None:
         unknown = [name for name in self.predictor_names if name not in STATIC_PREDICTORS_BY_NAME]
@@ -1897,7 +1904,18 @@ COMPLETE_FIGURE_PREDICTOR_NAMES: tuple[str, ...] = tuple(
 # other: the model set cannot show why carriageway was dropped, because the 0.969
 # against sidewalk that justifies dropping it only exists in a matrix that still
 # has carriageway in it.
-FIGURE_SETS: tuple[FigureSet, ...] = (
+# El año en el que se dibujan las figuras del conjunto de candidatas. Diez de
+# las doce no cambian en el tiempo —medido, no supuesto: la variación de su
+# promedio anual es exactamente cero—, así que sólo la ciclorruta y la
+# señalización vertical dependen de cuál se elija.
+#
+# Es 2023 porque es el más reciente en el que las doce están medidas: la capa de
+# señalización termina ahí. Y va declarado en vez de escrito en la figura porque
+# lo usan cuatro clases de figura —histogramas, correlación, tabla maestra y
+# dispersión— y tienen que dibujar todas el mismo año o no se pueden leer juntas.
+PREDICTOR_FIGURE_YEAR = 2023
+
+_CONJUNTOS_SIN_LAS_DOCE: tuple[FigureSet, ...] = (
     FigureSet(
         name="complete",
         label="every measured variable",
@@ -1914,8 +1932,9 @@ FIGURE_SETS: tuple[FigureSet, ...] = (
         predictor_names=MODEL_PREDICTOR_NAMES,
     ),
 )
-
-FIGURE_SETS_BY_NAME: dict[str, FigureSet] = {figure_set.name: figure_set for figure_set in FIGURE_SETS}
+# `FIGURE_SETS` se ensambla más abajo, después de `REGRESSION_URBAN_CANDIDATES`,
+# porque el tercer conjunto las nombra y esas se declaran con las exclusiones de
+# la regresión. Es la única razón por la que el ensamblado no está aquí.
 
 
 # ---------------------------------------------------------------------------
@@ -1927,9 +1946,99 @@ FIGURE_SETS_BY_NAME: dict[str, FigureSet] = {figure_set.name: figure_set for fig
 # that needs variation within a unit over time belongs to the panel and is not
 # here, because a cross-section has one row per unit and no such variation. D48.
 
-# The three years, which are the three the exposure is measured in rather than
-# interpolated. See section 1 of docs/regression-inventory.md.
-REGRESSION_YEARS: tuple[int, ...] = (2015, 2019, 2023)
+# Los trece años del estudio transversal, que son los que la ciclorruta cubre.
+# D50, y la sección 1 de docs/regression-inventory.md guarda la elección anterior.
+#
+# Eran tres —2015, 2019 y 2023— y eran los tres años de encuesta más recientes,
+# elegidos para que la exposición estuviera medida y no construida en todos. Los
+# trece se abren después de D49, que dio a 2020 y 2021 un parche externo en lugar
+# de uno derivado de los siniestros, y con la comprobación de que la respuesta
+# sostiene la regresión en los años tempranos: 2012 es el más flaco, con mediana
+# de 12,5 partes afectadas por celda y 17 ceros de 240, lejos de ser inservible.
+#
+# **Cada año lleva lo que tiene, y eso parte el estudio en dos tramos.** Entre
+# 2015 y 2023 compiten la ciclorruta y la señalización vertical; en 2012-2014 y
+# en 2024 solo la ciclorruta, porque la capa de señalización no llega. Los dos
+# tramos no se solapan: son trece transversales y ningún año aparece dos veces.
+#
+# La exposición de 2024 es la única sostenida de las trece —el valor se arrastra
+# más allá de la encuesta de 2023 porque no hay nada después— y entra de todos
+# modos, porque es el año que los pasos siguientes necesitan.
+REGRESSION_YEARS: tuple[int, ...] = tuple(range(2012, 2025))
+
+
+def predictor_covers(predictor: "StaticPredictor", year: int) -> bool:
+    """¿Tiene esa predictora un valor en ese año?
+
+    Se deriva de lo que la predictora ya declara y no se declara por segunda vez.
+    Una segunda lista de años sería una copia que puede quedarse atrás sin que
+    nada avise, que es el defecto que este proyecto persigue.
+
+    Tres casos y ninguno más: una instantánea vale para todos los años, porque no
+    tiene ninguno; una serie construida sobre inventario más movimientos declara
+    sus años en `stock_series.years`; y una serie de fotos anuales los declara en
+    las claves de `source_files`.
+    """
+    if predictor.stock_series is not None:
+        return year in predictor.stock_series.years
+    if predictor.source_files:
+        return year in predictor.source_files
+    return True
+
+
+def regression_candidates_in(year: int) -> tuple[str, ...]:
+    """Las candidatas urbanas que compiten en ese año.
+
+    Son doce donde la señalización vertical tiene capa y once donde no. Lo que
+    una figura o una tabla diga sobre qué compitió sale de aquí, para que el
+    documento y el pipeline no puedan discrepar.
+    """
+    return tuple(
+        name for name in REGRESSION_URBAN_CANDIDATES
+        if predictor_covers(STATIC_PREDICTORS_BY_NAME[name], year)
+    )
+
+
+def series_available_in(year: int) -> str:
+    """Qué variables con serie tiene ese año, dicho para el pie de una figura.
+
+    Nombra **la bolsa y no lo elegido**: que una variable no aparezca en un panel
+    puede ser que la búsqueda no la escogiera o que no existiera, y son dos cosas
+    distintas que el lector no puede separar sin esta línea.
+
+    El motivo se dice y no es el mismo en los dos extremos: antes de 2015 la capa
+    de señalización todavía no empieza, y en 2024 ya terminó.
+    """
+    con_serie = [
+        name for name in REGRESSION_URBAN_CANDIDATES
+        if predictor_year_span(name) is not None
+    ]
+    presentes = [name for name in con_serie if name in regression_candidates_in(year)]
+    ausentes = [name for name in con_serie if name not in presentes]
+    tiene = " y ".join(predictor_label_es(name).lower() for name in presentes)
+    if not ausentes:
+        return f"con serie este año: {tiene}"
+
+    razones = []
+    for name in ausentes:
+        inicio, fin = predictor_year_span(name)
+        etiqueta = predictor_label_es(name).lower()
+        cuando = f"empieza en {inicio}" if year < inicio else f"termina en {fin}"
+        razones.append(f"la {etiqueta} {cuando}")
+    return f"con serie este año: solo {tiene} — {', '.join(razones)}"
+
+
+# Los años que cada predictora con serie cubre, para decirlo en una figura sin
+# volver a derivarlo. Vacío para las que no tienen serie.
+def predictor_year_span(name: str) -> tuple[int, int] | None:
+    predictor = STATIC_PREDICTORS_BY_NAME[name]
+    if predictor.stock_series is not None:
+        years = predictor.stock_series.years
+    elif predictor.source_files:
+        years = tuple(sorted(predictor.source_files))
+    else:
+        return None
+    return (min(years), max(years))
 
 
 @dataclass(frozen=True)
@@ -1971,8 +2080,9 @@ REGRESSION_PAIRS: tuple[ActorPair, ...] = (
 
 # The share of a pair's cells that may be zero before it is not worth regressing.
 # Declared in the anteproyecto and fixed before anything was estimated. All eight
-# pairs pass in all three years, the worst being five zero units of thirty, so it
-# drops nothing today; it is here so that it would.
+# pairs pass in all thirteen years, the worst being eleven zero units of thirty —
+# car against motorcycle in 2012 — so it drops nothing today; it is here so that
+# it would, and the early years are where it would first bite.
 REGRESSION_MAX_ZERO_SHARE = 0.5
 
 # The quantities an offset can be built from. Each is a column of the regression
@@ -2032,15 +2142,46 @@ for _excluded in REGRESSION_EXCLUSIONS:
             f"regression exclusion names {_excluded.predictor!r}, which is not a declared predictor"
         )
 
-# Thirteen urban variables over thirteen layers, plus the three quantities an
-# offset can be built from. Sixteen in the pool, and each offset takes its own out
-# of it: fifteen candidates under the first and the third, fourteen under the
-# second.
+# Twelve urban variables — the fifteen measured, less the three excluded above —
+# plus the three quantities an offset can be built from. Fifteen in the pool, and
+# each offset takes its own quantities out of it: fourteen candidates under the
+# offsets that take one, thirteen under the one that takes two.
 REGRESSION_URBAN_CANDIDATES: tuple[str, ...] = tuple(
     name
     for name in STATIC_PREDICTOR_NAMES
     if name not in {exclusion.predictor for exclusion in REGRESSION_EXCLUSIONS}
 )
+
+# El tercer conjunto de figuras: las doce que compiten en las regresiones.
+#
+# **No es ninguno de los dos anteriores y por eso hace falta.** `complete` son
+# once e incluye la calzada, que dejó de ser candidata; `model` son diez, las que
+# quedarían si la exclusión diferida se aplicara, y de esas diez sólo se dibujan
+# ocho porque la etapa de predictoras trabaja sobre una tabla sin año y dos de
+# ellas tienen serie. Éste son las doce que la búsqueda recorre de verdad.
+#
+# Se dibuja en `PREDICTOR_FIGURE_YEAR` y no sobre la tabla sin año, que es lo que
+# permite que la ciclorruta y la señalización entren como las demás en vez de
+# quedar fuera del dibujo. Por eso lo pide la etapa de regresiones, que es la que
+# tiene un año, y no la de predictoras.
+CANDIDATE_FIGURE_SET = FigureSet(
+    name="candidatas",
+    label="las variables que compiten en las regresiones",
+    purpose=(
+        "lo que el estudio modela: las doce que la búsqueda recorre, dibujadas en un "
+        "año declarado para que las dos con serie entren como las demás"
+    ),
+    predictor_names=REGRESSION_URBAN_CANDIDATES,
+    spanish=True,
+)
+
+FIGURE_SETS: tuple[FigureSet, ...] = _CONJUNTOS_SIN_LAS_DOCE + (CANDIDATE_FIGURE_SET,)
+FIGURE_SETS_BY_NAME: dict[str, FigureSet] = {
+    figure_set.name: figure_set for figure_set in FIGURE_SETS
+}
+if len(FIGURE_SETS_BY_NAME) != len(FIGURE_SETS):
+    raise ValueError("two figure sets share a name, so one would overwrite the other's folder")
+
 
 @dataclass(frozen=True)
 class OffsetSpec:
@@ -2072,7 +2213,145 @@ class OffsetSpec:
         return tuple(name for name in candidates if name not in self.quantities)
 
 
-REGRESSION_CANDIDATE_POOL: tuple[str, ...] = REGRESSION_URBAN_CANDIDATES + OFFSET_QUANTITIES
+@dataclass(frozen=True)
+class CandidateSet:
+    """Qué clase de variable puede competir en una corrida.
+
+    **Una cantidad que no entra al offset se queda compitiendo**, y eso es una
+    decisión y no una consecuencia. Bajo el offset de exposición del modo, la
+    exposición de la contraparte y la población siguen en la bolsa; bajo el de
+    población, las dos exposiciones. Compiten contra las variables urbanas en
+    condiciones desiguales: una exposición explica el conteo casi por
+    construcción, y una característica del entorno tiene que explicar lo que
+    sobra después de ella.
+
+    Correr sin ellas contesta una pregunta concreta —si el orden de las urbanas
+    se sostiene cuando no tienen que competir contra eso— y **no reemplaza a la
+    corrida con restos**, que es la que el estudio reporta. Sin restos no hay
+    ninguna cantidad logaritmada libre, así que no hay elasticidad que comparar
+    con la literatura de safety in numbers, y la exposición del modo afectado no
+    aparece en ningún modelo del offset de población, que es donde hoy se
+    comprueba que más viaje va con más siniestralidad.
+
+    Tiene un beneficio propio que no es menor: **sin restos las tres bolsas son
+    la misma**, así que la única diferencia entre los tres offsets pasa a ser el
+    denominador, que es justo la pregunta para la que existen los tres. Con
+    restos, bajo exposición del modo compiten catorce variables y bajo ambas
+    exposiciones trece, y esa diferencia se mete en la comparación.
+    """
+
+    name: str  # canónico: el valor de la columna en las tablas exportadas
+    cli: str  # lo que se escribe en la línea de comandos
+    slug: str  # lo que va en una ruta de figura o en un nombre de archivo
+    label_es: str  # lo que va en el título de una figura
+    admits_offset_quantities: bool
+
+
+WITH_OFFSET_LEFTOVERS = "WITH_OFFSET_LEFTOVERS"
+URBAN_ONLY_CANDIDATES = "URBAN_ONLY"
+
+REGRESSION_CANDIDATE_SETS: tuple[CandidateSet, ...] = (
+    CandidateSet(
+        name=WITH_OFFSET_LEFTOVERS,
+        cli="with-leftovers",
+        slug="con-restos",
+        label_es="con restos de offset",
+        admits_offset_quantities=True,
+    ),
+    CandidateSet(
+        name=URBAN_ONLY_CANDIDATES,
+        cli="urban-only",
+        slug="solo-urbanas",
+        label_es="solo urbanas",
+        admits_offset_quantities=False,
+    ),
+)
+
+# La que el estudio reporta, y la que una corrida produce cuando no se pide nada.
+# Llamarla por su nombre en vez de «la otra» es lo que evita que dentro de un mes
+# se confunda cuál produjo qué tabla.
+#
+# **Era `WITH_OFFSET_LEFTOVERS` hasta el 2026-09-27**, cuando D52 lo invirtió por
+# instrucción de Olmos: los restos de offset se llevaban 1 074 de los 5 363
+# términos seleccionados —un quinto de todo lo que la búsqueda elegía no era una
+# característica de la ciudad— y no compiten en igualdad de condiciones, porque
+# una exposición explica el conteo casi por construcción.
+#
+# La otra sigue alcanzable con `--candidates with-leftovers` y es donde viven las
+# elasticidades, porque la corrida reportada no tiene ninguna.
+DEFAULT_CANDIDATE_SET = URBAN_ONLY_CANDIDATES
+
+CANDIDATE_SETS_BY_NAME: dict[str, CandidateSet] = {
+    candidate_set.name: candidate_set for candidate_set in REGRESSION_CANDIDATE_SETS
+}
+CANDIDATE_SETS_BY_CLI: dict[str, CandidateSet] = {
+    candidate_set.cli: candidate_set for candidate_set in REGRESSION_CANDIDATE_SETS
+}
+
+# Los tres identificadores de cada conjunto son únicos, comprobado al importar.
+# Dos conjuntos con el mismo slug escribirían sus figuras en la misma ruta y la
+# segunda corrida borraría la primera sin decir nada.
+for _field in ("name", "cli", "slug"):
+    _values = [getattr(candidate_set, _field) for candidate_set in REGRESSION_CANDIDATE_SETS]
+    if len(set(_values)) != len(_values):
+        raise ValueError(f"two candidate sets share a {_field}: {_values}")
+if DEFAULT_CANDIDATE_SET not in CANDIDATE_SETS_BY_NAME:
+    raise ValueError(f"the default candidate set {DEFAULT_CANDIDATE_SET!r} is not declared")
+
+CANDIDATE_SET_COL = "CANDIDATE_SET"
+
+
+def regression_candidate_pool(candidate_set: str) -> tuple[str, ...]:
+    """Todo lo que ese conjunto admite, sin mirar el año."""
+    declared = CANDIDATE_SETS_BY_NAME[candidate_set]
+    if not declared.admits_offset_quantities:
+        return REGRESSION_URBAN_CANDIDATES
+    return REGRESSION_URBAN_CANDIDATES + OFFSET_QUANTITIES
+
+
+def regression_pool_in(year: int, candidate_set: str) -> tuple[str, ...]:
+    """Todo lo que puede competir en ese año, antes de que el offset tome lo suyo.
+
+    Es la bolsa del conjunto menos lo que no tiene capa ese año, que hoy es solo
+    la señalización vertical fuera de 2015-2023. Las tres cantidades del offset,
+    donde el conjunto las admite, están todos los años; de ellas se ocupa
+    `candidate_predictors`, que quita las que el offset use como denominador.
+
+    **La búsqueda tiene que pedir la bolsa del año y no la general.** Con la
+    general, un modelo de 2012 que incluyera la señalización se ajustaría sobre
+    una columna vacía, daría un AIC no finito y el filtro de `_describe` lo
+    descartaría sin decir nada: la corrida saldría con menos modelos de los
+    declarados y nada explicaría la diferencia.
+
+    **El conjunto no tiene valor por defecto, a propósito.** Un olvido en
+    cualquiera de los trece sitios que llaman aquí produciría una corrida limpia
+    con la bolsa sucia, y eso no falla: sale un resultado plausible y equivocado.
+    Sin defecto, el olvido es un TypeError.
+    """
+    urban = regression_candidates_in(year)
+    if not CANDIDATE_SETS_BY_NAME[candidate_set].admits_offset_quantities:
+        return urban
+    return urban + OFFSET_QUANTITIES
+
+# The candidates that enter the design in logarithms rather than raw.
+#
+# These are the same three quantities an offset is built from, and the reason is
+# the offset itself. An offset IS log(quantity) with its coefficient constrained
+# to one, so putting log(quantity) in as a free predictor is that same variable
+# with the constraint relaxed, and its coefficient is then directly comparable
+# with the one the offset assumes. Entered raw, in a model with a log link, the
+# same column asserts that casualties grow exponentially with trips, which is a
+# claim nobody in the field makes.
+#
+# It is also what makes the coefficient an elasticity, which is the form the
+# safety-in-numbers literature is written in: Jacobsen (2003) fits I = aE^b and
+# reports b between 0.13 and 0.58 across three datasets. A power law can only be
+# estimated from the logarithm.
+#
+# The urban variables are not logged. They are shares and densities, several of
+# them near zero in some units, and none of them is a scale term the response is
+# proportional to.
+LOG_SCALED_CANDIDATES: tuple[str, ...] = OFFSET_QUANTITIES
 
 
 REGRESSION_OFFSETS: tuple[OffsetSpec, ...] = (
@@ -2149,6 +2428,39 @@ DATASET_LABELS_ES: dict[str, str] = {
     "RHO_CORRECTED": "corregido con rho",
 }
 
+# Las mismas etiquetas en corto, para donde la larga no cabe. Hacen falta desde
+# que una figura pone las nueve especificaciones —tres offsets por tres familias—
+# en columnas: con nueve columnas, «exposición del modo afectado» se monta sobre
+# sus vecinas y no se lee ninguna de las tres.
+#
+# **Van declaradas y no abreviadas en el sitio donde se dibuja.** Una etiqueta
+# corta escrita al dibujar es una etiqueta que la siguiente figura escribirá
+# distinta, y entonces dos figuras del mismo árbol llaman de dos maneras a la
+# misma cosa. Se comprueba al importar que cubren exactamente las mismas claves
+# que las largas.
+FAMILY_SHORT_LABELS_ES: dict[str, str] = {
+    "OLS": "mínimos cuadrados",
+    "POISSON": "Poisson",
+    "NEGATIVE_BINOMIAL": "binomial negativa",
+}
+OFFSET_SHORT_LABELS_ES: dict[str, str] = {
+    "MODE_EXPOSURE": "modo afectado",
+    "BOTH_EXPOSURES": "ambos modos",
+    "POPULATION": "población",
+}
+for _largas, _cortas, _que in (
+    (FAMILY_LABELS_ES, FAMILY_SHORT_LABELS_ES, "family"),
+    (OFFSET_LABELS_ES, OFFSET_SHORT_LABELS_ES, "offset"),
+):
+    if set(_largas) != set(_cortas):
+        raise ValueError(
+            f"the short {_que} labels cover {sorted(_cortas)} and the long ones "
+            f"{sorted(_largas)}; a figure would have one and not the other"
+        )
+    _vacias = [clave for clave, valor in _cortas.items() if not valor.strip()]
+    if _vacias:
+        raise ValueError(f"short {_que} label(s) empty: {_vacias}")
+
 # Beyond this, a model has left spatial structure in its residuals worth saying
 # so about. Not a test and not a threshold anything acts on: it is the level at
 # which the run mentions it, because the panel that follows this step is where
@@ -2169,6 +2481,23 @@ OFFSET_SLUGS: dict[str, str] = {
 DATASET_SLUGS: dict[str, str] = {
     "OBSERVED": "observado",
     "RHO_CORRECTED": "corregido-rho",
+}
+
+# Una carpeta por pareja dentro de cada hoja del árbol de figuras. Hacen falta
+# desde que la figura de betas y la de modelos se parten por pareja: con trece
+# años, una sola figura para las ocho llevaría 104 columnas en un caso y 104
+# filas en el otro, y ninguna de las dos se lee.
+#
+# Sin tilde y sin espacios, como los otros dos: una ruta se teclea y se marca.
+PAIR_SLUGS: dict[str, str] = {
+    "PEDESTRIAN__MOTORCYCLE": "peatones-motocicleta",
+    "PEDESTRIAN__CAR": "peatones-automovil",
+    "BICYCLE__MOTORCYCLE": "bicicleta-motocicleta",
+    "BICYCLE__CAR": "bicicleta-automovil",
+    "MOTORCYCLE__MOTORCYCLE": "motocicleta-motocicleta",
+    "MOTORCYCLE__CAR": "motocicleta-automovil",
+    "CAR__MOTORCYCLE": "automovil-motocicleta",
+    "CAR__CAR": "automovil-automovil",
 }
 
 # The one combination copied into `principal/`, which is what somebody opens who
@@ -2195,8 +2524,34 @@ FAMILY_PATHS: dict[str, str] = {
 # The note under a table. Declared because the wrapping is computed from it: the
 # width of the axes is divided by the average advance of this size.
 FIGURE_NOTE_FONTSIZE = 7
+# El gris de una nota al pie, que hasta ahora estaba escrito en el sitio donde se
+# dibujaba. Se declara porque las figuras de dispersión lo necesitan también, y
+# dos figuras del mismo árbol con dos grises distintos se leen como si una de las
+# dos notas fuera más importante.
+FIGURE_NOTE_COLOR = "#555555"
+# El relleno de una caja de boxplot: el mismo azul de los puntos, aclarado, para
+# que la caja sea el fondo y la mediana y los atípicos la figura.
+BOX_FACE_COLOR = "#dce6ea"
 
 REGRESSION_POINT_COLOR = "#3C616F"
+
+# Two marks on the fit figures, each with a meaning that is not "bad".
+#
+# The first is a coefficient of determination below zero: not a small value but a
+# model that predicts worse than the mean of the thirty units would have. It only
+# arises in least squares, which is fitted on the rate and drawn on the counts.
+#
+# The second is Moran's I past the threshold the run already reports on, which
+# says the residuals of that model cluster in space. It is not a failure: it is
+# the signal that the panel stage will need a spatial term, and it is drawn in
+# both families because the residuals belong to the data rather than the
+# estimator.
+REGRESSION_FAILING_COLOR = "#9E2A2B"
+REGRESSION_FLAGGED_COLOR = "#B07D3A"
+
+# El aspa que marca una celda donde no hubo medición. Gris y fina: dice "aquí no
+# se buscó" sin competir con las cifras que sí hay alrededor.
+GRID_CROSS_COLOR = "#9e9e9e"
 
 # One colour per offset, for the panel that holds all three at once. Taken from
 # the thesis palette so a figure in a message and a figure in the document are
@@ -2228,6 +2583,36 @@ def predictor_label_es(name: str) -> str:
         f"{name!r} is neither a declared predictor nor an offset quantity, so it has "
         "no declared Spanish label and a figure must not invent one"
     )
+
+# La unidad de cada variable, dicha en el encabezado de su columna. Las doce
+# están por unidad de área, pero eso no se ve: en una misma fila conviven un
+# 0,055 que es proporción del área y un 2.433 que son árboles por kilómetro
+# cuadrado, y sin la unidad el segundo se lee como un conteo. Se traduce el
+# `value_unit` del método en vez de declararla variable por variable, porque es
+# el método el que la determina y así una variable nueva la trae ya puesta.
+VALUE_UNIT_LABELS_ES: dict[str, str] = {
+    "share of unit area": "prop. del área",
+    "points per km2": "por km²",
+    "line km per km2": "km por km²",
+}
+
+
+def predictor_unit_es(name: str) -> str:
+    """La unidad de una candidata, para la segunda línea de su encabezado.
+
+    Vacía para las cantidades de offset que compiten como candidatas: entran
+    logaritmadas y su unidad es la del logaritmo, que no se dice en una palabra.
+    """
+    if name not in STATIC_PREDICTORS_BY_NAME:
+        return ""
+    unidad = STATIC_PREDICTORS_BY_NAME[name].value_unit
+    if unidad not in VALUE_UNIT_LABELS_ES:
+        raise KeyError(
+            f"{name!r} se mide en {unidad!r} y esa unidad no tiene traducción "
+            "declarada; una figura no puede inventarla"
+        )
+    return VALUE_UNIT_LABELS_ES[unidad]
+
 
 OFFSET_COL = "OFFSET"
 FAMILY_COL = "FAMILY"
@@ -4793,14 +5178,19 @@ MEASURED_EXPOSURE = "MEASURED"          # a survey year: the value is the survey
 INTERPOLATED_EXPOSURE = "INTERPOLATED"  # between two surveys
 HELD_EXPOSURE = "HELD"                  # before the first survey or after the last
 # And the fourth, which only the patched variant of the panel ever carries: the
-# value is the one a smooth risk implies rather than the one a smooth exposure
-# does. See D42 and the pandemic block further down.
-IMPLIED_FROM_RISK_EXPOSURE = "IMPLIED_FROM_RISK"
+# interpolated value, multiplied by what an outside measure of how much the city
+# moved says about that year. See D49 and the pandemic block further down.
+#
+# It was called IMPLIED_FROM_RISK while D42 stood, because the value then came
+# from the casualties over a smoothed risk. D49 changed where the number comes
+# from, so the stamp had to change with it: a provenance label that names a
+# method the code no longer uses is worse than no label.
+PATCHED_FROM_MOBILITY_EXPOSURE = "PATCHED_FROM_MOBILITY"
 EXPOSURE_PROVENANCES = (
     MEASURED_EXPOSURE,
     INTERPOLATED_EXPOSURE,
     HELD_EXPOSURE,
-    IMPLIED_FROM_RISK_EXPOSURE,
+    PATCHED_FROM_MOBILITY_EXPOSURE,
 )
 
 # How far the row is from the nearest year that measured it. Zero on a survey year
@@ -5065,36 +5455,101 @@ EXPOSURE_DIAGNOSTIC_FACTOR = 1.5
 
 
 # ---------------------------------------------------------------------------
-# The pandemic years (D42)
+# The pandemic years (D49, superseding D42)
 # ---------------------------------------------------------------------------
 # D40 draws a smooth line between 2019 and 2023 and the line says walking grew
 # four per cent in 2020 and kept growing. It is not a defect of the
 # interpolation: the information that 2020 happened is not in the two anchors,
 # and no care inside D40's own terms can put it there.
 #
-# So for three named years the degree of freedom is spent on the other factor.
-# The risk is assumed smooth, and the exposure is whatever the casualties imply
-# given that risk — D41's mirror, applied as a declared exception on dated years
-# rather than as a method. What makes it an exception and not a preference: the
-# cause is known and external to the data, it is dated, and its direction is
-# checkable.
+# D42 filled that hole from the casualties, assuming the risk of those years was
+# smooth. It worked, and it is gone anyway, because the exposure it produced is
+# the offset of regressions whose response is those same casualties. Deriving the
+# denominator from the numerator is circular however carefully it is done, and no
+# amount of declaring it makes the regression mean what it appears to mean.
 #
-# The four modes are computed independently of one another and they agree:
-# everything collapses in 2020 except cycling, which holds and then peaks in
-# 2021. That they agree is the evidence for the patch.
-#
-# Read D42 before changing anything here, and in particular before widening the
-# years: what keeps this from being a fitted correction is that the rule is
-# stated first and applied to every cell it names.
-PANDEMIC_PATCH_YEARS = (2020, 2021, 2022)
+# What replaces it is external to crash records entirely: Google's COVID-19
+# Community Mobility Reports for Bogotá. Read D49 before changing anything here.
+# `src/mobility_reports.py` holds what the source is and is not, measured rather
+# than assumed; the three things that decide the design are repeated in its
+# docstring because they are easy to get wrong from the column names alone.
 
-# Which casualty dataset the factor is derived from. The corrected one, because
-# where the two differ is exactly the population rho exists to repair — a car
-# occupant recorded as unhurt where a pedestrian never is. The choice barely
-# matters where it matters most: rho does not touch the pedestrian in any year,
-# so the 2020 walking factor is the same number under either set. The observed
-# factors are computed and printed beside it on every run as a sensitivity.
-PANDEMIC_PATCH_DATASET = CORRECTED_DATASET
+# The two years the patch names. 2022 is out, and measured rather than judged:
+# on weekdays every out-of-home category of 2022 sits at or above Google's
+# baseline — shops 0.998, parks 1.046, workplaces 1.104, transit 1.344 — so it is
+# not a year of collapse and patching it would move a number for no reason.
+PANDEMIC_PATCH_YEARS = (2020, 2021)
+
+GOOGLE_MOBILITY_FILES: dict[int, Path] = {
+    year: INCOMING_DIR / f"{year}_CO_Region_Mobility_Report.csv"
+    for year in (2020, 2021, 2022)
+}
+
+# Bogotá appears only as a whole region: every row has an empty sub_region_2, so
+# there is no locality breakdown and certainly no UPL. The shock is therefore a
+# city-wide number and every unit receives the same one.
+GOOGLE_REGION_COL = "sub_region_1"
+GOOGLE_SUBREGION_COL = "sub_region_2"
+GOOGLE_DATE_COL = "date"
+GOOGLE_REGION_NAME = "Bogota"
+
+# The four out-of-home categories the composite averages. `residential` is left
+# out because it measures time at home rather than visits, which is a different
+# quantity in different units and cannot be averaged with these; and
+# `grocery_and_pharmacy` because essential travel rose above baseline while
+# everything else fell, so it moves against the thing being measured.
+GOOGLE_CATEGORY_COLUMNS: tuple[str, ...] = (
+    "retail_and_recreation_percent_change_from_baseline",
+    "parks_percent_change_from_baseline",
+    "transit_stations_percent_change_from_baseline",
+    "workplaces_percent_change_from_baseline",
+)
+
+# The year each patched year is measured against, month by month.
+#
+# Not Google's own baseline, and that is the subtlest decision here. Google
+# compares every day against the median of the same weekday between 3 January
+# and 6 February 2020, and in Bogotá that window is school holidays. Measured on
+# 2022, the year closest to normal in the series, January reads lowest of the ten
+# months in all four categories — workplaces at 0.845 against 1.20 in September.
+# So `1 + change/100` is "fraction of a January", not "fraction of normal", and
+# using it directly would write that seasonality into the patch.
+#
+# Comparing each month against the same month of a normal year puts the
+# seasonality on both sides of the ratio, where it cancels.
+GOOGLE_REFERENCE_YEAR = 2022
+
+# The bicycle does not take the common shock in 2020, and this is the one place
+# the patch names a mode.
+#
+# Google has no cycling series at all — its six categories are kinds of
+# destination — so the common shock would say cycling fell like everything else.
+# It did not. Wilches-Mogollón et al. (2024) put Bogotá's bicycle users at
+# 205,081 in 2019, from the same 2019 mobility survey this panel is anchored on,
+# and 151,759 in 2020. Their agent counts give the same ratio, which is the check
+# that the two numbers are the same measurement.
+#
+# Two things are declared with it rather than buried. Their 2020 figure is
+# "estimated with the percentage of change in daily trips" and the source of that
+# percentage is not named, so the provenance stops one step short of ours. And
+# they filter to mandatory weekday trips, excluding recreation and sport, where
+# this panel's weekday measure has no purpose filter.
+BICYCLE_2020_USERS_MEASURED = 151_759
+BICYCLE_2019_USERS_MEASURED = 205_081
+BICYCLE_MEASURED_YEAR = 2020
+BICYCLE_MEASURED_SOURCE = "wilchesmogollonImpactAssessmentActive2024"
+
+# 2021 has no measured cycling figure, so it is extrapolated: the bicycle's
+# distance from the common shock in 2020 is carried into 2021.
+#
+# **This is an extrapolation and the exported table says so in its own column.**
+# What is wrong with it is not hidden: it assumes the bicycle diverged from
+# general activity by the same ratio in two years whose drivers differed — 2020
+# was lockdown and the first pop-up lanes, 2021 was the Paro Nacional and those
+# lanes becoming permanent — and it cannot be checked against anything, where
+# 2020 could be checked against three independent estimates. It closes the panel
+# at a stated price. A measured 2021 figure, if one appears, replaces it.
+BICYCLE_2021_IS_EXTRAPOLATED = True
 
 # One kind of day. A casualty count is annual and carries no kind of day, the
 # factor is derived on the weekday pairing D41 declares, and the Sunday rests on
@@ -5250,7 +5705,7 @@ EXPOSURE_PROVENANCE_COLORS: dict[str, str] = {
     MEASURED_EXPOSURE: "#1a1a1a",
     INTERPOLATED_EXPOSURE: "#1b6ca8",
     HELD_EXPOSURE: "#9e9e9e",
-    IMPLIED_FROM_RISK_EXPOSURE: "#d95f02",
+    PATCHED_FROM_MOBILITY_EXPOSURE: "#d95f02",
 }
 
 # What each of them is called in a figure. The figures are read by my advisor and
@@ -5259,7 +5714,7 @@ EXPOSURE_PROVENANCE_LABELS_ES: dict[str, str] = {
     MEASURED_EXPOSURE: "Medido",
     INTERPOLATED_EXPOSURE: "Interpolado",
     HELD_EXPOSURE: "Sostenido",
-    IMPLIED_FROM_RISK_EXPOSURE: "Implicado por el riesgo",
+    PATCHED_FROM_MOBILITY_EXPOSURE: "Parcheado con movilidad externa",
 }
 
 EXPOSURE_VARIANT_LABELS_ES: dict[str, str] = {

@@ -27,6 +27,7 @@ and each has a root declared in `config.py`:
 | `SURVEYS_DIR` | `data/incoming/encuestas_movilidad/` | The mobility surveys the study's exposure is built from |
 | `POPULATION_DIR` | `data/population/` | The demographic file the denominators come from |
 | `INCOMING_DIR` | `data/incoming/` | Deliveries not yet merged into the sources above |
+| `GOOGLE_MOBILITY_FILES` | `data/incoming/<year>_CO_Region_Mobility_Report.csv` | Google's community mobility reports for 2020, 2021 and 2022, which the pandemic patch rests on (D49) |
 | `INTEGRATED_DIR` | `data/integrated/` | What the `integrate` route rebuilds from a delivery |
 
 **`SURVEYS_DIR` points inside `data/incoming/` and that is not a contradiction.**

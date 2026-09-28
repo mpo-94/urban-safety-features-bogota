@@ -1562,7 +1562,12 @@ def _step_decimals(step: float) -> int:
     return decimals
 
 
-def _draw_histogram(values: np.ndarray, predictor: config.StaticPredictor, out_path: Path) -> None:
+def _draw_histogram(
+    values: np.ndarray,
+    predictor: config.StaticPredictor,
+    out_path: Path,
+    spanish: bool = False,
+) -> None:
     edges = histogram_edges(values)
     counts, _ = np.histogram(values, bins=edges)
     step = float(edges[1] - edges[0])
@@ -1607,9 +1612,14 @@ def _draw_histogram(values: np.ndarray, predictor: config.StaticPredictor, out_p
         colour = "black" if count else config.FIGURE_TECHNICAL_LABEL_COLOR
         ax.text(left + width / 2, height, f"{int(count)}", ha="center", va="bottom", fontsize=9, color=colour)
 
-    ax.set_xlabel(f"{predictor.label} ({predictor.value_unit})")
-    ax.set_ylabel(f"{config.active_scale().label} units")
-    ax.set_title(f"{predictor.name}\n{predictor.measures}", fontsize=10)
+    if spanish:
+        ax.set_xlabel(f"{predictor.label_es} ({config.predictor_unit_es(predictor.name)})")
+        ax.set_ylabel(f"unidades {config.active_scale().label}")
+        ax.set_title(f"{predictor.label_es}\n{predictor.name}", fontsize=10)
+    else:
+        ax.set_xlabel(f"{predictor.label} ({predictor.value_unit})")
+        ax.set_ylabel(f"{config.active_scale().label} units")
+        ax.set_title(f"{predictor.name}\n{predictor.measures}", fontsize=10)
     ax.set_ylim(0, max(tallest * 1.18, 1))
     ax.set_yticks(range(0, tallest + 1, max(1, tallest // 6)))
 
@@ -1648,16 +1658,22 @@ def _draw_histogram(values: np.ndarray, predictor: config.StaticPredictor, out_p
 # a monospaced face to mark it as a literal string rather than prose.
 
 
-def _label_lines(name: str) -> tuple[str, str]:
-    """The readable label and the canonical name of a predictor, in that order."""
-    return config.STATIC_PREDICTORS_BY_NAME[name].label, name
+def _label_lines(name: str, spanish: bool = False) -> tuple[str, str]:
+    """The readable label and the canonical name of a predictor, in that order.
+
+    The second line is the column name whichever language the first is in: it is
+    what a reader types to find the column, and a translated column name would
+    not be one.
+    """
+    declared = config.STATIC_PREDICTORS_BY_NAME[name]
+    return (declared.label_es if spanish else declared.label), name
 
 
-def _two_line_y_labels(ax, names: list[str]) -> None:
+def _two_line_y_labels(ax, names: list[str], spanish: bool = False) -> None:
     """Readable label with the canonical name below it, along the vertical axis."""
     ax.set_yticks(range(len(names)), [""] * len(names))
     for position, name in enumerate(names):
-        readable, technical = _label_lines(name)
+        readable, technical = _label_lines(name, spanish)
         ax.annotate(
             readable,
             xy=(0, position),
@@ -1682,7 +1698,13 @@ def _two_line_y_labels(ax, names: list[str]) -> None:
         )
 
 
-def _two_line_x_labels(ax, names: list[str], rotation: float = 40.0, at_top: bool = False) -> None:
+def _two_line_x_labels(
+    ax,
+    names: list[str],
+    rotation: float = 40.0,
+    at_top: bool = False,
+    spanish: bool = False,
+) -> None:
     """The same pair of lines along the horizontal axis, rotated to fit.
 
     Rotated text has to be offset perpendicular to itself for the second line to
@@ -1707,7 +1729,7 @@ def _two_line_x_labels(ax, names: list[str], rotation: float = 40.0, at_top: boo
     technical_offset = base if at_top else base + below * gap
 
     for position, name in enumerate(names):
-        readable, technical = _label_lines(name)
+        readable, technical = _label_lines(name, spanish)
         ax.annotate(
             readable,
             xy=(position, edge),
@@ -1747,14 +1769,23 @@ def _draw_correlation(
     # the neutral colour: the sign is as much of the finding as the magnitude.
     image = ax.imshow(values, cmap=config.CORRELATION_COLORMAP, vmin=-1.0, vmax=1.0, aspect="auto")
 
-    _two_line_x_labels(ax, names)
-    _two_line_y_labels(ax, names)
-    ax.set_title(
-        f"Pearson correlation among {figure_set.label}: {len(names)} static predictors "
-        f"({len(correlation)} x {len(correlation)}, n = {config.active_scale().expected_units} "
-        f"{config.active_scale().label} units)",
-        fontsize=11,
-    )
+    _two_line_x_labels(ax, names, spanish=figure_set.spanish)
+    _two_line_y_labels(ax, names, spanish=figure_set.spanish)
+    escala = config.active_scale()
+    if figure_set.spanish:
+        ax.set_title(
+            f"Correlación de Pearson entre {figure_set.label}\n"
+            f"{len(correlation)} x {len(correlation)}, n = {escala.expected_units} "
+            f"unidades {escala.label}",
+            fontsize=11,
+        )
+    else:
+        ax.set_title(
+            f"Pearson correlation among {figure_set.label}: {len(names)} static predictors "
+            f"({len(correlation)} x {len(correlation)}, n = {escala.expected_units} "
+            f"{escala.label} units)",
+            fontsize=11,
+        )
 
     for row, col in itertools.product(range(len(names)), range(len(names))):
         value = values[row, col]
@@ -1768,7 +1799,10 @@ def _draw_correlation(
         ax.text(col, row, f"{printed:.2f}", ha="center", va="center", fontsize=8, color=colour)
 
     bar = fig.colorbar(image, ax=ax, shrink=0.85)
-    bar.set_label(f"{config.CORRELATION_METHOD} correlation coefficient")
+    bar.set_label(
+        "coeficiente de correlación de Pearson" if figure_set.spanish
+        else f"{config.CORRELATION_METHOD} correlation coefficient"
+    )
     fig.tight_layout()
     fig.savefig(out_path, dpi=config.FIGURE_DPI, bbox_inches="tight")
     plt.close(fig)
@@ -1828,7 +1862,7 @@ def _draw_master_table(
             color=colour,
         )
 
-    _two_line_x_labels(ax, names, at_top=True)
+    _two_line_x_labels(ax, names, at_top=True, spanish=figure_set.spanish)
     ax.set_yticks(
         range(row_count),
         [f"{code}  {name}" for code, name in zip(wide[config.AREA_CODE_COL], wide[config.AREA_NAME_COL])],
@@ -1874,11 +1908,19 @@ def _draw_master_table(
 
     scale = config.active_scale()
     ax.set_title(
-        f"Static urban predictors, {figure_set.label}: {row_count} {scale.label} units "
-        f"x {column_count} variables\n"
-        "Each column is shaded on its own scale, palest at that column's minimum and darkest "
-        "at its maximum.\nColours can be compared down a column and never across columns: the "
-        "variables are not on one scale.",
+        (
+            f"Predictoras urbanas, {figure_set.label}: {row_count} unidades "
+            f"{scale.label} x {column_count} variables\n"
+            "Cada columna va sombreada en su propia escala, la más pálida en su mínimo y la "
+            "más oscura en su máximo.\nEl color se compara hacia abajo y nunca hacia los "
+            "lados: las variables no comparten escala."
+            if figure_set.spanish else
+            f"Static urban predictors, {figure_set.label}: {row_count} {scale.label} units "
+            f"x {column_count} variables\n"
+            "Each column is shaded on its own scale, palest at that column's minimum and darkest "
+            "at its maximum.\nColours can be compared down a column and never across columns: the "
+            "variables are not on one scale."
+        ),
         fontsize=10,
         pad=104,
     )
@@ -1893,6 +1935,7 @@ def render_figure_set(
     wide: pd.DataFrame,
     correlation: pd.DataFrame,
     log: RunLog,
+    figures_dir: Path | None = None,
 ) -> int:
     """One histogram per variable of the set, its correlation and its master table.
 
@@ -1900,7 +1943,11 @@ def render_figure_set(
     the same two tables, so a number cannot differ between them: if it did, one of
     the two pictures would be wrong and there would be no way to tell which.
     """
-    figures_dir = log.run_dir / config.FIGURES_SUBDIR / figure_set.folder
+    # El destino por defecto es la carpeta propia del conjunto, que es lo que
+    # necesitan los dos que dibuja la etapa de predictoras. El tercero vive dentro
+    # del árbol de regresiones, que es la etapa que tiene un año, así que lo pasa.
+    if figures_dir is None:
+        figures_dir = log.run_dir / config.FIGURES_SUBDIR / figure_set.folder
     figures_dir.mkdir(parents=True, exist_ok=True)
 
     # A variable with a year has no column in a table with no year, and a
@@ -1933,6 +1980,7 @@ def render_figure_set(
             usable,
             predictor,
             figures_dir / f"histogram__{predictor.name}__{figure_set.name}.png",
+            spanish=figure_set.spanish,
         )
         written += 1
 
@@ -1951,12 +1999,14 @@ def render_figure_set(
     written += 1
 
     log.info(
-        "%s set: %d figures for %d variables under %s/%s/ (%s)",
+        "%s set: %d figures for %d variables under %s/ (%s)",
         figure_set.name,
         written,
         len(names),
-        config.FIGURES_SUBDIR,
-        figure_set.folder,
+        # La carpeta real y no la propia del conjunto: desde que el destino se
+        # puede pasar, anunciar la propia mandaría a buscar donde no está.
+        figures_dir.relative_to(log.run_dir) if figures_dir.is_relative_to(log.run_dir)
+        else figures_dir,
         figure_set.purpose,
     )
     return written

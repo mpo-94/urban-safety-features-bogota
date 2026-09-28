@@ -75,6 +75,11 @@ carried, so the second is larger for the same underlying records.
 | D46 | The two horizontal marking layers are flows with no inventory, and no year of them is usable | Methodological | Closed | No, and deliberately |
 | D47 | A series delivered as an inventory plus its movements, and why the stock is a method | Methodological and structural | Closed | Yes, the vertical signage over nine years |
 | D48 | The cross-sections are a first step, not the methodology, and the offset is declared rather than fixed | Methodological | Closed on scope and on the offsets | Pending: this is what the stage is written against |
+| D49 | The pandemic years are patched from an outside measure of how much the city moved | Methodological, supersedes D42 | Closed | Yes, on 2026-09-24 |
+| D50 | The cross-sections run over every year the data sustains, not over the three survey years | Methodological | Closed | Yes, thirteen years from 2012 to 2024 |
+| D51 | The least squares coefficient is reported as a standardised beta | Methodological | Closed | Yes, on 2026-09-28 |
+| D52 | The study reports the run without the offset leftovers | Methodological, reverses part of D50 | Closed | Yes, on 2026-09-28 |
+| D53 | What counts as an independent context, and the selection summary inside one specification | Methodological, completes D48 | Closed | Yes, on 2026-09-28 |
 
 Methodological decisions: D1-D7, D9, D10, D11, D15, D17, D18, D19, D21, D22, D32, D35,
 D38, D39, D40, D44.
@@ -5220,6 +5225,10 @@ during the period being measured.
 
 ## D42 — The pandemic years are patched by the mirror assumption, at the city level, in a variant of their own
 
+> **Superseded by D49 on 2026-09-24.** The factors below are no longer
+> applied. What replaced them and why is in D49; this stays because the thesis
+> has to be able to say what the study used to do.
+
 **Kind:** Methodological. It decides what the exposure of 2020, 2021 and 2022 is,
 which is the one block of the panel where D40's construction is known to be wrong
 rather than merely uncertain.
@@ -6202,3 +6211,614 @@ against 414, and Moran's I beyond 0.2 went from 93 to 87.
 fixed or random effects and its Hausman test; whether a second family of models on
 persons killed is built (D3); and which of the fifteen candidates are finally
 excluded, which my advisor will decide.
+
+---
+
+## D49 — The pandemic years are patched from an outside measure of how much the city moved, not from its casualties
+
+**Kind:** Methodological, and it supersedes D42 in full. It decides what the
+exposure of 2020 and 2021 is, which is the one block of the panel where D40's
+construction is known to be wrong rather than merely uncertain.
+
+**Status:** Decided on 2026-09-24, on my advisor's instruction. **D42 stays in
+this document, superseded rather than deleted**, because the thesis has to be
+able to say what it used to do and why that stopped being acceptable.
+
+**Built:** Yes, on 2026-09-24. `src/mobility_reports.py` reads the source,
+`interpolation.pandemic_factors` builds the factors, and everything that applies
+them is D42's machinery unchanged — which is the point: what was wrong with D42
+was where the number came from, not what was done with it.
+
+### Why D42 had to go
+
+D42 filled the hole from the casualties, assuming the risk of those years was
+smooth. It was carefully built and its arithmetic was right. It is gone anyway,
+because the exposure it produced is the offset of regressions whose response is
+those same casualties. Deriving the denominator from the numerator is circular
+however carefully it is done, and no amount of declaring it makes the regression
+mean what it appears to mean.
+
+That objection is my advisor's, and it is correct. It is also the kind of defect
+that no check inside D42's own terms could have found, because everything inside
+those terms balanced.
+
+### What replaces it
+
+Google's COVID-19 Community Mobility Reports for Bogotá, which have no connection
+to crash records of any kind. The factor has two parts and they come from
+different places on purpose.
+
+**The shock is common to every mode.** Google's six series are categories of
+destination — shops, groceries, parks, transit stations, workplaces, homes — and
+not one of them is a way of travelling. The one that names transport counts
+visits to stations rather than trips by bus, and none of the four patched modes
+is public transport anyway. Building a mode-specific shock out of them would mean
+assigning categories to modes, which is an assumption with nothing behind it.
+
+**What separates the modes is the trend, and that is measured.** The panel
+interpolates between two surveys, and between 2019 and 2023 the car falls twelve
+per cent while the motorcycle rises twenty. So the reference year sits at a
+different height on each mode's line, and dividing by that height turns "2020
+against 2022" into "2020 against what 2020 should have been".
+
+### Five decisions inside it, each measured rather than judged
+
+**Weekdays only.** The patch multiplies weekday exposure and these categories
+have a strong weekly cycle: workplaces in 2020 reads 0.645 over all days and
+0.571 over weekdays alone.
+
+**The composite is four categories of the six.** `residential` is out because it
+measures time at home rather than visits, which is a different quantity in
+different units; `grocery_and_pharmacy` is out because essential travel rose
+above baseline while everything else fell, so it moves against the thing being
+measured. The four that remain move together in 2020 — in April they read 0.220,
+0.320, 0.225 and 0.252 — and come apart in 2021 only because working from home
+persisted while shopping and leisure returned. That is why the composite is used
+rather than workplaces alone: by December 2021 workplaces reads 0.895 while
+three of the four read above 1, and a factor built on workplaces would say Bogotá
+moved ten per cent less than normal in a month when it moved more.
+
+**Each month is compared against the same month of 2022, not against Google's own
+baseline.** This is the subtlest of the five and it changes every number by about
+ten points. Google compares every day against the median of the same weekday
+between 3 January and 6 February 2020, and in Bogotá that window is school
+holidays. Measured on 2022, January reads lowest of the ten months in all four
+categories — workplaces at 0.845 against 1.20 in September. So `1 + change/100`
+is "fraction of a January", not "fraction of normal", and using it directly would
+have written that seasonality into the patch.
+
+**2022 is the reference year and is not itself patched.** Measured: on weekdays
+every out-of-home category of 2022 sits at or above Google's baseline, so it is
+not a year of collapse. It is also above pre-pandemic: over the same calendar
+days of 17 February to 19 March, 2020 reads 0.892 of 2022 on the composite, in
+all four categories. Patching the year that defines normality would be circular
+in the trivial sense, and the patched years drop from three to two.
+
+**The bicycle does not take the common shock.** Google has no cycling series at
+all, so the common shock would say cycling fell like everything else, and it did
+not. Wilches-Mogollón et al. (2024) put Bogotá's bicycle users at 205,081 in 2019
+— from the same 2019 mobility survey this panel is anchored on — and 151,759 in
+2020. Their agent counts give the same ratio, which is the check that the two
+figures are the same measurement.
+
+### The bicycle figure has a second, independent confirmation
+
+Lucas, Gouëset and Demoraes (2024), writing on Bogotá's pop-up bikeways, quote
+the Secretaría de Movilidad putting the cycling modal share at around 10 per cent
+in late 2020 against 6.6 per cent in late 2019. That is a share rather than a
+count, and a share can rise while the count falls, because the denominator
+collapsed — so on its own it says nothing about the factor.
+
+Combined with the shock it does. Over September and October, the two late-2020
+months the reference year also covers, total weekday activity was 0.510 of
+normal. A share that rose by a factor of 1.515 on a total at 0.510 implies
+cycling trips at **0.773** of normal in those two months.
+
+Wilches-Mogollón's figure is **0.740** for the year as a whole, and the last
+months of 2020 should sit above the annual mean of a year whose April was a
+lockdown. Two routes that share no data — a trip count taken through the 2019
+survey, and a modal share from the Secretaría divided into Google's total — land
+within a few per cent of each other, in the right order.
+
+The same chapter says the increase in cycle traffic "stabilised in 2021 at levels
+slightly below the peaks that were reached in the second half of 2020". That
+supports the direction of the 2021 extrapolation — cycling above the interpolated
+trend — without supplying a number, so the extrapolation stays an extrapolation.
+
+### The eight factors
+
+| Mode | 2020 | 2021 | Origin |
+| --- | ---: | ---: | --- |
+| Pedestrian | 0.534 | 0.741 | common shock |
+| Bicycle | 0.739 | 1.067 | measured, then extrapolated |
+| Car | 0.466 | 0.690 | common shock |
+| Motorcycle | 0.545 | 0.746 | common shock |
+
+**The pedestrian is the corroboration worth noticing.** D42 gave it 0.584 and
+0.746, from the casualties; this gives 0.534 and 0.741, from Google and the
+surveys. Two constructions sharing no source at all land in the same place for
+the mode where they should, and the new one gets there without touching a single
+crash record.
+
+### What is wrong with it, stated here rather than discovered later
+
+**The bicycle's 2021 factor is extrapolated and is the weakest number in the
+patch.** There is no measured cycling figure for 2021, so the bicycle's distance
+from the common shock in 2020 — a ratio of 1.503 — is carried across. It assumes
+that divergence held across two years whose drivers differed: 2020 was lockdown
+and the first pop-up lanes, 2021 was the Paro Nacional and those lanes becoming
+permanent. It cannot be checked against anything, where 2020 could be checked
+against three independent estimates. The exported table marks it `EXTRAPOLATED`
+in a column of its own, and a measured 2021 figure replaces it the day one
+appears. `La bicicleta en cifras` is where to look.
+
+**The car and the motorcycle are probably too low.** Vallejo-Borda et al. (2022)
+document the shift out of public transport into private and active modes in
+Bogotá during the pandemic. If people moved from buses to cars and motorcycles,
+those two fell less than the city as a whole, and their factors are the low end
+of what those years could have been. The direction of that error is known; its
+size is not, because no mobility survey was run in 2020 or 2021 — which is the
+reason this decision exists at all.
+
+**The shock is one number for the whole city.** Bogotá appears in the source only
+as a whole region: every row has an empty `sub_region_2`, so there is no locality
+breakdown and certainly no UPL. The factor therefore moves the level of every
+unit and none of the geography, and the spatial structure D41 found in 2020 is
+still in there untouched.
+
+**Wilches-Mogollón's own provenance stops one step short of ours.** Their 2020
+figure is "estimated with the percentage of change in daily trips" and the source
+of that percentage is not named in the paper. They also filter to mandatory
+weekday trips excluding recreation and sport, where this panel's weekday measure
+has no purpose filter.
+
+**November and December are outside every factor.** The source ends on 15 October
+2022, so those two months are missing from the reference year and therefore from
+both ratios. 2020 additionally begins on 15 February, so its factor rests on nine
+months and 2021's on ten.
+
+### What it changes downstream
+
+The provenance stamp on patched rows was `IMPLIED_FROM_RISK` and is now
+`PATCHED_FROM_MOBILITY`. **That is an exported value and the dashboard reads it.**
+The old name said the row came from a smoothed risk, which stopped being true;
+a provenance label that names a method the code no longer uses is worse than no
+label.
+
+The exported factor table changes shape with it: the casualty columns and the
+second-dataset sensitivity are gone, and `MOBILITY_SHOCK`, `TREND_REFERENCE`,
+`TREND_YEAR`, `FACTOR_FROM_SHOCK` and `FACTOR_ORIGIN` take their place.
+
+**And the gain, which is the reason for all of it:** the patched exposure of 2020
+and 2021 no longer comes from the casualty series, so risk in those years is a
+quantity this study can measure rather than one it assumed. Under D42 no model
+fitted on the patched variant could be read as having measured how risk moved in
+those years. Under D49 it can.
+
+---
+
+## D50 — The cross-sections run over every year the data sustains, not over the three survey years
+
+**Kind:** Methodological. It decides the study period of the cross-sectional
+stage, and it supersedes the choice of 2015, 2019 and 2023 recorded in section 1
+of `docs/regression-inventory.md`.
+
+**Status:** Decided on 2026-09-25, with my advisor and with what the panel adviser
+calls the two windows. Section 11 of the inventory holds the figure decisions that
+follow from it.
+
+**Built:** Yes, on 2026-09-25. `config.REGRESSION_YEARS` is the window and nothing
+in `src/regressions.py` counts years.
+
+### Why the three years stopped being the right three
+
+They were the three most recent years a mobility survey covers, and that was the
+whole argument: the exposure was measured rather than interpolated in all three.
+It was a good argument when the exposure existed only where a survey had put it.
+
+D40 removed the constraint. The exposure is now carried across every year between
+the surveys, with the pandemic block patched under D49, so a year without a survey
+is no longer a year without an exposure. What remained of the three-year choice
+was the habit of it.
+
+### The window, and what fixes each end
+
+**2012 to 2024, thirteen cross-sections.** Neither end is a preference:
+
+- **2012** is where the cycleway series starts, and the cycleway is one of the two
+  predictors that vary in time. Before 2012 the panel would have eleven static
+  variables and nothing else.
+- **2024** is where the casualty extract ends.
+
+### The two windows partition the years and do not overlap
+
+The adviser's windows are not two runs and not two periods to compare. They are
+the two shapes a year of this study can have:
+
+| Window | Years | What it has |
+| --- | --- | --- |
+| B | 2015-2023, nine years | both series: the cycleway and the vertical signage |
+| A | 2012-2014 and 2024, four years | the cycleway alone; the signage layer does not reach |
+
+Thirteen cross-sections and not twenty-two. A year belongs to one window or the
+other, and each year is fitted once, with the variables that exist in it. The
+alternative — fitting every year twice, once with a common set — was considered
+and dropped: it would throw away the signage in the nine years where it is
+measured, to buy a comparability that a cross-section does not need, because each
+year stands alone anyway.
+
+The four years of window A are not contiguous, which is why the figures carry no
+folder per window. Three at the start and one at the end read worse as two
+folders than as thirteen files in order.
+
+### Every year sustains a regression, measured rather than assumed
+
+A cross-section is thirty rows. What decides whether a year holds one is not the
+city total but how much of it reaches the unit-by-pair cell: a year of many zeros
+and medians of one or two has nothing to fit. Measured on the observed dataset,
+over the 240 cells of each year:
+
+| Year | Affected parties | Median per cell | Cells at zero |
+| --- | --- | --- | --- |
+| 2012 | 5 728 | 12.5 | 17 |
+| 2013 | 5 966 | 14.5 | 13 |
+| 2014 | 5 506 | 13.0 | 11 |
+| 2015 | 6 291 | 16.0 | 7 |
+| 2016 | 6 458 | 16.0 | 4 |
+| 2017 | 6 437 | 19.0 | 8 |
+| 2018 | 7 691 | 22.5 | 1 |
+| 2019 | 7 598 | 22.0 | 1 |
+| 2020 | 5 884 | 18.0 | 0 |
+| 2021 | 8 567 | 26.0 | 0 |
+| 2022 | 9 986 | 29.5 | 0 |
+| 2023 | 10 698 | 31.5 | 2 |
+| 2024 | 10 744 | 31.0 | 0 |
+
+2012 is the weakest and it is not weak: a median of 12.5 affected parties per cell
+and 17 empty cells out of 240. A true zero is an observation here and not a gap,
+so the empty cells are data the model reads rather than rows it loses.
+
+### What the thirteen years inherit, and has to be said where they are read
+
+**2020 and 2021 carry the D49 patch.** Their exposure is not measured and not
+interpolated between neighbours: it is the 2019 level scaled by how much Bogotá
+moved, taken from an outside source. Whatever those two years say about risk is
+downstream of that extrapolation, and a chapter that reads them has to say so.
+
+**The cycleway's year-to-year change is contaminated**, in seven of its twelve
+steps, by re-digitisation of the same network — section 23 of the verification
+report. It changes nothing here, because each cross-section reads one year's level
+and never a difference. It changes a great deal for the panel that follows.
+
+### One reported run, and a second one that checks it
+
+> **Reversed on 2026-09-27 by D52, on my advisor's instruction.** The run without
+> the leftovers is now the one the study reports and the one a run produces when
+> nothing is asked for; the run described below as the reported one is still
+> reachable, by name. What follows is kept because `run_20260925_090146` and
+> section 24 of the verification report were produced under this arrangement, and
+> because the measurement that justified reopening it is here.
+
+A quantity that enters the offset leaves the candidate predictors, and the two or
+three that the offset does not use stay in the bag. Whether to also run the whole
+thing without them was first settled as **one run**: they compete, they are
+labelled, and the selection-frequency table shows in how many of the three offsets
+each variable could compete at all, so a leftover that wins is visible as a
+leftover rather than passed off as an urban feature.
+
+**That was reopened the same day and decided the other way, and the reason is a
+measurement rather than a preference.** Over the 1 868 models of
+`run_20260925_073325`, the three leftovers take 1 074 of the 5 363 selected terms
+— a fifth of everything the search chose is a quantity of exposure or population,
+not a feature of the city. They do not compete on equal terms: an exposure
+explains the count almost by construction, and an urban feature has to explain
+what is left after it.
+
+So there are two runs, and they are not symmetric:
+
+- **`with-leftovers` is the run the study reports.** Unchanged, and still the
+  default when the flag is not given.
+- **`urban-only` is a robustness check on its urban coefficients.** It answers one
+  question — whether the ranking of the twelve urban variables survives when they
+  do not have to compete against that — and it answers nothing else.
+
+**What the second run cannot do, stated so it is not asked of it:** with no
+quantity competing in logarithm, no coefficient is an elasticity, so it says
+nothing about safety in numbers; and the affected mode's exposure appears in no
+model of the population offset, so the sanity check that more travel goes with
+more casualties is not in it either. The run log warns about both at the top when
+the flag is given.
+
+It has a property of its own that the reported run does not. **Without the
+leftovers the three offsets share one candidate list**, so the only difference
+between them is the denominator, which is the question the three offsets exist to
+answer. In the reported run that comparison is contaminated: fourteen variables
+compete under the mode exposure and thirteen under both exposures.
+
+The two are told apart by a declared `CandidateSet` — its name is a column of
+every exported table and its label is in the subtitle of every figure whose
+content depends on it — and by `tools/comparar_candidatas.py`, which puts the two
+runs side by side.
+
+---
+
+## D51 — The least squares coefficient is reported as a standardised beta
+
+**Kind:** Methodological, and it changes a quantity rather than a format. It
+decides what the number in an OLS cell of the beta heatmap means, and what the
+exported table carries beside what it already carries.
+
+**Status:** Decided on 2026-09-27, after measuring. **Applied on 2026-09-28**,
+with the other four agreed changes and two runs. Section 26 of the verification
+report is what they found.
+
+**Built:** Yes, on 2026-09-28. The proposal was first rendered on the tables of
+`run_20260925_084259` without touching the pipeline, in four variants, and the
+fourth was chosen.
+
+### The defect
+
+**All 1 639 least squares coefficients round to 0.00 in the figures.** Every one
+of them. The sign survives only as the minus of a `-0.00`, which is the worst
+possible place to keep it, and the magnitude survives only as a colour.
+
+Least squares admits no offset, so it fits the **rate**: casualties per trip. The
+coefficient is therefore in units of that rate, and the rate is of the order of
+1e-4 under the mode exposure and 1e-11 under the product of the two. The GLM does
+not have the problem because its coefficient lives on the log scale, which is
+dimensionless.
+
+That rules out the obvious repair. **No fixed number of decimals works**, because
+the magnitude follows the offset: six decimals would be needed under the mode
+exposure, seven under population and ten under both exposures.
+
+### The larger defect underneath it
+
+The figure does not only fail to be read. **It ranks its cells wrongly.**
+
+The standard deviation of the rate moves by a factor of 3.9 across the thirteen
+years of one pair, so a year with more casualties produces larger coefficients for
+that reason and not because the association is stronger. In the pedestrian against
+motorcycle panel, with the rho-corrected dataset and the mode exposure, the three
+largest cells are these:
+
+| | Scaled by a power of ten | Divided by the rate's deviation |
+|---|---|---|
+| 1st | TransMilenio 2024 · 4.04 | Signalised intersections 2022 · 1.41 |
+| 2nd | Signalised intersections 2022 · 3.29 | Vertical signage 2022 · −1.23 |
+| 3rd | TransMilenio 2019 · 3.08 | TransMilenio 2019 · 1.18 |
+
+TransMilenio in 2024 is the darkest cell of the figure under any repair that only
+moves the decimal point, and it falls to 0.82 — unremarkable — once the year's
+scale is taken out. What made it large is that 2024 has the most dispersed rate.
+
+### The second figure it breaks, found while measuring the first
+
+`coeficientes__<año>.png` puts the three offsets on one axis so that a reader can
+see how far a coefficient moves when the denominator changes. That is the only
+reason the figure exists and the only reason the three offsets share it.
+
+**For least squares it shows one of the three.** The median width of a confidence
+interval is 3.6e-04 under the mode exposure, 4.6e-05 under population and 4.6e-08
+under both exposures, so on a shared axis the last two collapse onto the zero line
+with no visible width at all. Eight panels, and in every one of them two thirds of
+the content is a dot.
+
+Divided by the response's deviation the three widths become 0.753, 0.428 and
+0.848 — the same order of magnitude — and the figure does what it was built to do.
+This is the same defect and the same repair, and it is recorded here so the change
+is not applied to the heatmap alone.
+
+### What is decided
+
+**The coefficient is divided by the standard deviation of the response in its own
+cell, and so are the two ends of its confidence interval**, which have to move
+with it or the interval would stop containing its own estimate. The design matrix is already centred and scaled, so this completes the
+standardisation on the other side, and each cell then says *how many standard
+deviations the rate moves per standard deviation of the variable*. It is the
+classical standardised beta and not an invention for this figure.
+
+Measured over the same 1 639 coefficients: they land between 0.126 and 1.642,
+none rounds to zero, and **the three offsets fall in the same range** — medians
+0.409, 0.438 and 0.455 — where today they are six orders of magnitude apart. The
+quantity is comparable across years, offsets and pairs, which the coefficient in
+rate units is not.
+
+There is a consistency argument too. The exported column is already called
+`COEFFICIENT_STANDARDISED` and today it standardises only the predictors. This
+makes the name true.
+
+### What it does not do, and what it costs
+
+**It applies to least squares alone.** The GLM coefficient is already
+dimensionless — a semi-elasticity per standard deviation of the predictor — and
+dividing it by anything would break its meaning. The two families' heatmaps
+therefore carry different quantities under the same title, which they already do
+today (rate units against log scale), so the subtitle has to name the quantity
+per family.
+
+**Nothing exported is replaced.** `COEFFICIENT_STANDARDISED` and `COEFFICIENT`
+stay as they are, so the dashboard keeps working and chapter 3 keeps the per-unit
+reading it will want. The new quantity arrives as a column of its own.
+
+**It requires both runs again**, because it changes what is exported. Forty
+minutes, and nothing else has to be re-fitted.
+
+---
+
+## D52 — The study reports the run without the offset leftovers
+
+**Kind:** Methodological. It decides which of the two candidate sets is the
+study's result and which is the check, and it reverses that part of D50.
+
+**Status:** Decided on 2026-09-27 with my advisor. **Applied on 2026-09-28.** The
+run the study reports is `run_20260928_112330`.
+
+**Built:** Yes, on 2026-09-28. Both sets existed already, so what changed is which
+one the flag has to be given for, and which one every document quotes.
+
+### What changes
+
+`urban-only` becomes the default candidate set. Every regression run from here on
+is that one unless the pipeline is asked for the other in so many words. The
+run with the offset leftovers is not discarded and stays reachable as
+`--candidates with-leftovers`; it is simply no longer what a run produces when
+nobody says anything, and no longer what the thesis reports.
+
+D50 said the opposite, in its subsection on the two runs. That subsection now
+carries a note pointing here, and it is kept rather than rewritten because the
+first arrangement is what `run_20260925_090146` and section 24 of the verification
+report were produced under.
+
+### Why, and it is a measurement
+
+The leftovers do not compete on equal terms. A quantity of exposure explains the
+count almost by construction, and an urban feature has to explain what is left
+after it. Over the 1 868 models of the run with them in the bag, **the three
+leftovers take 1 074 of the 5 363 selected terms — a fifth of everything the
+search chose is not a feature of the city at all.**
+
+Section 25 of the verification report measured what happens without them. **Read
+that measurement with the correction D53 applied to it**: the part about the
+ranking barely moving was measured on the pooled count and does not survive being
+measured inside each specification, where the median maximum movement is 4.5
+places of twelve. The sign result largely does survive — five of 197
+specification-level comparisons cross, four of them borderline.
+
+So the reversal rests on the count and not on the ranking: the leftovers take a
+fifth of everything the search selects and do not compete on equal terms. That
+argument is untouched. The study loses nothing it was relying on, and gains a
+result about urban features that is not entangled with quantities that were never
+the subject.
+
+### What the reported run can no longer answer, which has to be said in the text
+
+Both of these were true of the urban-only run when it was the check, and they
+matter more now that it is the result.
+
+**There is no elasticity in it.** The log-scaled candidates are exactly the offset
+quantities, so with none of them competing, no coefficient is an elasticity and
+nothing in the reported run compares with Jacobsen's *b* or with the
+safety-in-numbers literature. If the thesis wants that comparison — and the
+anteproyecto's framing suggests it does — it has to come from the
+`with-leftovers` run, quoted as such, or from a purpose-built estimate.
+
+**The affected mode's exposure appears in no model of the population offset.** In
+the run with leftovers it was selected in 316 models and was positive in all 316,
+which is the sanity check the whole design rests on: more travel, more casualties.
+That check is not in the reported run. It stays available in the other one and
+the chapter should cite it from there.
+
+Neither is a reason to reverse the decision, which is my advisor's and is
+recorded as his. They are two sentences the methodology chapter has to carry so a
+jury does not ask why the elasticity vanished.
+
+### What flipping the default breaks, and must be fixed in the same change
+
+Two places in the code today conflate «is the default» with «admits the offset
+quantities», and they are the same statement only while the default is
+`with-leftovers`:
+
+- `run_regressions` warns whenever the set is not the default, and the warning
+  names the two things the urban-only run cannot answer. Flipped, it would print
+  that warning over the run that *can* answer them.
+- `_write_readme` writes «es una comprobación de robustez … aquí ninguna cantidad
+  de offset compite» in the non-default branch, which would then head the run
+  where they do compete.
+
+The repair is to separate the two ideas rather than to flip a comparison: what a
+run can and cannot answer follows from `admits_offset_quantities`, and which one
+the study reports follows from `DEFAULT_CANDIDATE_SET`. They are independent and
+the code has to stop treating them as one.
+
+---
+
+## D53 — Qué cuenta como contexto independiente, y por qué el resumen de selección se hace dentro de una especificación
+
+**Kind:** Methodological. It does not reverse an earlier decision; it says what an
+earlier decision meant, which is what it should have said the first time. It is
+recorded as a decision because the loose reading of it produced a figure, a log
+table, an exported table and two claims in the verification report, and leaving
+the correction inside one of them would let the loose reading come back.
+
+**Status:** Decided on 2026-09-28, after measuring, and applied the same day.
+Section 26 of the verification report is what the runs found.
+
+**Built:** Yes, on 2026-09-28, with the rest.
+
+### The principle, and the reading of it that was wrong
+
+The selection-frequency figure rests on an argument that stands: **a variable
+that wins in independent contexts is evidence in a way no p-value of this stage
+can be**, because the p-values are the winner of a search over hundreds of
+declared subsets and are inflated by the search itself.
+
+What was never pinned down is which contexts are independent. The figure treated
+all of them as such and counted over 1 868 models spanning two casualty datasets,
+three offsets, three families, eight pairs and thirteen years.
+
+**Independent contexts are the pairs and the years, inside one specification.**
+A different offset or a different family is not another context: it is another
+model. A variable selected under three denominators has not won three times, it
+has won in three models whose results cannot be added.
+
+### The measurement that settles it
+
+How far the ranking of the twelve urban variables moves when each axis is pooled,
+on the urban-only run:
+
+| Se juntan | Movimiento del orden |
+| --- | --- |
+| los dos conjuntos de siniestralidad | casi nada: las tres primeras salen 121 / 110 / 107 y 123 / 114 / 109 |
+| las tres familias | la vía arterial va 5.ª → 3.ª → 1.ª; el andén 1.º → 1.º → 3.º |
+| los tres offsets | hasta **siete puestos de doce**; ocho de las doce se mueven tres o más |
+
+The cycleway is selected 36 times under the affected mode's exposure and 14 under
+the two-exposure offset; the trees 40 under the two-exposure offset and 15 under
+population. **The pooled figure averaged precisely the axis that contradicts
+itself most**, and then its own note called the result evidence.
+
+The two datasets are the exception: they agree. They are separated anyway, for a
+different and also good reason — the rho-corrected set exists to contrast and not
+to report, so half the models of the pooled figure came from a dataset the study
+does not report.
+
+### What follows, and what does not
+
+**What follows:** the frequency count is made inside one specification — one
+family, one dataset, one offset — where the only things pooled are the eight pairs
+and the thirteen years. Section 13.5 of the inventory builds it, eighteen figures
+and an exported table of 216 rows.
+
+**What does not follow:** that comparing across families or offsets is
+uninteresting. It is very interesting, and it is a **comparison** and not a sum.
+That is what `principal/comparacion/<conjunto>/acuerdo.png` is for: the twelve
+variables against the nine specifications, so a variable whose importance holds
+across all of them can be told from one whose result depends on the denominator.
+
+### Two claims of the verification report this corrects
+
+Section 25 justified D52 partly on the pooled ranking, and both of its pooled
+claims were re-measured per specification on 2026-09-28:
+
+- **«Nothing moves more than two places»** holds in **4 of the 18
+  specifications**. The median of the per-specification maximum is 4.5 places and
+  the worst is 8. In 5 of the 18 the first-ranked variable is not the same one.
+- **«Not one urban variable turns its sign over»** holds pooled. Per
+  specification, **5 of 197 comparisons with a usable base cross**, all of them on
+  6 to 15 coefficients, and only one is decisive on both sides: the SITP bus stops
+  under the population offset with Poisson, 7 % positive with the leftovers and
+  80 % without them.
+
+**D52 is not overturned by this**, and the reason matters. Its first leg is a
+count and not a ranking — the three leftovers take 1 074 of 5 363 selected terms —
+and its real argument is that they do not compete on equal terms: an exposure
+explains the count almost by construction. What the correction removes is a
+supporting claim that was measured the wrong way, not the decision.
+
+### Where the loose reading still lives
+
+The phrase appears in nine places across the documents and the code. It is not
+deleted anywhere: it is completed with the sentence that says which contexts
+count. `tools/comparar_candidatas.py` is the one that has to change most, because
+its headline is a pooled ranking of exactly the kind this decision retires.

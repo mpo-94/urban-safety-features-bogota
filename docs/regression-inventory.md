@@ -1,10 +1,19 @@
 # The inventory for the regressions
 
-What exists for each of the three regression years, what does not, and why. It is
+What exists for each year the regressions cover, what does not, and why. It is
 the counterpart of [`mobility-surveys-inventory.md`](mobility-surveys-inventory.md)
 for the stage that comes after the predictors: everything here was measured on
 2026-09-21, against the delivered files, and every figure says how it was
 obtained.
+
+Sections 1 to 10 were written for three years and one candidate set. Sections 11
+and 12 are what changed on 2026-09-25, when the window widened to thirteen years
+and a second candidate set was added; where the two disagree, the later ones are
+what runs.
+
+Section 13 was a list of changes decided and not yet in the code. **It is empty:**
+they were applied and run on 2026-09-28, and what the runs found is section 26 of
+the verification report, which is what to quote from here on.
 
 **It exists because the previous stage left a false impression.** The step2 audit
 recorded four layers "with an annual series", and three of those four turned out
@@ -19,29 +28,34 @@ year. Finding that out before building anything is what this document is for.
 model — a count GLM on the UPL-by-year panel, with Hausman deciding between fixed
 and random effects. That has not changed and it is still what the thesis
 estimates. What my advisor and the panel adviser asked for, before the panel is
-built, is this: least squares and a GLM at 2015, 2019 and 2023, on both casualty
+built, is this: least squares and a GLM one year at a time, on both casualty
 datasets, with a table of coefficients and a figure of observed against predicted
 for each pair. **The panel is the next stage, not an alternative being rejected
 here.** D48 is the decision, and the chapter has to present this the same way.
 
-Three separate cross-sections. One regression per pair of actor types, per year:
-**thirty rows, one per unit.**
+One separate cross-section per year. One regression per pair of actor types, per
+year: **thirty rows, one per unit.**
 
 A cross-section is also what lets every candidate be estimated at all. A
 fixed-effects model cannot estimate the coefficient of a variable that does not
 change in time, so thirteen of the fifteen would be absorbed by the unit effect;
 here there is no unit effect to absorb anything. The year-to-year comparison
-survives, by putting three separately estimated coefficients side by side.
+survives, by putting separately estimated coefficients side by side.
+
+The table below is the design as it now stands. It began with three years and one
+candidate set; D50 widened the window and added the second set, and sections 1 and
+12 hold both halves of that.
 
 | | |
 |---|---|
 | Unit of observation | the territorial unit, thirty of them |
 | Response | affected parties of type *i* whose counterpart was type *j* |
 | Pairs | eight, listed in section 2 |
-| Years | 2015, 2019, 2023 |
+| Years | thirteen, 2012 to 2024 — D50 |
 | Offsets | three, declared in section 3; the anteproyecto's is the first |
-| Candidate predictors | fourteen, listed in section 5, less whatever the offset takes |
-| Models per pair and year | 455, or 364 under the offset that takes two quantities |
+| Candidate predictors | fifteen, listed in section 5, less whatever the offset takes, and less the signage where its layer does not reach |
+| Candidate sets | two — **urban only, which is what the study reports and what a run produces with no flag**, and with the offset leftovers, reachable as `--candidates with-leftovers`. D52, and section 12 for how they are built |
+| Models per pair and year | 455, 364 or 286 according to the offset and the set |
 | Families | least squares and generalised linear model |
 | Datasets | observed and rho-corrected, **both, always** |
 
@@ -52,12 +66,30 @@ way has nothing to regress against.
 
 ---
 
-## 1. Why these three years
+## 1. Which years, and why these
 
-They are the three most recent of the five years a mobility survey covers, so the
-exposure is measured rather than interpolated in all three. That is the only
-property that separates them from any other year, and it is the decisive one:
-every predictor that survives section 5 exists in every year from 2012 onward.
+> **Superseded on 2026-09-25 by D50, which widened the window to thirteen years,
+> 2012 to 2024.** What follows is the record of the original choice and of the
+> argument that made it right at the time. The years are
+> `config.REGRESSION_YEARS` and nothing reads them from here.
+
+> **Read `verification-report.md` §23 before reading a difference between two
+> years.** The cycleway is one of the two predictors that vary in time, and its
+> year-to-year change is not clean: seven of the twelve steps carry re-measurement
+> mixed in and 2015-2016 cannot be read at all. It changes nothing for a
+> cross-section, where each year stands alone, and a great deal for the panel.
+
+**The three were 2015, 2019 and 2023**, the three most recent of the five years a
+mobility survey covers, so the exposure was measured rather than interpolated in
+all three. That was the only property separating them from any other year, and
+while the exposure existed only where a survey had put it, it was decisive.
+
+D40 removed the constraint by carrying the exposure across every year between the
+surveys, and D49 patched the one block where that construction was known to be
+wrong. A year without a survey stopped being a year without an exposure, and the
+window opened to every year the casualty series and the predictors both reach.
+D50 holds the measurement that the thirteen years sustain a regression each, and
+what the four years without a signage layer do instead.
 
 **2017 was considered and rejected.** It was proposed while two flow variables
 were still thought to be usable, because those two start in 2017 and do not reach
@@ -791,3 +823,355 @@ stock reconstruction were made in the session of 2026-09-21. Their numbers are i
 sections 2 and 4, `flujos_vs_stock.py` reproduces all of them in one table, and
 the checks of section 7 reach them again by another route, which is the point of
 making them external controls.
+
+---
+
+## 11. Las figuras con trece transversales, decididas antes de correr
+
+Acordado el 2026-09-25, figura por figura, para que la corrida sea una sola.
+Aprobado e implementado el mismo día; la última subsección dice dónde quedó cada
+pieza.
+
+### El principio
+
+El árbol de `figures/` está pensado para que una persona lo recorra, y se
+conserva. Lo que cambia es que cada hoja pasa de tres archivos a trece, y que hay
+años en los que la señalización vertical no existe. Esa ausencia **se tiene que
+poder distinguir de una variable que sí estaba y no se seleccionó**, porque son
+dos cosas distintas y un lector no puede separarlas mirando la figura.
+
+### `coeficientes/` — un PNG por año, con el tramo declarado en el título
+
+Sigue siendo un archivo por año, sin carpeta por ventana. La ventana A son 2012,
+2013, 2014 **y 2024**, que no son contiguos: una carpeta con esos cuatro y otra
+con los nueve del medio se recorre peor que trece archivos en orden. El año ya
+está en el nombre y ordena solo.
+
+El título gana una tercera línea que dice **qué había en la bolsa**, no qué se
+eligió:
+
+| Años | Tercera línea |
+| --- | --- |
+| 2015-2023 | `con serie este año: ciclorruta y señalización vertical` |
+| 2012-2014 | `con serie este año: solo ciclorruta — la señalización vertical empieza en 2015` |
+| 2024 | `con serie este año: solo ciclorruta — la señalización vertical termina en 2023` |
+
+El motivo se nombra y es distinto en cada extremo: en 2012-2014 la capa todavía
+no empieza, en 2024 ya terminó.
+
+### `entradas/` — tres carpetas, una figura por año en cada una
+
+Treinta y nueve archivos planos no se recorren. El árbol queda:
+
+```
+entradas/
+├── predictoras/          predictoras__2012.png … predictoras__2024.png
+└── respuestas/
+    ├── corregido-rho/    respuestas__2012.png … respuestas__2024.png
+    └── observado/        respuestas__2012.png … respuestas__2024.png
+```
+
+Las predictoras no se parten por conjunto de siniestralidad porque son
+propiedades de la unidad y no dependen de él. Y **el archivo deja de repetir lo
+que ya dice la carpeta**: dentro de `respuestas/corregido-rho/` sobra el
+`__corregido-rho__` del nombre, igual que `ajuste__2023.png` vive dentro de una
+carpeta que ya dice familia, conjunto y offset.
+
+**La aclaración del tramo va solo en `predictoras/`, y añadida a la nota al pie
+que esa figura ya tiene**, no como tercera línea del título: la figura ya lleva
+pie propio y una línea arriba competiría con él.
+
+**En `respuestas/` no va.** Esa figura muestra partes afectadas por unidad y
+pareja; qué predictoras tienen serie ese año no tiene relación con ella, y
+ponerlo mandaría al lector a buscar una conexión que no existe.
+
+Una consecuencia menor, para que no sorprenda: con una columna menos las celdas
+se ensanchan, así que la tabla de 2014 no alinea con la de 2019 si se abren una
+al lado de la otra. Es inevitable al quitar una columna.
+
+### Las unidades, en el encabezado de cada columna
+
+**Defecto encontrado el 2026-09-25 y que no tiene que ver con los años nuevos.**
+En `predictoras__<año>.png` conviven en la misma fila `0.055` y `2433`, y la
+figura no dice que el primero es una proporción del área y el segundo son árboles
+por kilómetro cuadrado. Sin esa información el segundo se lee como un conteo, que
+es exactamente lo que pasó al revisarla.
+
+Las doce variables **ya están por unidad de área** — se verificó multiplicando
+cada valor por el área de su unidad y comprobando que devuelve el entero del
+conteo original — así que no hay nada que corregir en la medición. Lo que falta
+es decirlo en la figura:
+
+```
+   Andén          Vía arterial      Cruces peatonales    Arbolado completo    Ciclorruta
+prop. del área   prop. del área         por km²              por km²          km por km²
+```
+
+Cuatro son proporción del área, siete son puntos por km² y la ciclorruta es km de
+línea por km². Con la unidad en el encabezado la figura se explica sola y la nota
+al pie puede quedarse con lo suyo, que es cómo leer el color.
+
+**La unidad va como una línea más de la etiqueta de columna, y el nombre se
+rellena a dos líneas antes de añadirla**, de modo que todas las unidades quedan a
+la misma altura tengan el nombre una palabra o dos. Se probó la alternativa de
+dibujarla aparte, más pequeña y en gris, y se descartó: una etiqueta de marca de
+eje admite un solo estilo, así que la unidad hay que anotarla a una altura fija
+mientras las etiquetas bajan lo que necesiten, y las dos se pisan en los nombres
+de dos palabras. El arreglo exigiría medir el renderizado, que es frágil.
+
+Hay que mirar si la tabla maestra de predictoras del otro grupo de figuras tiene
+el mismo problema.
+
+### `parejas/` — las dos figuras que cruzan los años, una por pareja
+
+`betas.png` y `modelos.png` llevaban las ocho parejas a la vez. Con trece años
+eso son 104 columnas en el mapa de calor y 104 filas en la tabla, y ninguna de
+las dos se lee. Pasan a una carpeta por pareja:
+
+```
+<familia>/<conjunto>/<offset>/
+├── ajustes/            ajuste__2012.png … ajuste__2024.png
+└── parejas/
+    ├── peaton-motocicleta/    betas.png, modelos.png
+    ├── peaton-automovil/      betas.png, modelos.png
+    └── …                      las ocho
+```
+
+Las columnas que identificaban el bloque —pareja, familia, offset, conjunto—
+salen de las filas y se van al título, donde se dicen una vez en lugar de
+repetirse en cada una. Los nombres de carpeta están en `config.PAIR_SLUGS`, junto
+a los de familia, conjunto y offset, porque una ruta que se escribe a mano en la
+figura es una ruta que se puede escribir distinto en dos sitios.
+
+### El aspa, en la celda del año que no tiene capa
+
+En el mapa de betas, una celda vacía significa «compitió y no entró», y hay
+cuatro columnas donde la señalización vertical no compitió en absoluto. Las dos
+ausencias se ven igual y significan lo contrario, así que la segunda **se marca
+con un aspa dentro de la celda**.
+
+Dentro y no de esquina a esquina: a media celda las diagonales de dos años
+vecinos se tocan y se leen como una cinta continua en vez de como dos cruces. El
+aspa se dibuja al 0,34 del ancho, que es lo que la separa de sus vecinas.
+
+La fila sigue estando aunque la variable no gane nunca, con el nombre en gris.
+Una versión anterior listaba solo las seleccionadas alguna vez, y entonces una
+variable que compitió trece años y perdió los trece desaparecía, indistinguible
+de una que nunca estuvo en la bolsa.
+
+### `modelos.png` — los años como filas y una columna de «Candidatas»
+
+Los años pasan a ser las filas y las columnas se mantienen. La primera columna es
+nueva y cuenta **cuántas variables compitieron ese año**, que es lo que el aspa
+hace en la otra figura. Allá hay una celda que marcar; aquí la ausencia se
+manifiesta como un nombre que no aparece en una lista, y eso no se ve: sin la
+cuenta, comparar 2014 con 2019 no permite distinguir «no estaba disponible» de
+«compitió y no ganó». Además vale por sí sola, porque es el tamaño del espacio
+que la búsqueda recorrió.
+
+### `frecuencia_seleccion.png` — cada variable sobre su propia bolsa
+
+> **Corregido de nuevo el 2026-09-28 — D53 y sección 13.5.** Lo que sigue arregla
+> el denominador de esta figura y ese arreglo sigue en pie, pero la figura entera
+> se retira: contaba sobre los 1 868 modelos de la corrida, y eso promedia tres
+> offsets y tres familias que se contradicen. La reemplazan dieciocho figuras, una
+> por especificación. La regla del denominador propio se conserva íntegra en cada
+> una de ellas.
+
+**Defecto encontrado el 2026-09-25, y que la tabla de hoy ya tiene.** La figura
+divide las veces que una variable fue elegida entre el total de modelos, y eso
+solo es correcto para una variable que compitió en todos. Dos clases de candidata
+no lo hicieron: una cantidad de exposición o de población está en la bolsa
+únicamente bajo los offsets que no la usan como denominador, y con trece años la
+señalización vertical se les une, porque su capa no cubre 2012-2014 ni 2024.
+
+Dividir entre el total castiga a quien tuvo menos oportunidades, y no un poco: al
+corregirlo sobre la corrida de tres años, «Exposición afectado» pasa del puesto 9
+al 1. Es el mismo error que ya se había cazado al medir los restos de offset,
+cometido en otra parte del mismo paso.
+
+La corrección es el denominador propio, y **el denominador va a la vista**: un
+porcentaje cuyo divisor cambia de fila en fila y no se muestra es el mismo
+defecto con otra cara. La tabla gana dos columnas:
+
+| Columna | Qué dice |
+| --- | --- |
+| `De cuántos pudo` | en cuántos modelos esa variable estuvo en la bolsa |
+| `Offsets` | en cuántos de los tres compitió: 3 las urbanas, menos los restos |
+
+`Offsets` se lee así: donde diga 1, el porcentaje de esa fila describe **ese
+offset y no el estudio**, porque la variable solo pudo competir cuando el offset
+no la estaba usando de denominador. Donde diga 3, el porcentaje habla de toda la
+corrida.
+
+La columna se añadió por una preocupación concreta y la responde: que un resto de
+offset termine ganando por encima de las variables urbanas sin que la figura deje
+ver que compitió en condiciones distintas.
+
+### Dónde quedó implementado
+
+Todo lo anterior está en `src/regressions.py` y en `src/config.py` desde el
+2026-09-25. El árbol lo arma `render_figures`; las rutas por pareja salen de
+`config.PAIR_SLUGS`; la línea que declara el tramo de un año la da
+`config.series_available_in`, que la escribe una vez y la usan las dos figuras
+que la llevan; la unidad de cada columna sale de `config.predictor_unit_es`, que
+traduce el `value_unit` del método de medición en lugar de declararla variable
+por variable; y el denominador propio lo calcula `selection_frequency`, que por
+eso pasó a recibir también la tabla de modelos.
+
+Dos comprobaciones nuevas en `verify` sostienen lo que las figuras dibujan: que
+ninguna candidata de la bolsa del año llega nula, que ninguna que no esté en esa
+bolsa llega con valor —un cero ahí se leería como una ausencia medida— y que
+ningún coeficiente pertenece a un año que su capa no alcanza. La tercera se probó
+falseando un coeficiente de señalización en 2012: la comprobación falla y nombra
+al culpable.
+
+---
+
+## 12. La corrida limpia, decidida antes de correrla
+
+Acordada el 2026-09-25, después de la corrida de trece años. La decisión de
+fondo es D50; aquí está lo que se implementó y qué se comprobó antes de lanzar.
+
+### Qué es
+
+La misma ruta con una bandera:
+
+```
+.venv/Scripts/python.exe -m src.run_pipeline regressions --candidates urban-only
+```
+
+Sin la bandera corre `with-leftovers`, que es la que el estudio reporta. La
+bandera va declarada en la ruta, en un campo `options` del `Route`, y no como un
+`if` sobre el nombre de la ruta: la siguiente que necesite una opción añade una
+línea en vez de otra rama.
+
+Se prefirió la bandera sobre una ruta nueva porque **las dos corridas son el
+mismo procedimiento con una declaración distinta**. Dos rutas paralelas son dos
+cosas que mantener sincronizadas, y lo que se quiere es exactamente lo contrario:
+que solo pueda cambiar el conjunto de candidatas.
+
+### Qué cuesta y qué declara
+
+| | Con restos | Solo urbanas |
+| --- | ---: | ---: |
+| Candidatas por año, con señalización | 14 / 13 / 14 según el offset | 12 en los tres |
+| Candidatas por año, sin señalización | 13 / 12 / 13 | 11 en los tres |
+| Especificaciones por celda | 455 / 364 / 455 | 286 en los tres |
+| Declaradas en total | 745 056 | 497 376 |
+
+El 67 % del trabajo de la otra, unos dieciséis minutos.
+
+### La columna que distingue las dos corridas
+
+`CANDIDATE_SET` es la primera columna de identificación de modelos,
+coeficientes, predicciones y frecuencia de selección. Sin ella las dos corridas
+producen tablas **idénticas en forma y distintas en significado**, con los mismos
+nombres de archivo, y ni el tablero ni la comparación podrían separarlas.
+
+`MODEL_ID` se dejó como estaba —`conjunto|offset|pareja|año|familia`— para no
+cambiarle el formato de un identificador al tablero, que lo consume. La
+consecuencia es que juntar las dos corridas exige emparejar por `CANDIDATE_SET` y
+`MODEL_ID`, no por `MODEL_ID` solo.
+
+### Qué dice la figura
+
+**Todas las figuras cuyo contenido depende del conjunto lo dicen en el
+subtítulo**, corra el que corra, no solo la corrida que no es la de siempre:
+
+```
+GLM binomial negativa · offset: exposición del modo afectado · conjunto: observado
+ · candidatas: solo urbanas
+```
+
+Se dice «candidatas» y no «conjunto» porque esa palabra ya está ocupada por el
+conjunto de siniestralidad, y un subtítulo con dos conjuntos obliga a adivinar
+cuál es cuál. La figura que existe para desambiguar dos corridas no puede
+introducir una ambigüedad nueva al hacerlo.
+
+Se marcan las cinco que dependen del conjunto —ajustes, coeficientes, betas,
+modelos y frecuencia— y **no se marcan las de `entradas/`**, que son las mismas
+en las dos corridas: las predictoras por unidad y las partes afectadas no
+dependen de quién compite. Marcarlas sugeriría una diferencia que no existe.
+
+Marcar siempre y no solo la corrida limpia tiene un motivo: una figura que calla
+obliga a recordar cuál era el valor por defecto el día en que se dibujó, y eso no
+se recuerda.
+
+### La columna «Offsets» aparece solo donde informa
+
+En la corrida limpia los tres offsets comparten bolsa, así que «en cuántos de los
+tres compitió» vale 3 en las doce filas. Una columna de un solo valor repetido se
+lee como una medición y no lo es, así que se dibuja solo cuando varía —la misma
+regla que `modelos.png` ya aplica a su columna «Dispersión»— y la nota al pie
+pierde con ella las dos frases que allí describen algo que no ocurre.
+
+`De cuántos pudo` **no** sigue esa regla y se dibuja siempre: no es una propiedad
+de la variable sino el denominador del porcentaje que tiene al lado, y un
+porcentaje cuyo divisor no se ve es el defecto que esa columna vino a corregir.
+
+### Qué se comprobó antes de lanzar
+
+Diecisiete comprobaciones en tres tandas, ninguna de las cuales ajusta un modelo
+completo.
+
+**Sobre la declaración**, diez: que las dos bolsas difieran exactamente en las
+tres cantidades de offset en los trece años; que la bolsa urbana sea idéntica a
+la lista de candidatas del año; que sin restos los tres offsets compartan bolsa y
+con restos no; que las especificaciones por celda den 286 y 220; que el total con
+restos reproduzca **las 745 056 que declaró la corrida de trece años**, que es lo
+que demuestra que enrutar el conjunto por trece sitios no cambió nada de lo que
+ya corría; que olvidar el conjunto sea un `TypeError` y no una corrida silenciosa
+con la bolsa equivocada; y que un conjunto inventado sea un `KeyError`.
+
+**Sobre una corrida de humo** con los dos conjuntos —una pareja, un offset, una
+familia, trece años—, cinco por conjunto: los 26 modelos; que las declaradas sean
+las del año; que los restos compitan donde deben y en ningún sitio donde no; que
+las tres tablas digan de qué corrida son; y que no haya ninguna elasticidad donde
+no hay cantidad logaritmada libre.
+
+**Dentro de `verify`**, dos nuevas que corren en cada corrida: que las tres
+tablas declaren el conjunto de la corrida y solo ese, y que ninguna cantidad de
+offset haya competido cuando el conjunto es el urbano.
+
+### Lo que la corrida de humo ya adelantó
+
+Sobre 26 modelos de una sola pareja, un offset y una familia, que es poco y se
+dice: las 24 selecciones que se llevaban los dos restos **no se reparten
+proporcionalmente**. El andén pasa de 6 a 14 y la vía arterial de 4 a 10,
+mientras que TransMilenio baja de 10 a 8 y el arbolado y la señalización de 4 a
+2. Esas tres estaban ganando *en compañía* de los restos y no en su lugar.
+
+Si eso se sostiene en la corrida completa es lo que contesta
+`tools/comparar_candidatas.py`.
+
+---
+
+## 13. Los cambios del 2026-09-28, aplicados
+
+**Esta sección era una lista de trabajo y está vacía.** Se llenó entre el 25 y el
+28 de septiembre con cinco cambios, se acordaron uno por uno, se implementaron en
+ocho pasos con una verificación en cada uno, y se corrió. Lo que queda aquí es el
+puntero, para que nadie busque en una lista cerrada.
+
+**Lo que se hizo y por qué está en las decisiones**: D51 el beta estandarizado de
+mínimos cuadrados, D52 el conjunto urbano como el que reporta el estudio, y D53
+qué cuenta como contexto independiente. Las dos cosas que no necesitaron decisión
+propia —el tercer conjunto de figuras, el de las doce, y los tres boxplots de
+dispersión que pidió la asesora del panel— están descritas en D53 y en la sección
+26 del informe de verificación.
+
+**Lo que las corridas dieron está en la sección 26 del informe de verificación**,
+que es la que hay que citar de aquí en adelante. Las corridas son
+`run_20260928_112330`, la que el estudio reporta, y `run_20260928_114216`, la de
+robustez con los restos de offset.
+
+La prueba de que ninguno de los cinco cambios tocó el ajuste está ahí también: la
+corrida con restos reproduce clavadas las cuatro cifras de `run_20260925_090146`.
+
+### Si esta sección vuelve a llenarse
+
+Se llena igual: una entrada por cambio, con qué, por qué, dónde toca y cómo se
+verifica; nada se implementa hasta que Mateo la cierre; y al cerrarla se ejecuta
+en pasos, cada uno con su verificación, antes de correr nada. Ese esquema funcionó
+y las dos veces que algo falló fue una verificación mal escrita y no el código.

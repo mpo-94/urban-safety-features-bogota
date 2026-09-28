@@ -3961,6 +3961,11 @@ the regression stage raises, which is what that flag exists for.
 
 ## 21. The cross-sectional regressions
 
+> **Superseded by §24 on 2026-09-25**, when the window widened from three years to
+> thirteen. Every number below is from the three-year run and none of them survived
+> unchanged. It stays because a deliverable may already quote one, and a figure
+> whose run is recorded can be traced; one whose run was overwritten cannot.
+
 Route `regressions`, run `run_20260922_015155`. **Every check passed.** The
 decisions are D48 for the scope and the offsets; the plan is
 `regression-inventory.md`.
@@ -4072,6 +4077,13 @@ single p-value here can be.** The p-values are the winner of a search over every
 declared subset and are inflated by the selection itself; the table above is not.
 The run says so and the exported figure carries the same caveat under itself.
 
+> **D53, on 2026-09-28, says which contexts those are.** The sentence above is
+> right and the table it describes counts over all of them at once, which is not.
+> Independent contexts are the pairs and the years inside one specification; a
+> different offset or family is another model, not another context. The sign
+> counts survive the correction — they are per model — and the shares and the
+> ranking do not, because their denominator pools specifications that disagree.
+
 ### The figures
 
 118 files under `figures/regressions/`, in a tree whose path is the question, and
@@ -4162,3 +4174,685 @@ models that select it, which is the sanity check the whole design rests on: more
 travel, more casualties. The arterial road rose from 77 selections to 101, taking
 over part of what the carriageway had been doing, and its sign is split — which is
 what a variable standing in for several things looks like.
+
+---
+
+## 22. What the pandemic patch became, and what the run found
+
+Run `run_20260924_235037` for the regressions, `run_20260924_233647` for the
+interpolation. D49 replaced D42: the exposure of 2020 and 2021 no longer comes
+from the casualty series.
+
+### The eight factors
+
+| Mode | 2020 | 2021 | Origin |
+| --- | ---: | ---: | --- |
+| Pedestrian | 0.534 | 0.741 | common shock |
+| Bicycle | 0.739 | 1.067 | measured, then extrapolated |
+| Car | 0.466 | 0.690 | common shock |
+| Motorcycle | 0.545 | 0.746 | common shock |
+
+The common shock is 0.499 for 2020 and 0.716 for 2021: Bogotá against the same
+months of 2022, on weekdays, over four of Google's six categories. What separates
+the modes is each one's own trend between the 2019 and 2023 surveys.
+
+### What the patched panel looks like
+
+Weekday exposure inside the study units, indexed to 2019 = 100:
+
+| Mode | Variant | 2019 | 2020 | 2021 | 2022 |
+| --- | --- | ---: | ---: | ---: | ---: |
+| Pedestrian | interpolated | 100 | 104 | 107 | 111 |
+| Pedestrian | patched | 100 | 55 | 79 | 111 |
+| Bicycle | interpolated | 100 | 100 | 99 | 99 |
+| Bicycle | patched | 100 | 74 | 106 | 99 |
+| Motorcycle | interpolated | 100 | 106 | 110 | 115 |
+| Motorcycle | patched | 100 | 58 | 82 | 115 |
+| Car | interpolated | 100 | 98 | 95 | 91 |
+| Car | patched | 100 | 46 | 65 | 91 |
+
+The bicycle rising to 106 in 2021 is the extrapolated figure and is the weakest
+number in the panel. It is marked `EXTRAPOLATED` in the exported table.
+
+### Two checks that are new, and both pass
+
+**The patched city total is the unpatched one times the declared factor**, to a
+largest relative gap of 1.95e-16 over the eight combinations. This is what would
+catch a factor applied to the wrong mode, the wrong year or the wrong day type —
+each of which leaves every individual row looking perfectly reasonable.
+
+**The bicycle's measured year reproduces the count it was taken from**: 0.7400 of
+the 2019 anchor, which is 151,759 over 205,081 exactly.
+
+Every other check of the interpolation route still passes, including the four
+that guard the patch block: 240 rows differ between the variants and all 240 are
+weekday 2020-2021, the eight combinations that differ are the eight declared, the
+provenance stamp marks that block and nothing else, and the factor is exactly one
+on all 13,200 rows outside it.
+
+### Two defects found by looking at the output, not by a check
+
+**Every elasticity came out as 0.000 on the first run.** The design matrix was
+built on the logarithms, as D49's companion change requires, but `fit_cell`
+recomputed the standard deviations from the raw columns to back-transform the
+coefficients. Dividing a coefficient estimated per standard deviation of
+log(trips) by the standard deviation of trips — a quantity in the hundreds of
+thousands — rounds every one of them to zero. The fix is that both places now use
+the same scaling function.
+
+**The scatter changed colour between panels of the same figure.** The new label
+colour was assigned to `colour`, which is the scatter's own variable, set once
+from the offset at the top of the function; from the first panel onward every
+subsequent panel drew its points in whatever the previous label had been. Visible
+immediately in the figure and invisible to every check, which is the same shape
+as the negative-binomial prediction defect in section 21.
+
+### What the logarithm change produced
+
+The three quantities an offset can be built from now enter the design in
+logarithms when they act as predictors, so their coefficients are elasticities.
+Over the negative binomial fits, the elasticity of the affected mode's own
+exposure has a median of **0.455** and a range of 0.172 to 0.782, and **all
+thirty are below one**.
+
+Jacobsen (2003) fits `I = aE^b` and reports b between 0.13 and 0.58 across
+walking and cycling in Californian cities, Danish towns and European countries.
+The median here sits inside that range. **This is safety in numbers, reproduced
+on Bogotá's inter-mode matrix**, and it was invisible before the change: entered
+raw, the same column asserted exponential growth in trips and its coefficient was
+not comparable with anything.
+
+It is the winner of a search in every case, so the usual caveat of section 21
+applies: these are suggestive, not confirmatory.
+
+### What changed for anything downstream
+
+The provenance value on patched rows is now `PATCHED_FROM_MOBILITY` and was
+`IMPLIED_FROM_RISK`. **The dashboard reads that column.** The exported factor
+table changed shape with it: the casualty columns and the second-dataset
+sensitivity are gone, and `MOBILITY_SHOCK`, `TREND_REFERENCE`, `TREND_YEAR`,
+`FACTOR_FROM_SHOCK` and `FACTOR_ORIGIN` take their place. The coefficients table
+gains `COEFFICIENT_IS_ELASTICITY`, which is true for 234 of its 1,655 rows and
+says that `COEFFICIENT` on that row is an elasticity rather than an effect per
+unit of the variable.
+
+---
+
+## 23. The cycleway series is not a clean annual stock
+
+Measured on 2026-09-25 with `tools/redigitalizacion_ciclorruta.py`, which
+reproduces every figure below. It was written to answer one question — whether
+2024's \qty{-0.37}{\percent} was real — and answered a larger one.
+
+### What the check does
+
+The cycleway arrives as thirteen annual snapshots of the same layer, and a panel
+model reads the difference between two snapshots as if it were construction. The
+check splits each of the twelve steps three ways, by segment identifier
+(`CicCodigo`): what left, what arrived, and what was **re-measured** — codes
+present in both years whose length changed. The first two are network. The third
+is not: a segment present in both years that measures differently was not built
+and not demolished.
+
+Identifier persistence is the guard rail. A re-digitisation that also renumbered
+the codes would show up as removal plus addition, indistinguishable from real
+work, so a low persistence means that step cannot be read at all.
+
+### What it found
+
+| Step | Persistence | Net km | Arrived | Left | Re-measured | Verdict |
+| --- | ---: | ---: | ---: | ---: | ---: | --- |
+| 2012-2013 | \qty{0.0}{\percent} | +1.89 | +163.17 | −88.50 | 0.00 | partial |
+| 2013-2014 | \qty{100}{\percent} | 0.00 | 0.00 | 0.00 | 0.00 | network |
+| 2014-2015 | \qty{100}{\percent} | −0.06 | 0.00 | 0.00 | −0.06 | network |
+| 2015-2016 | \qty{70.5}{\percent} | +35.91 | +86.02 | −44.56 | −5.55 | **not interpretable** |
+| 2016-2017 | \qty{97.7}{\percent} | +117.39 | +123.37 | −4.19 | −1.79 | network, some re-measurement |
+| 2017-2018 | \qty{96.9}{\percent} | +46.17 | +57.40 | −11.57 | +0.34 | network |
+| 2018-2019 | \qty{94.2}{\percent} | +23.54 | +50.81 | −28.42 | +1.16 | network, some re-measurement |
+| 2019-2020 | \qty{98.8}{\percent} | +14.77 | +18.82 | −4.09 | +0.04 | network |
+| 2020-2021 | \qty{98.8}{\percent} | +36.53 | +41.82 | −5.33 | +0.05 | network |
+| 2021-2022 | \qty{99.4}{\percent} | +9.28 | +12.32 | −3.63 | +0.59 | network, some re-measurement |
+| 2022-2023 | \qty{98.3}{\percent} | +27.91 | +28.58 | −8.09 | **+7.43** | network, some re-measurement |
+| 2023-2024 | \qty{99.5}{\percent} | −0.88 | +4.90 | −2.30 | **−3.48** | **dominated by re-measurement** |
+
+**Seven of the twelve steps carry cartography mixed into them, and two cannot be
+read at all.**
+
+### The three that matter
+
+**2023-2024 is a re-digitisation, not a contraction.** The network grew: \qty{4.90}{\kilo\metre}
+arrived against \qty{2.30}{\kilo\metre} that left, and 2024 has more distinct
+codes than 2023 — \num{5928} against \num{5904}. What pulled the total down is
+that \num{1804} of the \num{5872} codes present in both years changed length, and
+\num{1427} of them got shorter, for \qty{3.48}{\kilo\metre} lost on segments
+nobody touched. A city does not shorten fourteen hundred stretches of cycleway.
+
+**2022-2023 is the same thing in the other direction.** \num{2080} common codes
+changed length and \num{1896} of them got *longer*, adding \qty{7.43}{\kilo\metre}
+of re-measurement — the largest in the series, and a quarter of that year's
+apparent growth.
+
+**2015-2016 cannot be read.** Persistence falls to \qty{70.5}{\percent} and
+\num{1021} of the \num{1361} common codes change length. Whatever happened
+between those two deliveries, the decomposition cannot separate it.
+
+### And a defect in the 2012 delivery, found by the same check
+
+**2012 is the only year that ships geometry without an identifier**: \num{1875}
+of its \num{3435} features have no `CicCodigo`, which is \qty{72.77}{\kilo\metre}
+of the \qty{161.28}{\kilo\metre} it measures. Every other year codes all of it.
+
+The first version of this tool dropped those rows silently and reported 2012 as
+\qty{88.50}{\kilo\metre}, which turned the step to 2013 into an \qty{84}{\percent}
+expansion that never happened. The published version totals the whole layer and
+splits only what carries a code, and says how much it could not reach. The
+disagreement with the measured density — which moves \qty{1.04}{\percent} between
+those years — is what caught it.
+
+### What follows from it
+
+**Nothing for the cross-sections.** Each year is its own regression over thirty
+units, the layer of that year is a valid measurement of that year, and the
+cross-unit variation is healthy everywhere: the coefficient of variation runs
+between \num{0.55} and \num{0.74} in all thirteen years. Zeros appear only early —
+four units without cycleway in 2012, three from 2013 to 2015, one in 2016, none
+after — and stay well under the declared threshold.
+
+**A great deal for the panel**, which is the stage after this one. A panel model
+reads the year-to-year change in a predictor as the treatment, and in this series
+that change is contaminated in seven steps out of twelve and unreadable in one.
+The re-measurement is also not uniform across units: between 2023 and 2024
+Engativá rises \qty{5.75}{\percent} and Tunjuelito falls \qty{3.70}{\percent},
+nine points apart inside the same revision, so it moves units relative to one
+another for reasons of drafting.
+
+**This is not a reason to drop the cycleway**, which is one of only two predictors
+that vary in time at all. It is a reason for the panel to treat its year-to-year
+differences as measured with error, and to say so.
+
+### Not applicable to the vertical signage
+
+That series is not delivered as annual snapshots. It is one inventory plus
+movements, and the stock is built by adding and removing, so it cannot have this
+failure. It will have others.
+
+---
+
+## 24. The cross-sections over thirteen years
+
+> **Fitted again on 2026-09-25 as `run_20260925_090146`**, once the candidate set
+> was declared, so that its tables carry the `CANDIDATE_SET` column and can be
+> joined to the clean run's. **Every number below reproduces exactly.** Quote
+> either run for the figures; use the later one for anything that joins the two.
+
+Route `regressions`, run `run_20260925_073325`, twenty-four minutes. **Every check
+passed**, and there are three more of them than there were. The window is D50; the
+figure decisions are section 11 of `regression-inventory.md`.
+
+This supersedes section 21 as the current state. That section stays as the record
+of the three-year run, because the two disagree on numbers a deliverable may
+already have quoted.
+
+### What was fitted
+
+| | |
+|---|---:|
+| Casualty datasets | 2 |
+| Offsets | 3 |
+| Pairs | 8, all passing the zero-cell threshold in all thirteen years |
+| Years | 13, from 2012 to 2024 |
+| Families | 3: least squares, Poisson, negative binomial |
+| Specifications declared | 743 756 |
+| Specifications the estimator could fit | 733 664 |
+| Selected models | 1 868 of a possible 1 872 |
+| Models that beat their own null | 1 809 |
+| Coefficients | 7 231 |
+| Predictions | 56 040 |
+
+Four cells produced no model, and they are the same failure twice over: `CAR__CAR`
+under the two-exposure offset, negative binomial, at 2014 and at 2015, in both
+datasets. The three-year run had two of them — 2015 alone, because 2014 was not
+in the window. Nothing new broke; the same cell failed in one more year.
+
+### The threshold on empty cells now sits near something
+
+All eight pairs are kept in all thirteen years, but the margin is no longer
+enormous. The worst case is car against motorcycle in 2012, with 11 of its 30
+units at zero against a declared maximum of 15, and it decays cleanly: 0.37 in
+2012, 0.33 in 2013, 0.30 in 2014, 0.17 in 2015, and zero from 2018 on. In the
+three-year window the worst case was five units of thirty.
+
+That is the widening doing what it should. The threshold was declared in the
+anteproyecto and fixed before anything was estimated, and until now it had never
+come close to biting. It still drops nothing, and now it is a guard rail that
+somebody could actually hit.
+
+### Every year sustains a regression
+
+Measured on the observed dataset before any model was fitted, over the 240
+unit-by-pair cells of each year. The full table is in D50. The weakest year is
+2012: a median of 12.5 affected parties per cell and 17 cells at zero. The
+strongest is 2024, with a median of 31 and none at zero.
+
+### What the denominator was hiding
+
+**A defect in the figure, found on 2026-09-25 and fixed in the same run.** The
+selection-frequency table divided each variable's wins by the total number of
+models, which is only the right denominator for a variable that competed in all
+of them. Three quantities never did — an exposure or population quantity is in the
+bag only under the offsets that do not use it — and with thirteen years vertical
+signage joined them.
+
+The correction moves the table a long way, and the direction is the one that
+matters: the affected mode's own exposure goes from ninth place to first.
+
+| Variable | Selected | Of | % of those | Would have read |
+|---|---:|---:|---:|---:|
+| Affected exposure | 316 | 624 | 50.6 % | 16.9 % |
+| Counterpart exposure | 464 | 1 248 | 37.2 % | 24.8 % |
+| Pedestrian crossings | 512 | 1 868 | 27.4 % | 27.4 % |
+| Arterial road | 498 | 1 868 | 26.7 % | 26.7 % |
+| Sidewalk | 497 | 1 868 | 26.6 % | 26.6 % |
+| Population | 294 | 1 244 | 23.6 % | 15.7 % |
+| Speed cameras | 424 | 1 868 | 22.7 % | 22.7 % |
+| Trees | 390 | 1 868 | 20.9 % | 20.9 % |
+| Bridge deck | 366 | 1 868 | 19.6 % | 19.6 % |
+| TransMilenio | 355 | 1 868 | 19.0 % | 19.0 % |
+| Cycleway | 334 | 1 868 | 17.9 % | 17.9 % |
+| Signalised intersections | 330 | 1 868 | 17.7 % | 17.7 % |
+| SITP bus stops | 260 | 1 868 | 13.9 % | 13.9 % |
+| Vertical signage | 143 | 1 294 | 11.1 % | 7.7 % |
+| Urban park | 180 | 1 868 | 9.6 % | 9.6 % |
+
+The last column is what the uncorrected figure printed, and it is not a rounding
+difference for the four rows it touches. The figure now carries both the
+denominator and how many of the three offsets each variable could compete in, so
+a reader can see which rows describe the study and which describe one offset.
+
+### The signs hold, and that is the reading
+
+**The affected mode's own exposure is positive in all 316 models that select it.**
+More travel, more casualties, with no exception in 316 independent fits — the
+sanity check the whole design rests on, and the widened window made it a much
+stronger statement than the 60 models of the three-year run.
+
+Four more variables hold a sign almost everywhere: signalised intersections
+positive in 316 of 330, TransMilenio positive in 331 of 355, speed cameras
+negative in 406 of 424, the cycleway negative in 314 of 334.
+
+**A sign that holds across independent contexts is evidence in a way no p-value
+here can be.** The p-values are the winner of a search over 743 756 declared
+specifications and are inflated by the selection itself; the counts above are not.
+
+### Overdispersion, and the family to read
+
+605 of the 624 Poisson models are overdispersed beyond 1.25, with a median of 3.71
+and a maximum of 111.29. The negative binomial is the family to read, and the
+reason is visible rather than asserted: the two families' coefficients differ by a
+median of 0.025 while the negative binomial's standard error is 1.70 times
+Poisson's, so Poisson calls 1 941 shared coefficients significant where the
+negative binomial calls 1 831. **110 that Poisson would have established are not
+established.**
+
+### Spatial structure the panel will have to carry
+
+395 of the 1 868 selected models leave residuals with Moran's I beyond 0.20, up to
+0.526. In the three-year run the figure was smaller and easier to wave away. It is
+one line per model and it is not acted on here: a cross-section with spatial
+structure left in it is a fact about the cross-section, and the decision it feeds
+is whether the panel needs a spatial term.
+
+### 1 064 least squares predictions fall below zero
+
+Of 18 720, on a rate that cannot be negative. It is a property of the family and
+not a defect — least squares models the rate additively and nothing stops the line
+going under — and it is one of the reasons the GLM is the family the study
+reports. No count model predicts a negative count, which is checked.
+
+### The figures
+
+640 files under `figures/regressions/`, against 118 before. The tree is section 11
+of the inventory and the run writes its own `LEEME.txt`.
+
+```
+principal/<familia>/<conjunto>/<offset>/
+    ajustes/                       ajuste__2012.png … ajuste__2024.png
+    parejas/<pareja>/              betas.png, modelos.png
+principal/entradas/predictoras/    predictoras__2012.png … __2024.png
+principal/entradas/respuestas/<conjunto>/
+principal/frecuencia_seleccion.png
+coeficientes/<familia>/<conjunto>/ coeficientes__2012.png … __2024.png
+```
+
+### Three checks that did not exist before
+
+The first two read the data and the third reads the result:
+
+- **no candidate of the year is null** — inside the year's bag, a null is a
+  measurement that did not happen;
+- **a candidate outside its years carries nothing** — outside the bag a value is
+  worse than a null, because a zero there enters a model as a measured absence;
+- **no coefficient belongs to a year its layer does not reach** — which is the one
+  that would break if the search asked for the general bag instead of the year's.
+
+The third was tested by falsifying a signage coefficient at 2012 before the run:
+the check fails and names the offender.
+
+### Two defects the review found in the figures
+
+Neither would have failed a check.
+
+**The README's numbers were from another run.** Three figures in
+`LEEME.txt` — how far the two GLM families' coefficients move apart, how much
+wider the negative binomial's standard errors are, and the median dispersion —
+were written by hand from the three-year run and stayed while the run around them
+changed. A generated file that quotes another run's numbers is worse than one that
+quotes none, because it claims to be this run's. They are measured now, by
+`_families_compared`, from the tables the figures are drawn from.
+
+**A string replacement reached further than the number it was meant for.** Writing
+the Spanish decimal comma as `f"…{x:.3f}".replace(".", ",")` in the middle of an
+implicitly concatenated block applies the replacement to every literal joined
+before it, so four sentence-ending periods elsewhere in `LEEME.txt` became commas.
+The numbers are formatted into variables before the block now. It is worth
+recording because it is invisible in the source: the code reads as if the
+replacement applies to one number.
+
+---
+
+## 25. The run without the offset leftovers
+
+Route `regressions --candidates urban-only`, run `run_20260925_084259`, nineteen
+minutes. **Every check passed**, two of them new. The decision is the last part of
+D50 and the plan is section 12 of `regression-inventory.md`.
+
+> **This run became the study's result on 2026-09-27 — D52.** It was made as a
+> check and what it found is why my advisor reversed the arrangement two days
+> later. Everything below stands; only its standing changed, and the two things
+> it cannot answer, listed further down, now have to be carried by the
+> methodology chapter rather than by a footnote.
+
+**This was built as a robustness check on the urban coefficients and not as a
+second result.** What it answers is whether the ranking of the twelve urban
+variables survives when they do not have to compete against quantities that
+explain the count almost by construction.
+
+### The reported run was fitted again, and reproduces
+
+`run_20260925_090146` is the same route with the default set, run after the
+candidate set was threaded through. It was not re-run to change anything but to
+make the two comparable: the tables of `run_20260925_073325` predate the
+`CANDIDATE_SET` column and cannot be joined to the clean run's.
+
+It reproduces the morning's run exactly — 743 756 specifications declared,
+733 664 fitted, 1 809 of 1 868 models beating their own null, 605 of 624 Poisson
+models overdispersed with a median of 3.71. **Threading the candidate set through
+thirteen call sites changed no number of the run that was already right**, which
+is the only claim that re-run was making.
+
+### What the clean run fitted
+
+| | With leftovers | Urban only |
+|---|---:|---:|
+| Specifications declared | 743 756 | 496 364 |
+| Specifications fitted | 733 664 | 489 448 |
+| Selected models | 1 868 of 1 872 | 1 868 of 1 872 |
+| Models beating their own null | 1 809 | 1 802 |
+| Coefficient rows | 7 231 | 7 066 |
+| Poisson models overdispersed | 605 of 624, median 3.71 | 611 of 624, median 4.00 |
+| Residuals with Moran's I over 0.20 | 395 | 463 |
+| Least squares predictions below zero | 1 064 of 18 720 | 1 000 of 18 720 |
+
+The same four cells fail in both: `CAR__CAR` under the two-exposure offset,
+negative binomial, at 2014 and 2015, in both datasets. Whatever is wrong there is
+not about which candidates compete.
+
+Two rows move in the direction the design predicts. **More overdispersion and
+more spatial structure left in the residuals**, because the leftovers were
+absorbing some of both: an exposure term takes up variance that is otherwise left
+for the error and for the neighbours. It is not a defect of either run, and it is
+one more reason the panel after this will need a spatial term.
+
+### What the leftovers were taking
+
+Over the reported run's 5 363 selected terms, the three leftovers take **1 074, a
+fifth of everything the search chose**. Removing them frees those places, and the
+question is who gets them.
+
+| Variable | Selected, with | Selected, without | % of those it could | Rank |
+|---|---:|---:|---|---:|
+| Sidewalk | 497 | 709 | 26.6 → 38.0 | 3 → 1 |
+| Pedestrian crossings | 512 | 657 | 27.4 → 35.2 | 1 → 2 |
+| Arterial road | 498 | 610 | 26.7 → 32.7 | 2 → 3 |
+| Speed cameras | 424 | 515 | 22.7 → 27.6 | 4 → 4 |
+| Bridge deck | 366 | 481 | 19.6 → 25.7 | 6 → 5 |
+| Trees | 390 | 464 | 20.9 → 24.8 | 5 → 6 |
+| Cycleway | 334 | 402 | 17.9 → 21.5 | 8 → 7 |
+| TransMilenio | 355 | 381 | 19.0 → 20.4 | 7 → 8 |
+| SITP bus stops | 260 | 307 | 13.9 → 16.4 | 10 → 9 |
+| Signalised intersections | 330 | 292 | 17.7 → 15.6 | 9 → 10 |
+| Urban park | 180 | 237 | 9.6 → 12.7 | 12 → 11 |
+| Vertical signage | 143 | 143 | 11.1 → 11.1 | 11 → 12 |
+
+**Nothing moves more than two places, and the top four are the same four.** The
+first three sit within 0.8 points of each other in the reported run — 27.4, 26.7
+and 26.6 — so which of them is called first was never a finding, and the order
+flipping is that near-tie being redealt. What is new is that the tie breaks:
+without the leftovers the sidewalk pulls 2.8 points clear of the next.
+
+> **Corrected on 2026-09-28 — D53.** The paragraph above is measured on the
+> ranking pooled over the whole run, and a pooled ranking is what D53 retires:
+> pooling averages the axis whose results contradict each other most. Re-measured
+> inside each of the eighteen specifications, **«nothing moves more than two
+> places» holds in four of them**. The median of the per-specification maximum is
+> 4.5 places, the worst is 8, and in five of the eighteen the first-ranked
+> variable is not the same one.
+>
+> The table below stands as a description of the pooled counts, which is what it
+> is. What does not stand is reading stability into it. D52 survives on its other
+> leg, which is a count and not a ranking: the three leftovers take 1 074 of the
+> 5 363 selected terms and do not compete on equal terms.
+
+Only one variable is selected less often without the leftovers: signalised
+intersections, 330 against 292. It was winning *alongside* them rather than in
+their place.
+
+Vertical signage comes out at 143 in both runs, which looks like an error and is
+not: only 102 of those cells are the same in the two runs, so 41 swapped and the
+total happened to land on the same number.
+
+### How much of the fit was the leftovers
+
+AIC is comparable between the two runs inside one cell — the same response, the
+same offset, the same family, the same thirty units — and nowhere else, so the
+comparison is made cell by cell and never on a median over everything.
+
+**In 921 of the 1 868 cells, 49.3 %, the same model wins in both runs.** In those
+the leftovers were in the bag and did not enter, so removing them changed nothing
+at all. In the other 947 the clean run fits worse, by a median of 6.48 AIC.
+
+An internal check that costs one line and would not show anywhere else: the clean
+run's specifications are a strict subset of the other's, since removing candidates
+only removes subsets, so its best AIC can never be lower. Measured minimum of the
+difference: **exactly zero**. A single negative cell would have meant one of the
+two searches did not walk what it declared.
+
+### No urban variable reverses
+
+The reading that matters, and it is a negative result in the useful sense.
+
+Calling a variable positive or negative needs a threshold, because a variable
+that lands at 48.8 % and then 56.4 % has crossed a half without anything having
+happened — it has no sign in either run. A sign is claimed at 60 % of coefficients
+on one side; below that the variable has none.
+
+| Variable | % positive, with → without | Verdict |
+|---|---|---|
+| TransMilenio | 93.2 → 93.4 | positive in both |
+| Signalised intersections | 95.8 → 91.1 | positive in both |
+| Pedestrian crossings | 82.4 → 70.2 | positive in both |
+| Speed cameras | 4.2 → 5.4 | negative in both |
+| Trees | 13.8 → 16.2 | negative in both |
+| Cycleway | 6.0 → 13.2 | negative in both |
+| Vertical signage | 39.9 → 36.4 | negative in both |
+| Arterial road | 56.2 → 63.6 | no sign → positive |
+| Sidewalk | 34.2 → 47.8 | negative → no sign |
+| Bridge deck | 33.1 → 43.2 | negative → no sign |
+| SITP bus stops | 48.8 → 56.4 | no sign in either |
+| Urban park | 42.8 → 46.8 | no sign in either |
+
+**Not one variable turns over.** Seven hold the same sign in both runs; three move
+between having a sign and not having one, which is a claim firming up or
+loosening rather than contradicting itself; two never had a sign to lose.
+
+That is what the run was for. **The signs the study reports do not depend on the
+company its urban variables keep**, and the three that move between "no sign" and
+a sign are the three whose sign the chapter should not lean on.
+
+> **Qualified on 2026-09-28 — D53.** The table above is also pooled, and the sign
+> claim was re-measured inside each specification. It largely survives, which is
+> why it is qualified and not withdrawn: of the 197 variable-by-specification
+> comparisons with at least five coefficients on each side, **five cross**, all of
+> them on bases of 6 to 15 coefficients. Four of the five are borderline on one
+> side — shares of 36 %, 40 %, 60 % and 67 % against a threshold of 60 %.
+>
+> One is not borderline and the chapter should know it: **the SITP bus stops under
+> the population offset with Poisson**, 7 % positive with the leftovers in the bag
+> and 80 % positive without them. That is a genuine reversal in one specification,
+> and it is the one place where a sign does depend on the company the variable
+> keeps.
+
+Reproduce all of it with `tools/comparar_candidatas.py`, which finds the two runs
+by the candidate set their tables declare rather than by folder name.
+
+---
+
+## 26. The run the study reports, after the agreed changes
+
+Route `regressions`, two runs on 2026-09-28, both with every check passing:
+
+| | Candidate set | Run | Checks |
+|---|---|---|---:|
+| The study's result | urban only | `run_20260928_112330` | **19** |
+| The robustness run | with the offset leftovers | `run_20260928_114216` | **18** |
+
+The nineteenth is the one that only applies where no leftover competes — that no
+offset quantity was selected — so the difference between the two counts is
+itself correct rather than a gap.
+
+**This is the run to quote from here on.** It supersedes sections 24 and 25,
+which stay as the record of what the changes were measured against.
+
+### The five changes, and what each was for
+
+Agreed one at a time between 2026-09-25 and 2026-09-28, recorded as D51, D52 and
+D53, and listed in section 13 of `regression-inventory.md`, which this section
+empties.
+
+| | What | Why |
+|---|---|---|
+| D51 | The least squares coefficient is reported as a standardised beta | All 1 639 of them rounded to 0.00, and the figure ranked its cells by a scale that moves 3.9× between years |
+| D52 | The urban-only set becomes the default and the reported one | The leftovers take a fifth of everything the search selects and do not compete on equal terms |
+| D53 | The selection summary is made inside one specification | Pooling averaged the axis whose results contradict each other most |
+| — | A third figure set, the twelve that compete, drawn at a declared year | Neither existing set is the list the models use, and the one that claims to be drew 8 of its 10 |
+| — | Three boxplots of the explanatory variables' dispersion | Asked for by the panel adviser through my advisor |
+
+### Nothing touched the fit, and that was checked rather than assumed
+
+The changes add columns, split a summary and redraw figures. None of them was
+meant to change a single estimate, and the run with the leftovers is the one that
+can prove it, because it was run before and after under the same candidate set.
+
+**It reproduces `run_20260925_090146` exactly**: 743 756 specifications declared,
+733 664 fitted, 1 868 selected models, 1 809 of them beating their own null. Four
+figures, four matches. Had one moved, something in the list would have reached the
+estimator without meaning to.
+
+### What the reported run holds
+
+| | |
+|---|---:|
+| Specifications declared | 496 364 |
+| Specifications fitted | 489 448 |
+| Selected models | 1 868 of 1 872 |
+| Models beating their own null | 1 802 |
+| Poisson models overdispersed | 611 of 624, median 4.00 |
+| Residuals with Moran's I over 0.20 | 463 |
+| Least squares predictions below zero | 1 000 of 18 720 |
+| Figures | 678 |
+
+### What the log says now, and why it changed
+
+The run used to print the selection frequency pooled over the whole run. It does
+not any more: that count averages offsets and families whose results contradict
+each other, so printing it in the log would have asserted what D53 removes from
+the figures. Its place is taken by the family comparison, by dataset and offset,
+which is what a reader of the log needs in order to know the run came out sound.
+
+That table carries the finding that justified splitting it by offset rather than
+pooling:
+
+| Dataset | Offset | Family | Impossible | Median R² | R² < 0 |
+|---|---|---|---:|---:|---:|
+| observed | mode exposure | least squares | 40 | 0.558 | 19 |
+| observed | both exposures | least squares | **424** | **−8.826** | **100 of 104** |
+| observed | population | least squares | 44 | 0.666 | 1 |
+
+**Least squares under the two-exposure offset is not a poor fit, it is a
+catastrophe**: a hundred of its 104 models do worse than the mean of the response,
+and it predicts an impossible count 424 times out of 3 120. Under the population
+offset the same family gives 0.666 with a single negative. A table that pooled the
+three offsets would have shown an intermediate figure that happens to no model.
+
+### The figure tree
+
+678 files, against 640 before. One was retired, eighteen selection-frequency
+figures arrived — one per specification — four comparison figures, twelve
+histograms with their correlation and master table, and three boxplots.
+
+```
+principal/
+├── LEEME.txt
+├── comparacion/<conjunto>/          familias.png, acuerdo.png
+├── entradas/
+│   ├── predictoras/
+│   │   ├── por_anio/                predictoras__2012.png … __2024.png
+│   │   ├── histogram__<variable>__candidatas.png   (12)
+│   │   ├── correlation__predictors__candidatas.png
+│   │   ├── table__predictors__candidatas.png
+│   │   └── dispersion/              los tres boxplots
+│   └── respuestas/<conjunto>/
+└── <familia>/<conjunto>/<offset>/
+    ├── ajustes/                     ajuste__2012.png … __2024.png
+    ├── parejas/<pareja>/            betas.png, modelos.png
+    └── frecuencia_seleccion.png     los 104 modelos de esa especificación
+coeficientes/<familia>/<conjunto>/   coeficientes__2012.png … __2024.png
+```
+
+The `predictoras/` level is the only change to a structure that was otherwise
+kept: with the per-year tables, twelve histograms, a correlation, a master table
+and three boxplots, that folder would have held twenty-nine files of four kinds.
+
+### The exported table that changed shape
+
+`presentation__regression_selection_frequency.csv` goes from 12 rows to **216** in
+the reported run and 246 in the other, and gains `DATASET`, `OFFSET` and `FAMILY`.
+It is the only export of this stage whose shape changed, and the only change in
+the whole list that reaches anything outside this repository: a consumer that read
+it as one row per variable now finds eighteen.
+
+It sums to what the pooled table summed, variable by variable — 5 198 selected
+terms in the reported run and 5 363 in the other — which is what shows that
+splitting it lost nothing and duplicated nothing.
+
+### Two checks of my own that were wrong before the thing they checked was
+
+Worth recording because it is the same lesson twice. In step 1 a check measured
+the two lines of a column header concatenated, when the header stacks them, and
+reported that a label did not fit when it did. In step 5 a regular expression
+captured `4.5.` with the sentence's full stop and failed a comparison against
+`4.5`.
+
+Neither was a defect in what was being verified. **A verification that fails is
+not evidence that the code is wrong**, and both times the first thing to check was
+the check.

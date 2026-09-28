@@ -45,6 +45,7 @@ from src import (
     loading,
     maps,
     matrix,
+    mobility_reports,
     parties,
     population,
     predictors,
@@ -153,17 +154,20 @@ def run_interpolation(log: RunLog) -> None:
     measured = interpolation.read_measured(log)
     table = interpolation.build(measured, panel, predictors.prepare_units(units), log)
 
-    # The casualty matrix is read before the panel is exported, because D42 builds a
-    # second variant of it out of the pandemic years and the factors come from
-    # there. A run with none to read gets the unpatched variant alone and says so:
-    # the panel is complete without it, and forcing a matrix run in order to
-    # interpolate an exposure would be the wrong coupling.
+    # D49 builds a second variant of the panel out of the pandemic years, and its
+    # factors come from Google's community mobility reports — a source with no
+    # connection to crash records, which is the whole reason it replaced D42.
+    daily_mobility = mobility_reports.read(log)
+    shock = mobility_reports.build(daily_mobility, log)
+    if not mobility_reports.verify(shock, daily_mobility, log):
+        raise RouteFailed("the community mobility reports do not support a pandemic patch")
+    patch = interpolation.pandemic_factors(table, shock, log)
+
+    # The casualty matrix is still read, but only for the diagnostic further down.
+    # A run with none to read interpolates and patches exactly the same: forcing a
+    # matrix run in order to interpolate an exposure would be the wrong coupling,
+    # and since D49 that coupling is gone from the patch itself.
     casualties = interpolation.read_casualties(log)
-    patch = (
-        interpolation.pandemic_factors(table, casualties, measured, log)
-        if casualties is not None
-        else None
-    )
     both = interpolation.apply_pandemic_patch(table, patch, log)
     paths = interpolation.export(both, measured, log, patch=patch)
 
@@ -248,8 +252,8 @@ def run_predictors(log: RunLog) -> None:
     predictors.report(long_table, log)
 
 
-def run_regressions(log: RunLog) -> None:
-    """The cross-sectional regressions at 2015, 2019 and 2023.
+def run_regressions(log: RunLog, candidate_set: str) -> None:
+    """The cross-sectional regressions, one per year of the window.
 
     A first step and not the methodology: the panel the anteproyecto declares
     comes after this, and everything that needs variation within a unit over time
@@ -259,23 +263,60 @@ def run_regressions(log: RunLog) -> None:
     rebuilds none of them, for the reason `interpolation` gives for the same
     choice: rebuilding would re-read five surveys and thirteen layers to produce
     tables this stage is not allowed to change.
+
+    `candidate_set` decides what is allowed to compete. It comes from the command
+    line and it is threaded down rather than read from a default, because the
+    difference between the two runs is invisible in the output: both produce the
+    same tables with the same columns, and only the declared set says which is
+    which.
     """
+    declared = config.CANDIDATE_SETS_BY_NAME[candidate_set]
+    log.info(
+        "candidate set: %s (%s) — %d column(s) compete before the offset takes its own",
+        declared.name,
+        declared.label_es,
+        len(config.regression_candidate_pool(candidate_set)),
+    )
+    # Dos cosas independientes, y la única razón de que parezcan una es que hasta
+    # D52 el conjunto por defecto era el que admitía los restos. Cuál reporta el
+    # estudio sale de `DEFAULT_CANDIDATE_SET`; qué puede y qué no puede contestar
+    # una corrida sale de `admits_offset_quantities`. Juntarlas en una sola
+    # comparación hacía que, al invertir el valor por defecto, la advertencia de
+    # lo que no se puede contestar cayera sobre la corrida que sí puede.
+    if not declared.admits_offset_quantities:
+        log.warn(
+            "no offset leftover competes in this set, so two questions have no answer in "
+            "it: no quantity enters in logarithm, so no coefficient is an elasticity and "
+            "nothing here compares with the safety-in-numbers literature; and the affected "
+            "mode's exposure appears in no model of the population offset, so the check "
+            "that more travel goes with more casualties is not in it either. Both come "
+            "from the run with %s",
+            config.CANDIDATE_SETS_BY_NAME[config.WITH_OFFSET_LEFTOVERS].cli,
+        )
+    if candidate_set != config.DEFAULT_CANDIDATE_SET:
+        log.warn(
+            "this is not the set the study reports, which is %s. Quote this run by name "
+            "wherever it is quoted, or a reader will take it for the study's result",
+            config.CANDIDATE_SETS_BY_NAME[config.DEFAULT_CANDIDATE_SET].cli,
+        )
+
     units = loading.load_territorial_units(log)
     matrices, exposure, population_panel, predictor_table = regressions.read_inputs(log)
 
     data = {
-        dataset: regressions.build_dataset(matrix, exposure, population_panel, predictor_table, log)
+        dataset: regressions.build_dataset(
+            matrix, exposure, population_panel, predictor_table, candidate_set, log)
         for dataset, matrix in matrices.items()
     }
-    tables = regressions.fit_all(data, units, log)
+    tables = regressions.fit_all(data, units, candidate_set, log)
 
-    paths = regressions.export(data, tables, log)
-    regressions.render_figures(data, tables, log)
+    paths = regressions.export(data, tables, candidate_set, log)
+    regressions.render_figures(data, tables, candidate_set, log)
 
     log.table("record funnel:", log.funnel())
-    if not regressions.verify(data, tables, units, log):
+    if not regressions.verify(data, tables, units, candidate_set, log):
         raise RouteFailed("the regression tables do not agree with what entered them")
-    regressions.report(tables, log)
+    regressions.report(tables, candidate_set, log)
 
 
 def run_population(log: RunLog) -> None:
@@ -543,7 +584,13 @@ class Route:
 
     name: str
     summary: str  # one line, shown in the help and when no route is given
-    run: Callable[[RunLog], None]
+    run: Callable[..., None]
+    # What this route takes from the command line beyond the log, as keyword
+    # arguments read off the parsed namespace. Declared here rather than branched
+    # on the route's name in `main`, so a second route that needs an option adds
+    # one line instead of another `if`. Empty for every route that takes none,
+    # which is all of them but `regressions`.
+    options: Callable[[argparse.Namespace], dict[str, object]] | None = None
     # Which casualty datasets the route writes, if any. Declared rather than left
     # to be inferred from which folders appear, because that is what it took to
     # notice that the default route was writing only one of the two.
@@ -571,8 +618,9 @@ ROUTES: tuple[Route, ...] = (
     Route("predictors", "the static urban predictors, with histograms and their correlation", run_predictors),
     Route(
         "regressions",
-        "cross-sectional regressions at 2015, 2019 and 2023: the step before the panel",
+        "cross-sectional regressions at every year of the window: the step before the panel",
         run_regressions,
+        options=lambda args: {"candidate_set": args.candidates.name},
     ),
     Route("population", "the resident population of every unit, in every year of the study", run_population),
     Route("exposure", "travel exposure per unit, year, mode and day, from the mobility surveys", run_exposure),
@@ -628,6 +676,20 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         choices=sorted(ROUTES_BY_NAME),
         help=f"which part to run (default: {DEFAULT_ROUTE})",
+    )
+    default_set = config.CANDIDATE_SETS_BY_NAME[config.DEFAULT_CANDIDATE_SET]
+    parser.add_argument(
+        "--candidates",
+        type=lambda given: config.CANDIDATE_SETS_BY_CLI[given],
+        choices=list(config.CANDIDATE_SETS_BY_CLI.values()),
+        default=default_set,
+        metavar="{" + ",".join(config.CANDIDATE_SETS_BY_CLI) + "}",
+        help=(
+            "what is allowed to compete in the `regressions` route; every other route "
+            f"ignores it (default: {default_set.cli}). `urban-only` leaves out the offset "
+            "quantities the offset did not take, so the three offsets share one candidate "
+            "list; it is a robustness run and it estimates no elasticity"
+        ),
     )
     parser.add_argument(
         "--dump-intermediates",
@@ -693,7 +755,7 @@ def main(argv: list[str] | None = None) -> int:
         )
 
     try:
-        route.run(log)
+        route.run(log, **(route.options(args) if route.options else {}))
     except RouteFailed as failure:
         log.warn("stopping: %s", failure)
         return 1
