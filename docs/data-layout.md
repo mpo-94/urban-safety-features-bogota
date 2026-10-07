@@ -75,8 +75,15 @@ data/
 │   └── bog_loc_urbanarea/bog_loc_urbanarea.shp                localities, the legacy footprint
 ├── incoming/
 │   ├── afectados_2024.csv                the updated 2024 extract, already integrated
-│   └── encuestas_movilidad/              the five mobility survey publications, 2026-09-05,
-│       └── <year>/                       1.8 GB, 546 files; all five years declared and read
+│   ├── encuestas_movilidad/              the five mobility survey publications, 2026-09-05,
+│   │   └── <year>/                       1.8 GB, 546 files; all five years declared and read
+│   └── parque automotor/                 the RUNT vehicle registry, cut of July 2026,
+│       │                                 examined and read by nothing — see below
+│       ├── CRECIMIENTO_DEL_PARQUE_AUTOMOTOR_RUNT2.0_20260810.csv   15.1 MB, 191,293 rows
+│       ├── bogota_serie_2000_2026.csv    registered against circulating, with attrition
+│       ├── bogota_tasas_motorizacion.csv population and fleet per 1,000, 19 municipalities
+│       └── bogota_perfil_edad.csv, bogota_soacha_escenarios_2000_2026.csv, three figures
+│                                         and a notebook, all Mateo's own derivations
 ├── integrated/                           written by `integrate`, read by everything else
 │   ├── fatalities__2024_updated_extract.parquet
 │   └── injuries__2024_updated_extract.parquet
@@ -201,6 +208,14 @@ control, so nothing else can catch the two drifting apart.
 ---
 
 ## Known and provisional
+
+**The vehicle registry is in `incoming/` and is read by nothing, on purpose.** It was
+examined and declared an examined source rather than an input on 2026-09-29, because its
+granularity is the municipality and the municipality of registration is not the one of
+circulation — Envigado registers more vehicles than Cali, and Funza, with ninety-five
+thousand inhabitants, registers 5,582 motorcycles per thousand of them. What it holds,
+measured, and the full argument are in **`docs/vehicle-fleet-source.md`**, which is what
+the final report cites. If these files move, that document moves in the same commit.
 
 **The mobility survey publications are in `incoming/`, and three of the four are
 now read.** They are the four complete publications from the Alcaldía de Bogotá,

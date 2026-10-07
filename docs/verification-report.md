@@ -4995,8 +4995,13 @@ empty cells get a figure instead of a gap in a folder.
 
 ### Two things this run does not settle
 
-- **Why SITP bus stops depend on one unit for a third of their selections.** Pending, with
-  four things to look at listed in section 16.1.
+- **Why SITP bus stops depend on one unit for a third of their selections.** Pending, and
+  its moment is the drafting of chapter 4 of the final report, decided on 2026-10-06 —
+  that is where the regression results are interpreted and where the answer has to end up
+  written. Everything needed is already exported; section 16.1 of
+  `regression-inventory.md` lists the four hypotheses and where each is measured from.
+  **The frequency of that variable is not quoted in any deliverable until this is
+  settled.**
 - **Which of the twelve candidates are finally excluded.** Deferred by my advisor after the
   panel session; `MODEL_PREDICTOR_NAMES` holds the earlier decision and the regressions do
   not read it. Section 5 of `regression-inventory.md`.

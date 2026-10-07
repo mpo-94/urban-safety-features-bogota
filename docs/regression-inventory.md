@@ -1747,10 +1747,10 @@ describen los datos y no la estimación.
   se cambia el mecanismo. Lo que sí entra es la frase, en el pie de las figuras de ajuste
   y en la metodología; la redacción está en 14.4.
 - **Por qué los paraderos SITP pierden un tercio de sus selecciones al quitar Torca.**
-  **Pendiente declarado**, a resolver cuando los ocho pasos estén hechos y no antes: el
-  paso 3 deja disponibles los modelos no ganadores, que es lo que hace falta para
-  contestarlo. 16.1 tiene las cuatro cosas que habría que mirar. Mientras tanto, esa
-  frecuencia no se cita en un entregable.
+  **Pendiente declarado, y su momento es la redacción del capítulo 4** del informe final,
+  decidido el 2026-10-06. Los datos para contestarlo ya están exportados; 16.1 tiene las
+  cuatro hipótesis y la lista de dónde sale cada una. **Mientras tanto esa frecuencia no se
+  cita en ningún entregable**, y el capítulo 4 no puede darse por escrito sin ella.
 
 ### 15.4 Qué verificar después de correr
 
@@ -2003,10 +2003,23 @@ de AIC plano, los cambios deberían repartirse entre las doce candidatas, y aqu�
 que se lleva una parte desproporcionada. Eso apunta a algo de la variable y no de la
 búsqueda.
 
-**Mateo lo dejó marcado el 2026-10-02 como pendiente a resolver cuando los ocho pasos
-estén hechos**, no antes: resolverlo ahora obligaría a rehacerlo cuando los pasos 3 a 7
-cambien lo que la corrida guarda, y el paso 3 en particular deja disponibles los modelos
-no ganadores, que es justo lo que hace falta para contestarlo bien.
+**Los ocho pasos están hechos y la medición sigue pendiente, ahora por decisión de
+calendario.** Mateo la movió el 2026-10-06 **a la redacción del capítulo 4**, que es donde
+los resultados de las regresiones se interpretan y donde la respuesta tiene que aparecer
+escrita. Medirla antes dejaría el hallazgo en un documento interno y habría que volver a
+buscarlo al redactar.
+
+**Todo lo que hace falta ya existe y no hay que construir nada:**
+
+| | |
+|---|---|
+| modelos no ganadores | `analysis__regression_candidate_models.csv`, 21 842 filas |
+| dispersión del coeficiente | `COEFFICIENT_MIN_STANDARDISED`, `COEFFICIENT_MAX_STANDARDISED`, `SIGN_CHANGES_ACROSS_MODELS` |
+| con quién compite | la columna `PREDICTORS` de cada mejor modelo |
+| las tres corridas | `run_20260928_112330` (30 u.), `run_20261002_141517` (29 u., urbanas), `run_20261002_145959` (29 u., con restos) |
+| la herramienta que lo midió | `tools/efecto_de_la_exclusion.py` |
+
+Es medir, no construir.
 
 **Qué habría que mirar, para no empezar de cero:**
 
