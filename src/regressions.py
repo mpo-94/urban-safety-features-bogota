@@ -26,9 +26,10 @@ What the stage does do, and why each is not an addition to the request:
   GLM is one of the two, and fitting Poisson to overdispersed counts makes the
   standard errors too small, so every interval and every p-value would be wrong
   in the flattering direction.
-* **A search over subsets of two and three candidates, selected by AIC.** Fifteen
-  candidates cannot be fitted on thirty observations, and once there are 560 fits
-  something has to end the search in the one model the figure draws.
+* **A search over subsets of two and three candidates, selected by AIC.** A dozen
+  candidates cannot be fitted together on the twenty-nine units that enter, and once
+  there are hundreds of fits something has to end the search in the one model the
+  figure draws.
 * **Moran's I on the residuals**, which changes no coefficient and says whether
   the panel will need a spatial term.
 
@@ -56,6 +57,9 @@ import geopandas as gpd
 import matplotlib
 
 matplotlib.use("Agg")  # figures are written to disk, never displayed
+# Explicit, because `import matplotlib` alone does not bring the submodule in and
+# `matplotlib.patches.Rectangle` would fail only when a table actually boxes a cell.
+import matplotlib.patches
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -89,6 +93,11 @@ MODEL_ID_COL = "MODEL_ID"
 # point — the two names side by side say what separates them.
 FULLY_STANDARDISED_COL = "COEFFICIENT_FULLY_STANDARDISED"
 RESPONSE_DEVIATION_COL = "RESPONSE_DEVIATION"
+# The median coefficient over every model that held a candidate, on the same scale
+# as the one above so a figure can put the two side by side. Named here rather than
+# spelled out at each use for the same reason as the two above: a figure that reads
+# the wrong one of these draws a different quantity and says nothing about it.
+MEDIAN_FULLY_STANDARDISED_COL = "COEFFICIENT_MEDIAN_FULLY_STANDARDISED"
 
 
 # The four tables this stage reads, each exported by a route of its own. Read
@@ -151,6 +160,75 @@ def read_inputs(log: RunLog) -> tuple[dict[str, pd.DataFrame], pd.DataFrame, pd.
     return frames, reads["exposure"], reads["population"], reads["predictors"]
 
 
+def exclude_units(
+    units: gpd.GeoDataFrame,
+    predictors: pd.DataFrame,
+    log: RunLog,
+) -> tuple[gpd.GeoDataFrame, pd.DataFrame]:
+    """Drop the units `config.REGRESSION_EXCLUDED_UNITS` declares, from both inputs.
+
+    **Both, and that is the whole point of doing it here.** The two travel through
+    this stage by different paths — the predictor table becomes the grid in
+    `build_dataset`, the polygons become the contiguity weights in `fit_all` — and
+    filtering one without the other fails in two different ways. With the polygons
+    unfiltered, Moran's I multiplies twenty-nine residuals by a thirty-by-thirty
+    matrix and raises. With the predictors unfiltered, the grid still carries the
+    unit and nothing is excluded at all, except that Moran is then computed against
+    the wrong neighbours — and that one produces a plausible number and no error.
+
+    Doing it after both are loaded is what makes the two a single decision instead
+    of two edits that can drift apart.
+
+    **The loader's own count stays as it is.** `load_territorial_units` fails unless
+    the layer carries exactly thirty, because that is a statement about the
+    cartography and has to keep failing if the cartography changes. What this
+    removes is removed afterwards and only from this stage, which is also what
+    leaves every other route on thirty.
+
+    A declared code the inputs do not carry is an error and not a no-op: it means
+    the constant and the data disagree about how the city is divided, and skipping
+    it quietly would leave a run that excluded nothing while claiming otherwise.
+    """
+    if not config.REGRESSION_EXCLUDED_UNITS:
+        return units, predictors
+
+    present = set(units[config.AREA_CODE_COL]) & set(predictors[config.AREA_CODE_COL])
+    missing = [e.unit for e in config.REGRESSION_EXCLUDED_UNITS if e.unit not in present]
+    if missing:
+        raise ValueError(
+            f"REGRESSION_EXCLUDED_UNITS names {', '.join(missing)}, which the unit layer "
+            "and the predictor table do not both carry; the constant and the data "
+            "disagree about the division of the city"
+        )
+
+    codes = {exclusion.unit for exclusion in config.REGRESSION_EXCLUDED_UNITS}
+    names = dict(zip(units[config.AREA_CODE_COL], units[config.AREA_NAME_COL]))
+    kept_units = units[~units[config.AREA_CODE_COL].isin(codes)].reset_index(drop=True)
+    kept_predictors = predictors[~predictors[config.AREA_CODE_COL].isin(codes)]
+
+    log.record(
+        "exclude units from the regressions",
+        rows_in=len(units),
+        rows_out=len(kept_units),
+        # One signed delta per excluded unit, which is what makes the balance close:
+        # the stage accounting adds these and refuses a difference it cannot name.
+        changes=[
+            (-1, f"{names.get(exclusion.unit, exclusion.unit)} does not enter the models")
+            for exclusion in config.REGRESSION_EXCLUDED_UNITS
+        ],
+        notes=[
+            f"{names.get(exclusion.unit, exclusion.unit)} ({exclusion.unit}): "
+            f"{exclusion.reason}"
+            for exclusion in config.REGRESSION_EXCLUDED_UNITS
+        ]
+        + [
+            f"the regressions estimate on {len(kept_units)} units; the study universe is "
+            f"{len(units)} and every other route keeps them",
+        ],
+    )
+    return kept_units, kept_predictors
+
+
 def build_dataset(
     matrix: pd.DataFrame,
     exposure: pd.DataFrame,
@@ -207,7 +285,7 @@ def build_dataset(
     table = table.merge(_predictors(predictors), on=[config.AREA_CODE_COL, config.YEAR_COL], how="left")
 
     # The unit's name, so a figure can label a row `03-Arborizadora` rather than
-    # `UPL03` and a reader does not have to hold thirty codes in their head. It
+    # `UPL03` and a reader does not have to hold a code per unit in their head. It
     # comes from the predictor table, which is the only input that carries it.
     names = dict(zip(predictors[config.AREA_CODE_COL], predictors[config.AREA_NAME_COL]))
     table[config.AREA_NAME_COL] = table[config.AREA_CODE_COL].map(names)
@@ -464,11 +542,11 @@ def _describe(result: object, predictors: tuple[str, ...]) -> Fitted | None:
 
     **A fit with no usable standard errors is not a fit and does not compete.**
     The negative binomial maximises alpha jointly with the coefficients, and on
-    thirty observations it sometimes drives alpha to a boundary: the likelihood
+    twenty-nine observations it sometimes drives alpha to a boundary: the likelihood
     then stops being bounded, the Hessian is not invertible, and the result comes
     back with coefficients, no standard errors and an AIC that is not comparable
     with anything — one such model reported 28,502 where its neighbours were near
-    130, and another −27 where a count model of thirty observations cannot go.
+    130, and another −27 where a count model of so few observations cannot go.
 
     Left in, those win or lose searches on a number that means nothing, and they
     reach the table as coefficients with no interval and no p-value, which is
@@ -502,19 +580,40 @@ def search(
     family: str,
     offset: config.OffsetSpec,
     candidates: tuple[str, ...],
-) -> tuple[Fitted | None, Fitted | None, int, int]:
+) -> tuple[Fitted | None, Fitted | None, int, int, dict[str, Fitted], dict[str, list[float]]]:
     """Walk every declared subset and return the best by AIC, with the null model.
 
     Returns the selected model, the null model it has to beat, how many
-    specifications were fitted and how many the estimator could not fit. The null
-    is the intercept and the offset alone: it is the floor a selected model must
-    improve on, and a selection that does not beat it is a result worth reporting
-    rather than a failure to hide.
+    specifications were fitted, how many the estimator could not fit, the best model
+    containing each individual candidate, and every coefficient each candidate took
+    across the models that held it.
+
+    **The last two are not the same answer and the figures use them differently.**
+    The per-variable table of one pair and year asks where a variable does best, so
+    it reads the best model. The coefficient map asks what a variable is worth in
+    the years it was not selected, and there is no single model to point at: it
+    reads the median over the fifty-five or sixty-six models that contain it. The null is the intercept and the
+    offset alone: it is the floor a selected model must improve on, and a selection
+    that does not beat it is a result worth reporting rather than a failure to hide.
 
     **The search never leaves the declared set.** Every combination of two and
     three candidates, in the order the configuration declares them, and nothing
     else — no stepwise walk, no interaction terms, no transformations. That is
     what makes "the criteria were fixed before estimating" a checkable statement.
+
+    **The per-candidate best costs nothing, and that is the point.** A run fits
+    489,503 models and used to keep 1,868 of them; what the panel adviser asked —
+    what a variable would have been worth had it entered — was already being
+    computed and then dropped. Keeping the best model for each candidate is twelve
+    records per cell instead of one, decided inside the loop that was already
+    running. **Asking the same question by looping over the candidates and
+    refitting outside the search would multiply the run by twelve**, which is the
+    implementation this one exists to rule out.
+
+    A candidate's best model is the winner itself whenever that candidate was
+    selected, because the winner has the lowest AIC of all and so of the subset
+    containing that candidate. That is not a coincidence to rely on quietly: it is
+    the check `verify` makes on this table.
     """
     response = frame[RESPONSE_COL].to_numpy(dtype=float)
     log_offset = _log_offset(frame, offset)
@@ -526,6 +625,13 @@ def search(
     null = _describe(null_result, ()) if null_result is not None else None
 
     best: Fitted | None = None
+    per_candidate: dict[str, Fitted] = {}
+    # Every coefficient a candidate takes across the models that hold it, which is a
+    # different quantity from the best one above and answers a different question.
+    # The best model says what the variable is worth where it does best; the spread
+    # over all of them says what it does when it enters at all, and the median of
+    # that is what fills a cell the search did not choose.
+    per_candidate_values: dict[str, list[float]] = {name: [] for name in candidates}
     attempted = 0
     failed = 0
     for size in config.REGRESSION_SUBSET_SIZES:
@@ -539,7 +645,20 @@ def search(
                 continue
             if best is None or described.aic < best.aic:
                 best = described
-    return best, null, attempted, failed
+            # Only models that passed `_describe` compete here, for the same reason
+            # they do not compete for the win: a fit with no usable standard errors
+            # reaches the table as a coefficient with no interval, and this table is
+            # read exactly like the other one.
+            for position_in_model, name in enumerate(combination):
+                standing = per_candidate.get(name)
+                if standing is None or described.aic < standing.aic:
+                    per_candidate[name] = described
+                # +1 for the constant. Kept on the scale the fit returned, so the
+                # per-family division of D51 happens once, where the point estimate
+                # is divided, and not twice with two chances to disagree.
+                per_candidate_values[name].append(
+                    float(result.params[position_in_model + 1]))
+    return best, null, attempted, failed, per_candidate, per_candidate_values
 
 
 def _log_offset(frame: pd.DataFrame, offset: config.OffsetSpec) -> np.ndarray:
@@ -573,13 +692,19 @@ def contiguity_weights(units: gpd.GeoDataFrame) -> tuple[np.ndarray, tuple[str, 
 
     Two units are neighbours when their boundaries touch at all, a point included.
     Built here rather than taken from a library so the pipeline keeps its one
-    geospatial dependency, and because the rule is one line of predicate: thirty
-    polygons make this cheap however it is done.
+    geospatial dependency, and because the rule is one line of predicate: three
+    dozen polygons make this cheap however it is done.
+
+    **It is built from the units that enter, which D56 made fewer than the study's.**
+    Excluding a unit changes the graph and not just its size: Torca bordered only
+    Toberin and Britalia, so those two lost a neighbour, and the minimum across the
+    rest fell to one. `tools/exclusion_de_una_unidad.py` is the pre-flight that says
+    whether a proposed exclusion isolates anybody before a run finds out.
 
     Row-standardised, so each unit's neighbours carry equal weight summing to one
     and Moran's I stays in its familiar range. A unit with no neighbour would give
-    a row of zeros; none of the thirty is isolated, and the check below says so
-    rather than trusting it.
+    a row of zeros; none of the ones that enter is isolated, and the check below
+    says so rather than trusting it.
     """
     projected = units.to_crs(epsg=config.PROJECTED_CRS)
     codes = tuple(projected[config.AREA_CODE_COL])
@@ -594,8 +719,8 @@ def contiguity_weights(units: gpd.GeoDataFrame) -> tuple[np.ndarray, tuple[str, 
     if isolated:
         raise ValueError(
             f"units with no neighbour: {', '.join(isolated)}. Moran's I is undefined "
-            "for an isolated unit, and the thirty are known to be contiguous, so this "
-            "means the layer changed rather than that the city did"
+            "for an isolated unit, and the units that enter are known to be contiguous, "
+            "so this means the layer or the exclusions changed rather than that the city did"
         )
     return weights / weights.sum(axis=1, keepdims=True), codes
 
@@ -650,7 +775,7 @@ def _significance(p_value: float) -> str:
 def _collinear_pairs(frame: pd.DataFrame, predictors: tuple[str, ...]) -> list[tuple[str, str, float]]:
     """The pairs inside one model that exceed the declared correlation threshold.
 
-    Reported and never prevented. Two correlated variables in one model of thirty
+    Reported and never prevented. Two correlated variables in one model of twenty-nine
     observations do not give two readable coefficients; they give one effect split
     arbitrarily between them. The run does not drop the model for it — the
     instruction is that every candidate competes — it marks it, so a coefficient
@@ -674,14 +799,15 @@ def fit_cell(
     weights: np.ndarray,
     candidate_set: str,
     log: RunLog,
-) -> tuple[dict, list[dict], list[dict]] | None:
-    """Everything one regression contributes: its model row, coefficients, predictions."""
+) -> tuple[dict, list[dict], list[dict], list[dict]] | None:
+    """Everything one regression contributes: model row, coefficients, predictions, candidates."""
     # The year's pool, not the general one: a variable whose layer does not reach
     # this year arrives empty, and a model built on it would be dropped silently
     # by the fit filter rather than never attempted. See config.regression_pool_in.
     candidates = offset.candidate_predictors(
         config.regression_pool_in(year, candidate_set))
-    best, null, attempted, failed = search(frame, family, offset, candidates)
+    best, null, attempted, failed, per_candidate, per_candidate_values = search(
+        frame, family, offset, candidates)
     if best is None:
         log.warn(
             "%s / %s / %s / %d / %s: no specification could be fitted out of %d",
@@ -831,7 +957,120 @@ def fit_cell(
         }
         for code, observed, fitted in zip(frame[config.AREA_CODE_COL], response, predicted)
     ]
-    return model_row, coefficient_rows, prediction_rows
+
+    # One row per candidate of the year: the best model that contains it, and what
+    # the candidate is worth inside that model. The winning model appears once per
+    # predictor it holds, and those rows share its AIC because they are the same
+    # model — which is how a reader tells the two or three that were selected from
+    # the nine or ten that were not.
+    #
+    # **The deviations are the candidates' own and do not depend on the model.**
+    # `_standardise` divides each column by its own standard deviation, so the
+    # number that takes a coefficient back to its units is a property of the column
+    # and is computed once here rather than per model.
+    candidate_deviations = _scale_candidates(frame, candidates).std(axis=0, ddof=0)
+    candidate_position = {name: index for index, name in enumerate(candidates)}
+
+    candidate_rows = []
+    for name in candidates:
+        fit = per_candidate.get(name)
+        if fit is None or fit.result is None:
+            # **A candidate with no fittable model still gets its row.** It happens:
+            # in car-against-car under both exposures the negative binomial cannot
+            # fit 204 of 220 specifications, and for three candidates every model
+            # that holds them is among the failures. Skipping the row would make
+            # «no model could be fitted» and «not selected» look identical in a
+            # table read by a figure, which is the defect D10 fixed for the matrix
+            # and that this stage is not going to reintroduce. The row carries the
+            # identity, the flag and nothing else, so nothing can be read as a
+            # measurement.
+            candidate_rows.append(
+                {
+                    config.CANDIDATE_SET_COL: candidate_set,
+                    DATASET_COL: dataset,
+                    config.OFFSET_COL: offset.name,
+                    PAIR_NAME_COL: pair.name,
+                    config.YEAR_COL: year,
+                    config.FAMILY_COL: family,
+                    MODEL_ID_COL: model_id,
+                    "TERM": name,
+                    "HAS_FITTED_MODEL": False,
+                    "IN_SELECTED_MODEL": name in best.predictors,
+                    "N_MODELS_CONTAINING": 0,
+                }
+            )
+            continue
+        inside = fit.predictors.index(name) + 1  # +1: the constant is column zero
+        estimate = float(fit.result.params[inside])
+
+        # On the count scale in every family, exactly as the fit figure draws it, so
+        # this R² and the one printed on the panel are the same number for the
+        # winning model. `predict` and never `fittedvalues`: see the note above.
+        raw_prediction = np.asarray(fit.result.predict(), dtype=float)
+        if family == config.OLS_FAMILY:
+            raw_prediction = raw_prediction * np.exp(log_offset)
+
+        deviation = float(candidate_deviations[candidate_position[name]])
+        p_value = float(fit.result.pvalues[inside])
+        spread = per_candidate_values.get(name, [])
+        median = float(np.median(spread)) if spread else float("nan")
+        candidate_rows.append(
+            {
+                config.CANDIDATE_SET_COL: candidate_set,
+                DATASET_COL: dataset,
+                config.OFFSET_COL: offset.name,
+                PAIR_NAME_COL: pair.name,
+                config.YEAR_COL: year,
+                config.FAMILY_COL: family,
+                MODEL_ID_COL: model_id,
+                "TERM": name,
+                "HAS_FITTED_MODEL": True,
+                # Whether the search chose this candidate. It is also the answer to
+                # «is this candidate's best model the winner», and `verify` checks
+                # that the two agree rather than assuming it.
+                "IN_SELECTED_MODEL": name in best.predictors,
+                "PREDICTORS": ", ".join(fit.predictors),
+                "N_PREDICTORS": len(fit.predictors),
+                "AIC": fit.aic,
+                "BIC": fit.bic,
+                "LOG_LIKELIHOOD": fit.loglikelihood,
+                "R_SQUARED_COUNTS": _count_r_squared(response, raw_prediction),
+                "COEFFICIENT_STANDARDISED": estimate,
+                "COEFFICIENT": estimate / deviation if deviation > 0 else estimate,
+                "COEFFICIENT_IS_ELASTICITY": name in config.LOG_SCALED_CANDIDATES,
+                # The D51 bifurcation, carried here and not left to the figures.
+                # Least squares fits the rate, so its coefficient is of the order of
+                # a ten-thousandth and rounds to «0.00» in any table that prints two
+                # decimals; the GLM's is already dimensionless and dividing it would
+                # break its meaning, so the column arrives null there and not zero.
+                RESPONSE_DEVIATION_COL: response_deviation,
+                FULLY_STANDARDISED_COL: _over_deviation(estimate, response_deviation),
+                "STANDARD_ERROR": float(fit.result.bse[inside]),
+                "P_VALUE": p_value,
+                "SIGNIFICANT": bool(p_value < config.REGRESSION_SIGNIFICANCE),
+                "STARS": _significance(p_value),
+                # The spread over every model that held this candidate, which is a
+                # different quantity from the four above: those describe one model,
+                # these describe the variable across the search. The median is what
+                # fills a cell of the coefficient map that the search did not choose,
+                # and it carries **no stars**, because a median of coefficients has no
+                # test behind it.
+                "N_MODELS_CONTAINING": len(spread),
+                "COEFFICIENT_MEDIAN_STANDARDISED": median,
+                MEDIAN_FULLY_STANDARDISED_COL: _over_deviation(median, response_deviation),
+                # Free, because the values were already in hand, and they answer the
+                # two questions a median invites: whether it represents the set, and
+                # whether the variable even keeps its sign. Nothing draws them yet —
+                # marking unstable signs was proposed and deferred — but throwing them
+                # away is what this whole step exists to stop.
+                "COEFFICIENT_MIN_STANDARDISED": float(np.min(spread)) if spread else float("nan"),
+                "COEFFICIENT_MAX_STANDARDISED": float(np.max(spread)) if spread else float("nan"),
+                "SIGN_CHANGES_ACROSS_MODELS": bool(
+                    spread and float(np.min(spread)) < 0 < float(np.max(spread))),
+            }
+        )
+
+    return model_row, coefficient_rows, prediction_rows, candidate_rows
 
 # ---------------------------------------------------------------------------
 # The whole walk
@@ -839,7 +1078,7 @@ def fit_cell(
 
 
 def eligible_pairs(table: pd.DataFrame, log: RunLog) -> tuple[config.ActorPair, ...]:
-    """The pairs whose response carries enough signal to regress on thirty units.
+    """The pairs whose response carries enough signal to regress on the units that enter.
 
     The threshold is the anteproyecto's and was fixed before anything was
     estimated: fewer than half the cells at zero. A pair that fails in any year of
@@ -848,9 +1087,13 @@ def eligible_pairs(table: pd.DataFrame, log: RunLog) -> tuple[config.ActorPair, 
     are built around — a row of the beta heatmap would then hold two kinds of
     blank, and the whole point of that figure is that it holds only one.
 
-    It drops nothing today — the worst case is eleven zero units of thirty, car
-    against motorcycle in 2012 — and it is here so that it would. Widening the
-    window to thirteen years is what brought the worst case up from five: the
+    **It is a share and not a count**, which is why D56 did not have to touch it:
+    the denominator changed and the rule did not. The worst case is car against
+    motorcycle in 2012, and excluding Torca moved it from 0.367 to 0.345 rather
+    than the other way, because Torca was one of its zero cells.
+
+    It drops nothing today and it is here so that it would. Widening the window to
+    thirteen years is what brought the worst case up from five zero units: the
     threshold now sits in the early years rather than nowhere near anything.
     """
     lines = [f"{'pair':<26} " + " ".join(f"{year:>6}" for year in config.REGRESSION_YEARS) + "   verdict"]
@@ -870,8 +1113,8 @@ def eligible_pairs(table: pd.DataFrame, log: RunLog) -> tuple[config.ActorPair, 
             + ("   kept" if passes else "   DROPPED: over the threshold")
         )
     log.table(
-        f"share of the thirty cells at zero, against the declared maximum of "
-        f"{config.REGRESSION_MAX_ZERO_SHARE:.2f}:",
+        f"share of the {len(table[config.AREA_CODE_COL].unique())} cells at zero, against "
+        f"the declared maximum of {config.REGRESSION_MAX_ZERO_SHARE:.2f}:",
         "\n".join(lines),
     )
     if len(kept) < len(config.REGRESSION_PAIRS):
@@ -900,6 +1143,7 @@ def fit_all(
     models: list[dict] = []
     coefficients: list[dict] = []
     predictions: list[dict] = []
+    candidate_models: list[dict] = []
     cells = 0
 
     for dataset, table in datasets.items():
@@ -928,15 +1172,17 @@ def fit_all(
                         )
                         if fitted is None:
                             continue
-                        model_row, coefficient_rows, prediction_rows = fitted
+                        model_row, coefficient_rows, prediction_rows, candidate_rows = fitted
                         models.append(model_row)
                         coefficients.extend(coefficient_rows)
                         predictions.extend(prediction_rows)
+                        candidate_models.extend(candidate_rows)
 
     tables = {
         "models": pd.DataFrame(models),
         "coefficients": pd.DataFrame(coefficients),
         "predictions": pd.DataFrame(predictions),
+        "candidate_models": pd.DataFrame(candidate_models),
     }
     log.record(
         "fit every declared specification",
@@ -950,6 +1196,11 @@ def fit_all(
             f"{int(tables['models']['SPECIFICATIONS_FITTED'].sum()):,} fitted",
             f"{int(tables['models']['BEATS_NULL'].sum()):,} of {len(tables['models']):,} selected "
             "models beat their own null",
+            # Lo que se dejó de botar. Ningún ajuste nuevo: son los mismos modelos de
+            # la línea de arriba, retenidos en vez de descartados.
+            f"{len(tables['candidate_models']):,} per-candidate best model(s) retained out of "
+            f"the same {int(tables['models']['SPECIFICATIONS_FITTED'].sum()):,} fits, with no "
+            "refitting",
         ],
     )
     return tables
@@ -1069,12 +1320,17 @@ def export(
     candidate_set: str,
     log: RunLog,
 ) -> dict[str, Path]:
-    """The four tables, per dataset, plus the selection frequency over all of them.
+    """The data tables and the four result tables, plus the selection frequency.
 
     The data table is written once per casualty dataset because its response
-    differs between them; the three result tables carry the dataset as a column,
+    differs between them; the four result tables carry the dataset as a column,
     because a model of one and a model of the other are rows of the same
     comparison and separating them would make that comparison a manual join.
+
+    `candidate_models` is the fourth and is not a summary of the others: it holds
+    the best model containing each candidate, which is the answer to what a
+    variable would have been worth had it entered, and every row of it comes from
+    a fit the search was already performing.
     """
     data_dir = log.run_dir / config.DATA_SUBDIR
     data_dir.mkdir(parents=True, exist_ok=True)
@@ -1087,7 +1343,7 @@ def export(
         frame.to_parquet(path.with_suffix(".parquet"))
         paths[f"data__{dataset}"] = path
 
-    for name in ("models", "coefficients", "predictions"):
+    for name in ("models", "coefficients", "predictions", "candidate_models"):
         path = data_dir / f"{config.ANALYSIS_PREFIX}__regression_{name}.csv"
         tables[name].to_csv(path, index=False, encoding="utf-8")
         tables[name].to_parquet(path.with_suffix(".parquet"))
@@ -1175,11 +1431,14 @@ def verify(
             )
         )
 
-    # Every model reports n = 30, which is the whole design: one row per unit.
+    # Every model reports one row per unit that entered, which is the whole design.
+    # Compared against `len(units)` and never against a literal, so excluding a unit
+    # makes this pass only if the exclusion reached the polygons too — which is the
+    # half of D56 that otherwise fails silently.
     wrong_n = models[models["N_OBSERVATIONS"] != len(units)]
     checks.append(
         (
-            "every model was fitted on exactly the thirty units",
+            f"every model was fitted on exactly the {len(units)} units that enter",
             len(wrong_n) == 0,
             f"{len(models) - len(wrong_n)} of {len(models)}",
         )
@@ -1253,6 +1512,73 @@ def verify(
             "one coefficient row per term of every model",
             len(coefficients) == expected_terms,
             f"{len(coefficients):,} of {expected_terms:,}",
+        )
+    )
+
+    # -- the per-candidate table -------------------------------------------
+    # One row per cell and candidate of that cell's year. The expected count is
+    # built from the same `regression_pool_in` the search reads, so a year the
+    # signage layer does not reach is expected to carry eleven and not twelve.
+    candidate_models = tables["candidate_models"]
+    expected_rows = 0
+    for _, row in models.iterrows():
+        offset = next(o for o in config.REGRESSION_OFFSETS
+                      if o.name == row[config.OFFSET_COL])
+        expected_rows += len(offset.candidate_predictors(
+            config.regression_pool_in(int(row[config.YEAR_COL]), candidate_set)))
+    # Rows with no fittable model are part of the count on purpose: they are what
+    # keeps «no model could be fitted» from reading as «not selected».
+    without = candidate_models[~candidate_models["HAS_FITTED_MODEL"]]
+    checks.append(
+        (
+            "one row per candidate of its year in the per-candidate table",
+            len(candidate_models) == expected_rows,
+            f"{len(candidate_models):,} of {expected_rows:,}; {len(without):,} of them "
+            "carry no model because every specification holding that candidate failed",
+        )
+    )
+
+    # **No candidate's best model may beat the winner.** If one did, the winner
+    # would not be the winner, and the defect would be in the search rather than
+    # in this table. Compared with a tolerance because the two AIC travel through
+    # a float round-trip to CSV and back.
+    best_aic = models.set_index(MODEL_ID_COL)["AIC"]
+    fitted_candidates = candidate_models[candidate_models["HAS_FITTED_MODEL"]]
+    against_winner = fitted_candidates[MODEL_ID_COL].map(best_aic)
+    beating = int((fitted_candidates["AIC"] < against_winner - 1e-6).sum())
+    checks.append(
+        (
+            "no candidate's best model beats the selected model",
+            beating == 0,
+            f"{len(fitted_candidates) - beating:,} of {len(fitted_candidates):,}",
+        )
+    )
+
+    # A candidate the search selected must have a model, since the winner itself
+    # holds it. A selected candidate with no fittable model would be a contradiction
+    # and not a gap, so it is a failure and not a count.
+    checks.append(
+        (
+            "every selected candidate has a fitted model",
+            not bool((without["IN_SELECTED_MODEL"]).any()),
+            f"{int(without['IN_SELECTED_MODEL'].sum())} selected candidate(s) without one",
+        )
+    )
+
+    # And the converse, which is the one that catches a wrong index rather than a
+    # wrong search: a candidate the search selected must have the winner as its own
+    # best model, so its AIC must be the winner's exactly.
+    selected = fitted_candidates[fitted_candidates["IN_SELECTED_MODEL"]]
+    mismatched = int((
+        (selected["AIC"] - selected[MODEL_ID_COL].map(best_aic)).abs() > 1e-6
+    ).sum())
+    checks.append(
+        (
+            "a selected candidate's best model is the selected model",
+            mismatched == 0,
+            f"{len(selected) - mismatched:,} of {len(selected):,}; "
+            f"{len(selected):,} selected term(s) against "
+            f"{int(models['N_PREDICTORS'].sum()):,} in the model table",
         )
     )
 
@@ -1433,6 +1759,24 @@ def _plotted_coefficient(family: str) -> tuple[str, str, str]:
     return "COEFFICIENT_STANDARDISED", "CI_LOW", "CI_HIGH"
 
 
+def _plotted_median(family: str) -> str:
+    """La misma bifurcación de D51, para la mediana sobre los modelos.
+
+    Existe aparte y no como un cuarto valor de la función de arriba porque aquélla
+    devuelve tres columnas que tienen que salir juntas —el punto y los dos extremos
+    de su intervalo—, y una mediana de coeficientes no tiene intervalo: no hay
+    contraste detrás de ella.
+
+    **Lo que no puede pasar es que una figura elija la columna por su cuenta.** Si
+    tomara la cruda para la mediana y la dividida para el punto, mínimos cuadrados
+    pintaría las celdas seleccionadas bien y todas las demás en cero, y eso se lee
+    como «lo que no entró no vale nada». Ése es el error que D51 arregló una vez.
+    """
+    if family == config.OLS_FAMILY:
+        return MEDIAN_FULLY_STANDARDISED_COL
+    return "COEFFICIENT_MEDIAN_STANDARDISED"
+
+
 def _coefficient_quantity_es(family: str) -> str:
     """Qué dice una celda, dicho en el subtítulo, porque no es lo mismo en las dos."""
     if family == config.OLS_FAMILY:
@@ -1512,7 +1856,11 @@ def _fit_panel(
     figure, axes = _panel_grid(
         f"Observado contra predicho · {year} · {config.FAMILY_LABELS_ES[family]}\n"
         f"offset: {config.OFFSET_LABELS_ES[offset]} · conjunto: {config.DATASET_LABELS_ES[dataset]}"
-        f" · candidatas: {_candidate_label(candidate_set)} · cada panel con su propia escala"
+        f" · candidatas: {_candidate_label(candidate_set)} · cada panel con su propia escala\n"
+        # La tercera línea dice de qué es cada cifra, porque el pie que lo explica
+        # entero está abajo y un lector mira el número antes de bajar la vista.
+        "R² sobre conteos, comparable entre paneles · AIC en la escala que cada familia "
+        "ajusta, comparable sólo dentro de una"
     )
     for axis, pair in zip(axes, config.REGRESSION_PAIRS):
         rows = predictions[
@@ -1548,37 +1896,56 @@ def _fit_panel(
         if not len(row):
             continue
 
-        # Each family carries the figure its own search minimises, and they are
-        # not the same quantity. Least squares fits the rate, so its AIC is on the
-        # rate and a single AIC printed on a panel says nothing a reader can use;
-        # R² on the counts describes the cloud that is actually drawn. The count
-        # families fit the count, so the figure and their AIC already agree.
-        if family == config.OLS_FAMILY:
-            goodness = _count_r_squared(observed, predicted)
-            # A negative R² is not a small value. It is a model that predicts
-            # worse than the mean of the thirty units would have, and on a grid of
-            # eight panels that has to be visible without reading the number.
-            label = f"R² {goodness:.3f}".replace("-", "−")
-            # Not `colour`: that is the scatter's, set once from the offset, and
-            # assigning to it here repainted every panel after the first.
-            label_colour = config.REGRESSION_FAILING_COLOR if goodness < 0 else "#555555"
-        else:
-            label, label_colour = f"AIC {float(row['AIC'].iloc[0]):.0f}", "#555555"
-        axis.text(0.03, 0.97, label, transform=axis.transAxes, va="top",
-                  fontsize=8, color=label_colour)
-
-        # Moran in both families, because it is a property of the residuals rather
-        # than of the estimator: the same pair marked under two estimators says the
-        # clustering is in the city and not in the method, which is what the panel
-        # stage needs to know.
-        morans = float(row["MORANS_I"].iloc[0])
-        beyond = abs(morans) > config.MORAN_REPORTING_THRESHOLD
+        # Both figures in every family, which is D57. Until then each family showed
+        # only the one its own search minimises, and the two are not the same
+        # quantity: least squares fits the rate, so its AIC is on the rate and runs
+        # from −1,048 to −291, while the count families fit the count and theirs is
+        # positive. Printing both without saying so would make two numbers look
+        # comparable that are not, which is why the note below is part of the change
+        # and not decoration.
+        #
+        # **R² is the one that does compare across the four panels**, because it is
+        # on counts in all of them: least squares multiplies its prediction back by
+        # the exposure before the comparison. It goes on top for that reason — it
+        # describes the cloud the reader is looking at, while the AIC ranks the model
+        # against the others of its own pair, which this figure does not show.
+        goodness = _count_r_squared(observed, predicted)
         axis.text(
-            0.03, 0.90, f"Moran {morans:.3f}".replace("-", "−"),
+            0.03, 0.97, f"R² {goodness:.3f}".replace("-", "−"),
             transform=axis.transAxes, va="top", fontsize=8,
-            color=config.REGRESSION_FLAGGED_COLOR if beyond else "#555555",
+            # A negative R² is not a small value. It is a model that predicts worse
+            # than the mean of the units would have, and on a grid of eight panels
+            # that has to be visible without reading the number. Not `colour`: that
+            # is the scatter's, set once from the offset, and assigning to it here
+            # repainted every panel after the first.
+            color=config.REGRESSION_FAILING_COLOR if goodness < 0 else "#555555",
         )
-    figure.tight_layout()
+        axis.text(
+            0.03, 0.90, f"AIC {float(row['AIC'].iloc[0]):.0f}".replace("-", "−"),
+            transform=axis.transAxes, va="top", fontsize=8, color="#555555",
+        )
+
+        # Moran is no longer drawn. It is not lost: `MORANS_I` stays in
+        # `analysis__regression_models.csv` for every model, in the master model
+        # table and in the verification report, which is where the panel stage that
+        # follows this one reads it. What went is one number printed on a scatter.
+
+    _figure_note(
+        figure,
+        "R² sobre conteos en las tres familias, que es la nube dibujada: mínimos cuadrados "
+        "multiplica su predicción por la exposición antes de comparar, así que esa cifra sí "
+        "compara entre paneles.   ·   El AIC no: está en la escala que cada familia ajusta "
+        "—la tasa en mínimos cuadrados, el conteo en los GLM— y además cada panel es otra "
+        "pareja sobre otros datos, así que sólo compara contra otros modelos de la misma "
+        "pareja y la misma familia.   ·   La figura muestra el ajuste del modelo que la "
+        "búsqueda seleccionó por AIC, que no es el de mejor R² de su celda. El AIC elige por "
+        "verosimilitud penalizada y el R² mide error cuadrático: son criterios distintos y "
+        "no tienen por qué coincidir. En la binomial negativa el ajuste cedido tiene mediana "
+        "de 0,026 de R²; en mínimos cuadrados la mediana es 0,073, y hay doce celdas de "
+        "ciento cuatro en que el modelo seleccionado queda por debajo de la mediana de su "
+        "celda. Medido en tools/seleccion_por_aic.py.")
+    # Room for the note at the bottom, the same rectangle the dispersion figures use.
+    figure.tight_layout(rect=(0, 0.10, 1, 1))
     figure.savefig(out_path, dpi=config.FIGURE_DPI, bbox_inches="tight")
     plt.close(figure)
 
@@ -1702,11 +2069,18 @@ def _grid_table(
     wrap: int | None = None,
     dim_rows: set[int] | None = None,
     crossed_cells: list[tuple[int, int]] | None = None,
+    boxed_cells: list[tuple[int, int]] | None = None,
 ) -> None:
     """A table of text on a grid, optionally shaded, filling its own canvas.
 
     `crossed_cells` marks a cell with an X: not a low value but a cell where
     nothing was measured, which an empty cell cannot say on its own.
+
+    `boxed_cells` outlines a cell: its figure is the one the study reports, while
+    the unboxed ones around it are the same kind of quantity under a different
+    convention. **It is an outline and not a fill** precisely so the shading keeps
+    showing through — the colour says the sign and the magnitude, and the box says
+    which cell the search chose, and a reader has to be able to read both at once.
     """
     row_count, column_count = len(rows), len(columns)
     if wrap:
@@ -1753,6 +2127,19 @@ def _grid_table(
                   color=config.GRID_CROSS_COLOR, linewidth=1.2, zorder=3)
         axis.plot([column - inset, column + inset], [row + inset, row - inset],
                   color=config.GRID_CROSS_COLOR, linewidth=1.2, zorder=3)
+
+    # El recuadro, por dentro del borde de la celda y no sobre él. En el borde
+    # caería encima de la retícula blanca que separa las celdas, y dos celdas
+    # recuadradas vecinas compartirían un trazo: se leerían como un bloque de dos
+    # en lugar de como dos marcas. Por dentro, cada una conserva su cuadro.
+    edge = 0.42
+    for row, column in boxed_cells or []:
+        axis.add_patch(
+            matplotlib.patches.Rectangle(
+                (column - edge, row - edge), edge * 2, edge * 2,
+                fill=False, edgecolor=config.GRID_BOX_COLOR, linewidth=1.6, zorder=4,
+            )
+        )
 
     axis.set_xticks(range(column_count), columns, fontsize=8)
     axis.xaxis.set_ticks_position("top")
@@ -1808,7 +2195,7 @@ def _grid_table(
 
 
 def _beta_heatmap(
-    coefficients: pd.DataFrame,
+    candidate_models: pd.DataFrame,
     dataset: str,
     offset: config.OffsetSpec,
     family: str,
@@ -1822,37 +2209,63 @@ def _beta_heatmap(
     por candidata, una columna por año, y en cada celda el coeficiente
     estandarizado de esa variable en ese modelo.
 
-    **Cada celda dice una de tres cosas, y distinguirlas es el diseño entero:**
+    **Cada celda dice una de cuatro cosas, y distinguirlas es el diseño entero:**
 
-    - con cifra, la variable entró en el modelo de ese año;
-    - vacía, compitió ese año y no entró, porque cada modelo lleva dos o tres
-      variables sobre treinta unidades;
-    - con aspa, no tenía capa ese año, así que no compitió.
+    - **con cifra y recuadro**, la variable entró en el modelo de ese año, y la
+      cifra es el coeficiente que el estudio reporta;
+    - **con cifra y sin recuadro**, compitió y no entró, y la cifra es la mediana
+      de su coeficiente sobre los cincuenta y cinco o sesenta y seis modelos de ese
+      año que la contienen;
+    - **con raya**, ningún modelo que la contuviera pudo ajustarse;
+    - **con aspa**, no tenía capa ese año, así que no compitió.
 
-    Sin la tercera, 2014 y 2019 se ven iguales en la fila de señalización vertical
+    **La segunda es el cambio de 2026-10-02 y vale la pena decir qué resuelve.**
+    Antes esa celda iba vacía, y un lector no tenía forma de saber qué habría valido
+    la variable: una casilla en blanco decía «no ganó» y se leía como «no vale
+    nada». Ahora dice las dos cosas por separado — el recuadro dice cuál eligió la
+    búsqueda, la cifra dice cuánto vale la variable cuando entra — y es el recuadro
+    y no la presencia de un número lo que marca la selección.
+
+    **Las dos cifras son la misma clase de cantidad**, y por eso van sin paréntesis
+    ni ninguna otra marca que sugiera lo contrario. Lo que las separa no es su
+    naturaleza sino una convención: el modelo ganador por AIC elige uno de los
+    sesenta y seis de su variable, y para las demás no hay tal convención, así que
+    se resumen. La mediana **no lleva asterisco**, porque una mediana de
+    coeficientes no tiene contraste detrás.
+
+    Sin la cuarta, 2014 y 2019 se ven iguales en la fila de señalización vertical
     y significan cosas opuestas: una es un resultado y la otra una ausencia de
     dato. El aspa se mete dentro de la celda y no va de esquina a esquina, porque
     a media celda las diagonales de dos años vecinos se tocan y se leen como una
-    cinta continua en lugar de como dos cruces.
+    cinta continua en lugar de como dos cruces. Y la tercera no se dibuja con un
+    aspa aunque también sea una ausencia: «no había capa» y «no se pudo ajustar»
+    son dos cosas distintas y una figura que las junte miente sobre la segunda.
 
     **Toda candidata tiene su fila, incluidas las que no ganaron nunca.** Una
     versión anterior listaba solo las seleccionadas alguna vez, así que una
     variable que compitió en todos los modelos y perdió siempre desaparecía,
     indistinguible de una que nunca estuvo en la búsqueda. La primera es un
-    resultado: su nombre va en gris y su fila vacía.
+    resultado: su nombre va en gris y su fila sin ningún recuadro. Desde que la
+    tabla se llena, esa fila además lleva trece medianas, así que ya no sólo se
+    sabe que la variable no ganó nunca: se ve cuánto valía cada vez.
 
     Color divergente centrado en cero, así que el signo se lee antes que la
     magnitud: una fila que sostiene un color a lo largo de los años es una
     variable que mantiene su signo en todos los contextos en los que sobrevive.
     """
-    block = coefficients[
-        (coefficients[DATASET_COL] == dataset)
-        & (coefficients[config.OFFSET_COL] == offset.name)
-        & (coefficients[config.FAMILY_COL] == family)
-        & (coefficients[PAIR_NAME_COL] == pair.name)
-        & (coefficients["TERM"] != "INTERCEPT")
+    block = candidate_models[
+        (candidate_models[DATASET_COL] == dataset)
+        & (candidate_models[config.OFFSET_COL] == offset.name)
+        & (candidate_models[config.FAMILY_COL] == family)
+        & (candidate_models[PAIR_NAME_COL] == pair.name)
     ]
+    # Las dos columnas salen de la misma bifurcación por familia, que vive en la
+    # tabla y no aquí: en mínimos cuadrados las dos están divididas por la
+    # desviación de la respuesta y en los GLM ninguna lo está. Pedirlas por
+    # separado sería la forma de que una celda seleccionada y su vecina quedaran
+    # en escalas distintas sin que nada lo dijera.
     valor_col, _, _ = _plotted_coefficient(family)
+    mediana_col = _plotted_median(family)
     # La bolsa más ancha de todos los años, para que la figura tenga las mismas
     # filas en los trece y dos años se puedan comparar poniéndolos al lado.
     variables = list(offset.candidate_predictors(
@@ -1860,11 +2273,14 @@ def _beta_heatmap(
     if not variables:
         return
     years = list(config.REGRESSION_YEARS)
-    selected = set(block["TERM"])
+    # Las que ganaron algún año. Se lee de la bandera y ya no de la presencia de
+    # una fila, porque ahora toda candidata tiene fila en todos los años.
+    selected = set(block.loc[block["IN_SELECTED_MODEL"], "TERM"])
 
     shading = np.full((len(variables), len(years)), np.nan)
     text = [["" for _ in years] for _ in variables]
     crossed: list[tuple[int, int]] = []
+    boxed: list[tuple[int, int]] = []
     lookup = block.set_index([config.YEAR_COL, "TERM"])
     for row, name in enumerate(variables):
         for column, year in enumerate(years):
@@ -1875,10 +2291,21 @@ def _beta_heatmap(
                 entry = lookup.loc[(year, name)]
             except KeyError:
                 continue
-            estimate = float(entry[valor_col])
-            stars = entry["STARS"]
+            if not bool(entry["HAS_FITTED_MODEL"]):
+                # Una raya y no un aspa, y sin color de fondo: la celda existe, se
+                # buscó en ella, y no salió nada que se pudiera ajustar.
+                text[row][column] = "—"
+                continue
+            if bool(entry["IN_SELECTED_MODEL"]):
+                estimate = float(entry[valor_col])
+                stars = entry["STARS"]
+                text[row][column] = f"{estimate:.2f}{'' if pd.isna(stars) else stars}"
+                boxed.append((row, column))
+            else:
+                # La mediana sobre los modelos que la contienen, sin asterisco.
+                estimate = float(entry[mediana_col])
+                text[row][column] = f"{estimate:.2f}"
             shading[row, column] = estimate
-            text[row][column] = f"{estimate:.2f}{'' if pd.isna(stars) else stars}"
 
     span = config.predictor_year_span("VERTICAL_SIGNAGE_DENSITY")
     _grid_table(
@@ -1887,6 +2314,7 @@ def _beta_heatmap(
         rows=[config.predictor_label_es(name) for name in variables],
         dim_rows={index for index, name in enumerate(variables) if name not in selected},
         crossed_cells=crossed,
+        boxed_cells=boxed,
         title=(
             f"Coeficientes estandarizados por año · {pair.label_es}\n"
             f"{config.FAMILY_LABELS_ES[family]} · offset: "
@@ -1896,15 +2324,21 @@ def _beta_heatmap(
             f"cada celda: {_coefficient_quantity_es(family)}"
         ),
         note=(
-            "Aspa: la variable no tenía capa ese año, así que no compitió — no es que "
-            f"no se seleccionara. La señalización vertical va de {span[0]} a {span[1]}. "
-            "Celda vacía: compitió y no entró, porque cada modelo lleva sólo 2 o 3 "
-            "variables sobre 30 unidades. Nombre en gris y fila entera vacía: la "
-            "variable compitió en todos los años y no ganó ninguno. "
+            "Celda recuadrada: la variable entró en el modelo de ese año y la cifra es el "
+            "coeficiente que el estudio reporta.   ·   "
+            "Celda sin recuadro: compitió y no entró, y la cifra es la mediana de su "
+            "coeficiente sobre todos los modelos de ese año que la contienen, 55 o 66 según "
+            "cuántas candidatas haya. Es la misma clase de cantidad que la recuadrada; lo que "
+            "el recuadro marca es cuál eligió la búsqueda, no una diferencia de naturaleza.   ·   "
+            "Raya: ningún modelo que contuviera esa variable pudo ajustarse.   ·   "
+            "Aspa: la variable no tenía capa ese año, así que no compitió — no es que no se "
+            f"seleccionara. La señalización vertical va de {span[0]} a {span[1]}.   ·   "
+            "Nombre en gris: la variable compitió en todos los años y no ganó ninguno.   ·   "
             "Color divergente centrado en cero, así que el signo se lee antes que la "
-            "magnitud. Sin asterisco, el intervalo del 95 % contiene el cero. "
-            "* p<0,05  ** p<0,01  *** p<0,001 — inflados por la selección: son el "
-            "ganador de una búsqueda sobre todos los subconjuntos declarados."
+            "magnitud.   ·   Sin asterisco, el intervalo del 95 % contiene el cero. "
+            "* p<0,05  ** p<0,01  *** p<0,001 — inflados por la selección: son el ganador de "
+            "una búsqueda sobre todos los subconjuntos declarados. Las medianas no llevan "
+            "asterisco porque una mediana de coeficientes no tiene contraste."
         ),
         out_path=out_path,
         shading=shading,
@@ -1913,6 +2347,170 @@ def _beta_heatmap(
         column_width=1.05,
     )
 
+
+
+def _variables_table(
+    candidate_models: pd.DataFrame,
+    models: pd.DataFrame,
+    dataset: str,
+    offset: config.OffsetSpec,
+    family: str,
+    pair: config.ActorPair,
+    year: int,
+    candidate_set: str,
+    out_path: Path,
+) -> None:
+    """Por qué entró cada variable, en una celda: una fila por candidata.
+
+    **La figura que contesta la pregunta de la asesora del panel**, que fue por qué
+    sale elegida cada variable y por qué unos años salen con tres y otros con dos.
+
+    Cada fila toma, de los modelos de la celda que contienen esa variable, el de
+    menor AIC, y muestra la beta que la variable tiene **en ése** y el AIC, el BIC y
+    el R² **de ése**, con quién iba acompañada. Ordenadas por AIC: arriba las del
+    modelo ganador, que comparten AIC porque son el mismo modelo, y debajo lo mejor
+    que consiguió cualquier otra.
+
+    **«El AIC de una variable» no existe**: el AIC es del modelo. Ésta es la lectura
+    que sí tiene sentido, y el margen entre la primera fila y la primera no
+    sombreada es lo que dice si la selección fue contundente o un empate — que es
+    exactamente lo que ninguna otra figura enseña.
+
+    **Por qué unos años salen con tres variables y otros con dos** se lee aquí sin
+    que nadie lo explique: una tercera variable cuesta dos puntos de AIC, así que
+    sólo entra si mejora el logaritmo de la verosimilitud en más de uno.
+
+    Nada se reajusta. Todo sale de `candidate_models`, que el paso 3 dejó de botar.
+    """
+    # El modelo de la celda primero y las candidatas después, y no al revés: una
+    # celda donde no se ajustó nada tampoco tiene filas en la tabla por candidata,
+    # así que mirar aquélla primero saldría por la guarda equivocada y la figura de
+    # «sin modelo» no llegaría a dibujarse nunca.
+    row = models[
+        (models[DATASET_COL] == dataset)
+        & (models[config.OFFSET_COL] == offset.name)
+        & (models[config.FAMILY_COL] == family)
+        & (models[PAIR_NAME_COL] == pair.name)
+        & (models[config.YEAR_COL] == year)
+    ]
+    block = candidate_models[
+        (candidate_models[DATASET_COL] == dataset)
+        & (candidate_models[config.OFFSET_COL] == offset.name)
+        & (candidate_models[config.FAMILY_COL] == family)
+        & (candidate_models[PAIR_NAME_COL] == pair.name)
+        & (candidate_models[config.YEAR_COL] == year)
+        & (candidate_models["HAS_FITTED_MODEL"])
+    ].sort_values("AIC")
+    pool = len(offset.candidate_predictors(
+        config.regression_pool_in(year, candidate_set)))
+    if not len(row) or not len(block):
+        # **Una figura que dice que no hay nada, y no un archivo que falta.** Cuatro
+        # celdas de las 1 872 no admiten ni una de sus 220 o 286 especificaciones —
+        # automóvil contra automóvil bajo las dos exposiciones, en la binomial
+        # negativa de 2014 y 2015—, y una carpeta con doce años en vez de trece deja
+        # al lector deducir el motivo. Es lo que `_fit_panel` ya hace con su «sin
+        # modelo», así que la ausencia se dibuja igual aquí.
+        _grid_table(
+            text=[["ningún modelo pudo ajustarse"]],
+            columns=[""],
+            rows=[""],
+            title=(
+                f"Por qué entra cada variable · {pair.label_es} · {year}\n"
+                f"{config.FAMILY_LABELS_ES[family]} · offset: "
+                f"{config.OFFSET_LABELS_ES[offset.name]} · conjunto: "
+                f"{config.DATASET_LABELS_ES[dataset]} · candidatas: "
+                f"{_candidate_label(candidate_set)}\n"
+                "sin modelo en esta celda"
+            ),
+            note=(
+                f"Ninguna de las combinaciones de dos y de tres de las {pool} candidatas "
+                "llegó a un ajuste utilizable: el estimador no convergió, o lo hizo sin "
+                "errores estándar, que es lo mismo que no ajustar porque el coeficiente "
+                "llegaría sin intervalo ni valor p. La bitácora de la corrida lo avisa "
+                "celda por celda.   ·   No es que la pareja no tenga datos ese año: los "
+                "tiene, y las otras dos familias sí la ajustan. Es la binomial negativa la "
+                "que no sostiene este denominador."
+            ),
+            out_path=out_path,
+            # Ancha a propósito. `_grid_table` envuelve el pie al ancho de los ejes,
+            # así que una celda estrecha deja la explicación en una columna de texto
+            # angosta bajo una caja vacía, y la explicación es aquí lo único que la
+            # figura tiene que dar.
+            column_width=9.0,
+        )
+        return
+    fitted = int(row["SPECIFICATIONS_FITTED"].iloc[0])
+
+    # La bifurcación de D51, por la misma función que la decide en todas partes: en
+    # mínimos cuadrados la beta cruda vale del orden de una diezmilésima y esta
+    # tabla la imprimiría como «+0.00» en las doce filas.
+    valor_col, _, _ = _plotted_coefficient(family)
+
+    text, labels = [], []
+    for _, entry in block.iterrows():
+        companions = [
+            config.predictor_label_es(name)
+            for name in str(entry["PREDICTORS"]).split(", ")
+            if name and name != entry["TERM"]
+        ]
+        stars = entry["STARS"]
+        labels.append(config.predictor_label_es(entry["TERM"]))
+        text.append([
+            f"{float(entry[valor_col]):+.2f}{'' if pd.isna(stars) else stars}",
+            f"{float(entry['AIC']):.1f}",
+            f"{float(entry['BIC']):.1f}",
+            f"{float(entry['R_SQUARED_COUNTS']):.2f}",
+            ", ".join(companions) or "—",
+        ])
+
+    # Las filas del modelo ganador, sombreadas: son las que la figura de betas
+    # recuadra, y aquí se reconocen porque comparten AIC.
+    winning = block["IN_SELECTED_MODEL"].to_numpy()
+    shading = np.zeros((len(block), 5))
+    shading[winning, :] = 0.45
+
+    others = block.loc[~winning, "AIC"]
+    margin = (f"{float(others.min()) - float(block['AIC'].iloc[0]):.1f}"
+              if len(others) else "—")
+
+    _grid_table(
+        text=text,
+        columns=["Beta", "AIC", "BIC", "R²", "Acompañada de"],
+        rows=labels,
+        title=(
+            f"Por qué entra cada variable · {pair.label_es} · {year}\n"
+            f"{config.FAMILY_LABELS_ES[family]} · offset: "
+            f"{config.OFFSET_LABELS_ES[offset.name]} · conjunto: "
+            f"{config.DATASET_LABELS_ES[dataset]} · candidatas: "
+            f"{_candidate_label(candidate_set)}\n"
+            f"cada fila es el mejor modelo que contiene esa variable, de los "
+            f"{fitted:,} que se ajustaron"
+        ),
+        note=(
+            f"La búsqueda ajusta todas las combinaciones de dos y de tres de las {pool} "
+            f"candidatas y se queda con la de menor AIC. No hay pasos hacia adelante ni "
+            "interacciones: el conjunto se declara antes de estimar y la búsqueda no sale "
+            "de él.   ·   "
+            "Cada fila toma, de los modelos que contienen esa variable, el de menor AIC, y "
+            "muestra la beta que la variable tiene EN ESE modelo y el AIC, el BIC y el R² "
+            "DE ESE modelo. Un AIC no es de una variable sino del modelo que la lleva.   ·   "
+            "Las filas sombreadas son el modelo ganador: comparten AIC porque son el mismo "
+            "modelo, y son las que la figura de betas recuadra.   ·   "
+            f"El margen con la siguiente es de {margin} puntos de AIC: dos o tres puntos es "
+            "casi un empate, y diez o más es una selección contundente.   ·   "
+            "Una tercera variable cuesta dos puntos de AIC, así que sólo entra si mejora el "
+            "logaritmo de la verosimilitud en más de uno; por eso unos años salen con tres "
+            "variables y otros con dos.   ·   "
+            "AIC y BIC están en la escala que esta familia ajusta y no se comparan con los "
+            "de otra.   ·   R² sobre conteos, que va negativo cuando el modelo predice peor "
+            "que la media.   ·   * p<0,05  ** p<0,01  *** p<0,001 — inflados por la "
+            "selección."
+        ),
+        out_path=out_path,
+        shading=shading,
+        column_width=1.62,
+        wrap=34,
+    )
 
 def _overlap(pairs: str) -> str:
     """How alike the two most alike variables of a model are, if any.
@@ -2034,7 +2632,7 @@ def _models_table(
 def _unit_label(code: str, names: dict[str, str]) -> str:
     """`03-Arborizadora`: the number without its prefix, and the name beside it.
 
-    A column of codes alone made a reader hold thirty of them in their head to
+    A column of codes alone made a reader hold one per unit in their head to
     know which unit a row was about.
     """
     return f"{code.removeprefix('UPL')}-{names.get(code, '')}"
@@ -2087,7 +2685,7 @@ def render_figures(
                     carpeta = folder / "parejas" / config.PAIR_SLUGS[pair.name]
                     carpeta.mkdir(parents=True, exist_ok=True)
                     _beta_heatmap(
-                        tables["coefficients"], dataset, offset, family, pair,
+                        tables["candidate_models"], dataset, offset, family, pair,
                         candidate_set, carpeta / "betas.png",
                     )
                     _models_table(
@@ -2095,6 +2693,20 @@ def render_figures(
                         candidate_set, carpeta / "modelos.png",
                     )
                     written += 2
+
+                    # Y una por año dentro de la pareja. El patrón `por_anio/` es el
+                    # mismo que usan las entradas, y el bucle vive aquí dentro porque
+                    # este recorrido ya es el de las dieciocho especificaciones por
+                    # sus ocho parejas: añadir la figura es añadir los trece años.
+                    por_anio = carpeta / "por_anio"
+                    por_anio.mkdir(parents=True, exist_ok=True)
+                    for year in config.REGRESSION_YEARS:
+                        _variables_table(
+                            tables["candidate_models"], tables["models"], dataset,
+                            offset, family, pair, year, candidate_set,
+                            por_anio / f"variables__{year}.png",
+                        )
+                        written += 1
 
                 # Y la frecuencia de selección de esa especificación, al lado de
                 # `ajustes/` y `parejas/`: las tres son los tres cortes posibles
@@ -2194,9 +2806,9 @@ def _render_dispersion(per_unit: pd.DataFrame, names: dict[str, str], folder: Pa
     que enseña que la caja de la ciclorruta no sólo sube sino que se ensancha.
 
     **Una fila por unidad y no una por fila de la tabla.** La tabla de regresión
-    tiene 3 120 filas y 30 unidades, porque una predictora está repetida 104
-    veces; sin deduplicar, las tres figuras afirmarían 3 120 observaciones donde
-    hay 30. El deduplicado llega hecho en `per_unit`.
+    repite cada predictora 104 veces —ocho parejas por trece años—, así que sin
+    deduplicar las tres figuras afirmarían 3 016 observaciones donde hay
+    veintinueve. El deduplicado llega hecho en `per_unit`.
     """
     folder.mkdir(parents=True, exist_ok=True)
     year = config.PREDICTOR_FIGURE_YEAR
@@ -2205,7 +2817,7 @@ def _render_dispersion(per_unit: pd.DataFrame, names: dict[str, str], folder: Pa
     codes = block[config.AREA_CODE_COL].to_numpy()
 
     about_year = (
-        f"Treinta unidades, {year}. Diez de las doce no cambian en el tiempo, así que sólo "
+        f"{len(block)} unidades, {year}. Diez de las doce no cambian en el tiempo, así que sólo "
         "la ciclorruta y la señalización vertical dependen del año; se usa "
         f"{year} porque es el más reciente en el que las doce están medidas."
     )
@@ -2299,7 +2911,7 @@ def _render_dispersion(per_unit: pd.DataFrame, names: dict[str, str], folder: Pa
         for side in ("top", "right"):
             axis.spines[side].set_visible(False)
     figure.suptitle("Las dos variables explicativas con serie anual\n"
-                    "una caja por año, sobre las mismas treinta unidades", fontsize=13)
+                    f"una caja por año, sobre las mismas {len(codes)} unidades", fontsize=13)
     _figure_note(
         figure,
         _BOX_NOTE
@@ -2764,6 +3376,7 @@ def _write_readme(
         "  <familia>/<conjunto>/<offset>/\n"
         "      ajustes/                      un ajuste por año\n"
         "      parejas/<pareja>/             betas y modelos de esa pareja\n"
+        "      parejas/<pareja>/por_anio/    por qué entró cada variable, un año\n"
         "  entradas/predictoras/             una tabla de predictoras por año\n"
         "  entradas/respuestas/<conjunto>/   las partes afectadas, por año\n"
         "  frecuencia_seleccion.png          qué variable gana más veces, sobre todo\n"

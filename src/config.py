@@ -1621,10 +1621,18 @@ STATIC_PREDICTORS: tuple[StaticPredictor, ...] = (
     # on a reading of a code. The two variants follow the pattern parks,
     # carriageway and bridge deck already follow: measured on every run, out of
     # the model set, and there to be compared against.
+    # The Spanish label says "Arbolado" and not "Arbolado completo", although the
+    # English one still says "all". The adjective was there to separate this from
+    # the two variants below, but no deliverable ever shows them side by side, so in
+    # a Spanish table it qualifies against something the reader cannot see and
+    # invites the question "complete as opposed to what?" — which the panel session
+    # of 2026-09-14 had to prepare an answer for. The variants carry their own
+    # self-describing labels, so dropping the adjective loses nothing. Decided
+    # 2026-09-29: in deliverables the census is simply the arbolado.
     StaticPredictor(
         name="TREE_DENSITY",
         label="Trees, all",
-        label_es="Arbolado completo",
+        label_es="Arbolado",
         source_layer="arbolado_urbano",
         source_file="arbolado_urbano.shp",
         source_citation=("ArboladoUrbanoBogota",),
@@ -2080,10 +2088,56 @@ REGRESSION_PAIRS: tuple[ActorPair, ...] = (
 
 # The share of a pair's cells that may be zero before it is not worth regressing.
 # Declared in the anteproyecto and fixed before anything was estimated. All eight
-# pairs pass in all thirteen years, the worst being eleven zero units of thirty —
-# car against motorcycle in 2012 — so it drops nothing today; it is here so that
+# pairs pass in all thirteen years, the worst being ten zero units of twenty-nine
+# — car against motorcycle in 2012 — so it drops nothing today; it is here so that
 # it would, and the early years are where it would first bite.
 REGRESSION_MAX_ZERO_SHARE = 0.5
+
+
+# -- the unit that does not enter the models --------------------------------
+# **This is not the study universe.** The study covers thirty UPL and that is the
+# denominator of every coverage figure; what is declared here is narrower and
+# applies to one stage: which units the regressions estimate on. Every other
+# route — the matrix, rho, the predictors, the exposure, the population, the maps
+# — keeps all thirty, and a figure of theirs that says thirty is right.
+#
+# It is the same separation `MODEL_EXCLUSIONS` makes for variables, for the same
+# reason: a unit removed from the measurement could not be defended, and one
+# removed from the estimation can, because the measurement that justifies
+# removing it is still in the same tables as the units that stayed.
+@dataclass(frozen=True)
+class UnitExclusion:
+    """One unit that is measured everywhere but does not enter the regressions."""
+
+    unit: str
+    reason: str
+
+
+# D56. The argument is the trajectory of the denominator and not the size of the
+# values: a unit is not excluded for being extreme, which would be excluding an
+# observation for being an observation. Torca's population multiplies by 4.61
+# between 2012 and 2024 — 26,206 to 120,770 — against a median of 1.09 across the
+# thirty and 1.35 for the next unit up. Every specification divides by an exposure
+# or by resident population, so over the thirteen years the cross-sections cover,
+# the denominator there is not doing what it does in the other twenty-nine.
+#
+# Two independent measurements point at the same unit and are the illustration
+# rather than the argument: it is the minimum of eight of the twelve candidates
+# and at the floor in eleven of them, and `docs/implementing-2005.md` finds it
+# unusable from 2005 on a coarser zoning.
+#
+# `tools/exclusion_de_una_unidad.py` is the pre-flight for adding to this tuple:
+# it says whether the exclusion isolates a unit in the contiguity graph, which
+# would abort the run, and whether any pair crosses the zero-cell threshold.
+REGRESSION_EXCLUDED_UNITS: tuple[UnitExclusion, ...] = (
+    UnitExclusion(
+        unit="UPL07",
+        reason=(
+            "its population multiplies by 4.61 over the window against a median of 1.09, "
+            "so the offset's denominator there is not the quantity it is elsewhere (D56)"
+        ),
+    ),
+)
 
 # The quantities an offset can be built from. Each is a column of the regression
 # data table, so a reader can recompute any denominator from the table itself.
@@ -2552,6 +2606,12 @@ REGRESSION_FLAGGED_COLOR = "#B07D3A"
 # El aspa que marca una celda donde no hubo medición. Gris y fina: dice "aquí no
 # se buscó" sin competir con las cifras que sí hay alrededor.
 GRID_CROSS_COLOR = "#9e9e9e"
+
+# El recuadro que marca la celda que el estudio reporta, frente a las de alrededor,
+# que son la misma clase de cantidad bajo otra convención. Casi negro, al contrario
+# que el aspa: ésta dice "aquí no hay nada" y tiene que ceder el paso, y el recuadro
+# dice "ésta es la cifra" y tiene que ganar a la cuadrícula y al color de fondo.
+GRID_BOX_COLOR = "#111111"
 
 # One colour per offset, for the panel that holds all three at once. Taken from
 # the thesis palette so a figure in a message and a figure in the document are

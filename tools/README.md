@@ -34,7 +34,7 @@ recomputed against the run it came from rather than against the newest one.
 | Script | Question | Evidence for |
 |---|---|---|
 | `flujos_vs_stock.py` | Is each annual file of a layer the state of the network that year, or what was built in it? | **D46** |
-| `respuesta.py` | Does the response carry enough signal, pair by pair and year by year, to regress on thirty units? | `regression-inventory.md` §2 |
+| `respuesta.py` | Does the response carry enough signal, pair by pair and year by year, to regress on the units that enter? | `regression-inventory.md` §2 |
 | `vigencia.py` | What date is each static layer actually from, read off its own columns rather than its file name? | `regression-inventory.md` §4 |
 | `redigitalizacion_ciclorruta.py` | How much of the cycleway's year-to-year change is network, and how much is the same segments re-drawn? | `verification-report.md` §23 |
 | `comparar_candidatas.py` | Does the ranking of the urban variables survive when the offset leftovers do not compete against them? | `verification-report.md` §25, D50 |
@@ -60,9 +60,53 @@ not take go on competing, and a fifth of everything the search selects is one of
 those. The comparison is the only way to tell whether the urban ranking is a
 finding or an artefact of that company. It finds the two runs by the candidate
 set each table declares, not by the folder name, and it compares AIC only inside
-a cell — same response, same offset, same family, same thirty units — because
+a cell — same response, same offset, same family, same units — because
 that is the only place where two models from different candidate sets are
 comparable at all.
+
+`seleccion_por_aic.py` answers a question the fit figures raised once they
+started printing an AIC in both families: least squares reports a negative AIC,
+between -1,048 and -291, and a selection driven by minimising it deserves a check
+rather than an assurance. It refits every declared subset of 104 cells in two
+families, some 55,000 models, and asks two things that are not the same question.
+Whether the sign breaks the ordering, which it does not. And whether the winner is
+good on the scale the figure draws, which is where it found something: least
+squares optimises the rate, because that is what it fits, and ranked on counts its
+winner falls below the median model of its own cell in 14 of the 104.
+
+It covers the negative binomial because taking the count family on faith would
+leave the more important of the two unchecked. That family is much better and is
+not perfect — median percentile 97.0 against 88.3 — and the reason it cannot be
+perfect is worth knowing: the AIC maximises a penalised likelihood and R-squared
+measures squared error, so in 80 of its 104 cells some model with a worse AIC
+fits the drawn counts better, almost always by very little.
+
+`exclusion_de_una_unidad.py` is the pre-flight for D56, written before the
+pipeline was touched. Taking a unit out of the regressions is one line of filter
+and three ways to break the run, and this finds them without a run: the
+contiguity weights are built from the unit layer rather than from the regression
+table, so filtering one and not the other either raises on a shape mismatch or,
+worse, computes Moran against the wrong neighbours; `contiguity_weights` aborts
+if any unit is left with no neighbour; and the eligibility threshold is a share,
+so it survives the smaller denominator but moves, and a pair crossing it would
+stop being modelled with nobody having decided that. For Torca all three are
+clear — it borders only Toberin and Britalia, the minimum neighbour count stays
+at one, and the worst pair improves from 0.367 to 0.345 against a maximum of
+0.50. The unit is a constant at the top, so a second proposed exclusion is a
+one-line change.
+
+`efecto_de_la_exclusion.py` is the post-flight to the one above, and it
+answers what moved rather than what would break, so it needs two finished runs
+and runs after rather than before. It found the figure the committee will ask
+for: removing one unit changed the selected model in **30.1 %** of the 1,868
+cells — 40.9 % in least squares, 13.8 % in Poisson — which is what a best-subset
+search over 220 or 286 candidates does on twenty-nine observations, and not a
+property of the unit removed. The second half is the reassuring one and is the
+reason the script exists at all: what the study actually reports, the selection
+frequency within a specification, has a median Spearman of +0.943 across the
+eighteen and moves no variable more than one place of twelve. D53's argument that
+a count is read and not a winner stops being an argument there and becomes a
+measurement.
 
 ## What is not here
 

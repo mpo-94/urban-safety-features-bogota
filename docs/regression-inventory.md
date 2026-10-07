@@ -1166,6 +1166,22 @@ que es la que hay que citar de aquí en adelante. Las corridas son
 `run_20260928_112330`, la que el estudio reporta, y `run_20260928_114216`, la de
 robustez con los restos de offset.
 
+### 13.1 Lo que quedó propuesto sobre los tres boxplots, y sin aplicar
+
+**D55, del 2026-10-01: dejar Torca fuera de las tres figuras de dispersión.** Es
+una candidata y no una decisión: `src/regressions.py` no cambió. Torca es el mínimo
+de ocho de las doce variables y está pegada al suelo en once, y quitándola el bigote
+inferior se desplaza 2,54 desviaciones estándar sumadas sobre siete variables,
+contra 0,11 de la siguiente unidad. **Saldría de las figuras y no del estudio.**
+
+Lo que hay que tener presente si se retoma, y que está medido en D55: no arregla los
+paneles de cámaras y de TransMilenio, porque ahí el cero lo comparten seis y siete
+unidades; en la figura de serie anual el piso sólo sube desde 2017; y cambia el orden
+de la figura estandarizada, que ordena por ancho de caja. **Si se aplica, las figuras
+de las once predictoras de la etapa anterior tienen que aplicarlo también**: dejar a
+Torca fuera de un conjunto y dentro del otro sería peor que cualquiera de las dos
+opciones.
+
 La prueba de que ninguno de los cinco cambios tocó el ajuste está ahí también: la
 corrida con restos reproduce clavadas las cuatro cifras de `run_20260925_090146`.
 
@@ -1175,3 +1191,1305 @@ Se llena igual: una entrada por cambio, con qué, por qué, dónde toca y cómo 
 verifica; nada se implementa hasta que Mateo la cierre; y al cerrarla se ejecuta
 en pasos, cada uno con su verificación, antes de correr nada. Ese esquema funcionó
 y las dos veces que algo falló fue una verificación mal escrita y no el código.
+
+## 14. Lo que la asesora del panel pidió el 2026-10-01, y dónde quedó
+
+**Estado al 2026-10-02: tres figuras hechas en la carpeta temporal, ninguna en el
+*pipeline*, y Mateo ya decidió que las tres entren.** Falta un cambio de diseño
+acordado, redactar el correo, implementar y correr.
+
+### Lo que pidió, y lo que de eso es recuperable
+
+Vio `betas.png` y dijo tres cosas: que quiere **la tabla completamente poblada**, que
+quiere saber **el mecanismo exacto** por el que salen elegidas unas variables y no
+otras —preguntó en concreto por qué unos años salen con tres y otros con dos—, y que
+quiere **una tabla con los valores (beta, R², AIC, BIC) de cada variable** para que la
+razón de la selección sea explícita.
+
+**La tercera, tal como está dicha, mezcla dos niveles.** Beta es propiedad de la
+variable dentro de un modelo; R², AIC y BIC son propiedades **del modelo**. «El AIC de
+la vía arterial» no existe: existen los 66 modelos que la contienen. La lectura que sí
+tiene sentido, y que es la que se implementó, es **el AIC del mejor modelo que la
+contiene**.
+
+### El mecanismo, para poder explicarlo sin volver a leer el código
+
+`search()` en `src/regressions.py` ajusta **todas las combinaciones de dos y de tres**
+de la lista declarada —`config.REGRESSION_SUBSET_SIZES = (2, 3)`— y se queda con la de
+menor AIC. Ni pasos hacia adelante, ni interacciones, ni transformaciones.
+
+- Con doce candidatas: **66 pares + 220 tríos = 286 modelos**. Con once: **220**.
+- Cada variable aparece en **66** de los 286 —o 55 de los 220—.
+- **Por qué dos o tres y no más:** treinta unidades.
+- **Por qué a veces tres y a veces dos:** el AIC penaliza cada parámetro con dos
+  puntos, así que una tercera variable sólo gana si mejora el logaritmo de la
+  verosimilitud en más de uno. En la corrida reportada gana con tres en **1 462 de
+  1 868 celdas (78 %)** y con dos en **406 (22 %)**.
+- **Una corrida ajusta 489 448 modelos y guarda 1 868**: uno por celda, el ganador. El
+  **99,6 % de lo que se calcula se descarta**, y por eso las cifras que ella pide no
+  hay que calcularlas, hay que dejar de botarlas.
+
+### Las tres figuras, hechas y validadas
+
+En una carpeta temporal fuera del repositorio, replicando la ruta de la corrida:
+
+| | Dónde | Qué es |
+| --- | --- | --- |
+| Dispersión sin Torca | `sin_torca\...\predictoras\dispersion\` | las tres de D55 |
+| Tabla por variable | `tabla_variables\...\peatones-motocicleta\por_anio\variables__{2017,2023}.png` | doce filas, el mejor modelo de cada variable |
+| Betas poblada | `tabla_variables\...\peatones-motocicleta\betas__tabla_completa.png` | la cuadrícula con las 152 celdas llenas |
+
+**Validación:** la búsqueda reproducida fuera del *pipeline* da **el mismo ganador y el
+mismo AIC** que el guardado, 222,5 en 2017 y 246,4 en 2023, y el R² del ganador
+coincide con el del *pipeline* hasta la tercera cifra.
+
+**Tres errores propios en el camino, los tres vistos mirando y no por una
+comprobación:** el R² salía −4,67 idéntico en las doce filas por usar `fittedvalues` en
+vez de `predict` —en la binomial negativa discreta `fittedvalues` es el predictor
+lineal, y el propio código lo advierte en un comentario—; la figura salía blanca porque
+el arreglo de sombreado se construyó y **nunca se pasó** a `_grid_table`; y un guardado
+falló por tener el archivo abierto.
+
+### Lo que la tabla por variable destapó, y que no se ve en ninguna figura actual
+
+- **2017: la selección fue casi un empate.** El ganador tiene AIC 222,5 y el mejor
+  modelo de la señalización vertical 222,6. Y el R² de ése es 0,83 contra 0,82 del
+  ganador: **el AIC eligió un modelo que ajusta algo peor**, porque AIC no es R².
+- **2023: Semáforos tiene beta +0,45\*\*, el mayor de la tabla, y no aparece en la
+  figura de betas.** Su modelo pierde por 0,4 puntos. Y la ciclorruta consigue R² 0,66
+  contra el 0,64 del ganador.
+- En la betas poblada, **la fila de Semáforos es roja los trece años y nunca ganó**, y
+  TransMilenio es rojo desde 2012 aunque sólo gane desde 2021: lo que empieza en 2021
+  es su selección, no su efecto.
+
+### La dispersión de los coeficientes, medida el 2026-10-02
+
+Sobre los 66 modelos de cada variable, en la pareja peatones-motocicleta:
+
+- **El beta del ganador no es un valor extremo**: cae en el percentil 33, 17 y 3 en
+  2017, y 76 y 24 en 2023. Ponerlo al lado de medianas no engaña en magnitud.
+- **Pero la dispersión es grande y crece.** En 2017 los rangos van de 0,07 a 0,35; en
+  2023, de 0,13 a 0,85. La vía arterial en 2023 va de **−0,251 a +0,600** según
+  compañía.
+- **En 2023, nueve de las doce cambian de signo** entre sus 66 modelos. Las tres que
+  no son cámaras, TransMilenio y parque urbano — y dos de esas tres son las que
+  ganaron. No es casualidad: una variable cuyo efecto no depende de la compañía aporta
+  información propia, y eso es lo que el AIC premia.
+
+### Lo acordado, lo pendiente y lo abierto
+
+**Acordado el 2026-10-02:** en la betas poblada, **no** encerrar entre paréntesis las no
+seleccionadas. Los betas son de la misma naturaleza, así que el paréntesis marcaba lo
+que no era. En su lugar se **recuadra en negro la celda de las seleccionadas**, que es
+lo que de verdad las distingue: son las que el estudio reporta. Requiere añadir un
+parámetro `boxed_cells` a `_grid_table`, que hoy sólo tiene `crossed_cells`.
+
+**Pendiente de implementar en el *pipeline*, ya decidido que entra:** las tres figuras
+de dispersión sin Torca (D55), la tabla por variable y año, y la betas poblada. Con
+ellas, **la exclusión de Torca alcanza también a las figuras de las once predictoras**,
+por la razón escrita en D55.
+
+**Volumen a decidir:** la tabla por variable es una por año y por celda. Para la
+especificación que el estudio reporta son **104 figuras**; para las dieciocho serían
+**1 872**, más de lo que la corrida entera produce hoy. La recomendación es generarlas
+sólo para la reportada.
+
+**Abierto, y Mateo no lo entendió todavía:** marcar en la celda las variables cuyo
+signo no es estable entre sus 66 modelos. El argumento es que una mediana de +0,11
+calculada sobre valores que van de −0,25 a +0,60 se lee como «ligeramente positivo»,
+que es una afirmación que los 66 modelos no sostienen, mientras que una de −0,27 sobre
+valores todos negativos sí significa algo. Las dos salen como un número en una celda y
+el lector no puede distinguirlas.
+
+**Lo que sigue después:** redactar el correo a la asesora con copia a Olmos —qué cambió
+en los boxplots, cómo funciona la selección, qué figuras van adjuntas, y que el
+resultado de la corrida irá por Teams en un ZIP—, implementar, y correr.
+
+### 14.1 La trampa de mínimos cuadrados, que ya mordió una vez
+
+**Esto va primero porque es lo que rompe la implementación si se pasa por alto, y de
+una forma que no salta a la vista.**
+
+Mínimos cuadrados **ajusta la tasa**, porque no admite offset: la respuesta es el
+conteo dividido por el mismo producto que el GLM pone en su offset. Su coeficiente está
+por tanto en unidades de tasa y vale del orden de una diezmilésima. El GLM ajusta el
+conteo y su coeficiente ya es adimensional.
+
+**D51 resolvió esto para la figura**: `_plotted_coefficient(family)` devuelve
+`COEFFICIENT_FULLY_STANDARDISED` para mínimos cuadrados —el coeficiente dividido además
+por la desviación de la respuesta, vía `_over_deviation`— y `COEFFICIENT_STANDARDISED`
+para los GLM. Antes de D51, **los 1 639 coeficientes de mínimos cuadrados salían
+redondeados a «0,00»** y el signo sobrevivía sólo como el guion de un «-0.00».
+
+Medido el 2026-10-02 sobre la celda `PEDESTRIAN__MOTORCYCLE` de 2023, con sus 792
+coeficientes por familia:
+
+| | Coeficiente crudo | El que la figura dibuja | Crudos que darían «0,00» |
+| --- | ---: | ---: | ---: |
+| Mínimos cuadrados | mediana 6,0 × 10⁻⁵ | mediana 0,262 | **792 de 792** |
+| GLM binomial negativa | mediana 0,111 | mediana 0,111 | 13 de 792 |
+
+Hay un factor de unos cuatro mil entre las dos escalas, que es uno sobre la desviación
+de la tasa.
+
+**El prototipo del 2026-10-02 tiene este defecto latente.** Toma `res.params[i + 1]`,
+el coeficiente crudo, que en el GLM coincide con lo dibujado y en mínimos cuadrados no.
+
+**Y el daño sería peor que el de D51, no igual.** Entonces se vaciaba la tabla entera y
+el defecto era evidente. Ahora **las celdas recuadradas vienen del CSV, que ya guarda la
+cantidad correcta**, y sólo las no recuadradas saldrían en crudo: una tabla donde las
+seleccionadas se ven bien y todas las demás son «0,00», que se lee como «ninguna de las
+que no entró vale nada». Una conclusión falsa, y de las que no se notan.
+
+**La regla, para no volver a tropezar:** toda cantidad que se vaya a dibujar en una
+figura de coeficientes pasa por la misma bifurcación por familia que usa el dibujo. Si
+el código calcula un resumen —una mediana, un rango, un percentil— y no pregunta por la
+familia antes, está mal aunque el GLM salga bien.
+
+### 14.2 Los cambios aprobados el 2026-10-02, listos para implementar
+
+Aprobados los cinco. **Se implementan después de redactar el correo a la asesora.**
+
+> **Los puntos 1 y 2 quedaron reemplazados el 2026-10-02 por D56**, que saca a Torca de
+> las regresiones en vez de sacarla de unas figuras. Se dejan escritos porque el punto 1
+> sigue describiendo la redacción de los pies, que hay que cambiar igual, y porque el
+> punto 2 ya no aplica: las figuras de las once predictoras **conservan las treinta**.
+> Lo que hay que implementar está en **14.3**.
+
+**1. Las tres figuras de dispersión, sin Torca.** D55. Un filtro al principio de
+`_render_dispersion` más la redacción: los tres sitios que dicen «Treinta unidades» o
+«las mismas treinta unidades», los tres títulos, y una frase en cada pie. El generador
+provisional de `tmp/dispersion_sin_torca.py` es la referencia del texto.
+
+**2. La exclusión de Torca alcanza también a las figuras de las once predictoras.**
+Histogramas, matriz de correlación y tabla maestra de
+`config.COMPLETE_FIGURE_PREDICTOR_NAMES`, por `predictors.render_figure_set`. La razón
+está en D55: dejarla fuera de un conjunto y dentro del otro es peor que cualquiera de
+las dos opciones. **No se tocan** los modelos, los coeficientes, la frecuencia de
+selección ni las figuras de observado contra predicho: Torca no sale del estudio.
+
+**3. La tabla de betas, poblada, con recuadro.** Las celdas que hoy están vacías llevan
+**la mediana del coeficiente sobre los modelos de ese año que contienen esa variable**,
+55 o 66 según el año. **Sin paréntesis**: los betas son de la misma naturaleza y el
+paréntesis marcaba lo que no era. Lo que distingue a las seleccionadas es **un recuadro
+negro en la celda**, que además deja ver el color de fondo. Reemplaza a `betas.png` o
+convive con ella, a decidir al implementar.
+
+**4. La tabla por variable y año.** Doce filas, una por candidata, ordenadas por AIC;
+cada fila es **el mejor modelo que contiene esa variable**, con la beta que la variable
+tiene en ése, y el AIC, el BIC y el R² de ése, más las acompañantes. Las filas del
+modelo ganador van sombreadas y comparten AIC porque son el mismo modelo. Ruta:
+`parejas/<pareja>/por_anio/variables__<año>.png`, que reutiliza el patrón `por_anio/`
+que ya existe en `entradas/predictoras/`.
+
+**5. `boxed_cells` en `_grid_table`.** Un parámetro hermano de `crossed_cells` que
+dibuja un rectángulo negro en las celdas indicadas. Con él, las doce líneas de envoltura
+de `tmp/betas_pobladas.py` desaparecen.
+
+#### Lo que hay que respetar al implementarlo
+
+- **La bifurcación por familia de 14.1**, en la mediana de la tabla de betas y en la
+  columna de beta de la tabla por variable.
+- **AIC y BIC no se comparan entre familias**: el de mínimos cuadrados está en la tasa
+  y el de los GLM en el conteo. El pie de `modelos.png` ya lo dice y la tabla nueva
+  tiene que repetirlo.
+- **`predict` y no `fittedvalues`** para cualquier R², porque en la binomial negativa
+  discreta `fittedvalues` es el predictor lineal. Para mínimos cuadrados, además, hay
+  que multiplicar por la exposición para volver a conteos, como ya hace el código.
+- **El volumen.** La tabla por variable es una por celda. Para la especificación que el
+  estudio reporta son 104 figuras; para las dieciocho, 1 872, más de lo que la corrida
+  entera produce hoy. **Mateo decidió que el cambio aplica a todas las
+  especificaciones**, así que hay que resolver el volumen al implementar: o se generan
+  las 1 872, o se declara un subconjunto y se dice cuál en el pie.
+- **La validación que ya pasó y que hay que repetir:** la búsqueda reproducida fuera
+  del *pipeline* dio el mismo ganador y el mismo AIC que el guardado —222,5 en 2017 y
+  246,4 en 2023— y el R² del ganador coincidió hasta la tercera cifra. Cualquier
+  reimplementación tiene que seguir dando eso.
+
+#### Lo que queda abierto y no se implementa
+
+Marcar las celdas cuyo signo no es estable entre los modelos que contienen esa
+variable. **Mateo decidió no incluirlo por ahora.** El argumento, por si se retoma: en
+2023, nueve de las doce variables cambian de signo según compañía, y una mediana de
++0,11 sobre valores que van de −0,251 a +0,600 se lee como «ligeramente positivo»,
+que es una afirmación que los modelos no sostienen. Las tres que no cambian de signo
+son cámaras, TransMilenio y parque urbano, y dos de esas tres son las que ganaron.
+
+### 14.3 Los dos cambios del 2026-10-02, decididos y sin implementar
+
+Decididos por Mateo. **D56 y D57** en `docs/design-decisions.md`.
+
+#### A. Torca sale de las regresiones
+
+**`UPL07`, Torca, no entra en la etapa de regresión.** Los modelos se ajustan sobre
+**veintinueve unidades**. El resto del *pipeline* la conserva entera: la matriz, ρ, las
+predictoras, la exposición, la población y los mapas siguen con las treinta.
+
+**La justificación que va al documento es la trayectoria de la población, no la
+dispersión.** La población de Torca se multiplica por **4,61** entre 2012 y 2024 —26 206
+a 120 770— contra una mediana de 1,09 y un 1,35 de la siguiente unidad. Como toda
+especificación divide por una exposición o por la población, el denominador ahí no hace
+lo que hace en las demás, y en trece años Torca no es dos veces la misma unidad. Excluir
+una unidad por tener valores bajos es objetable; excluirla porque su denominador quintuplica
+no lo es. El detalle está en D56.
+
+**Dónde va el filtro: `build_dataset`, en la línea 174**, donde nacen las unidades de la
+rejilla:
+
+```python
+units = sorted(predictors[config.AREA_CODE_COL].unique())
+```
+
+Ahí, y en ningún otro sitio. Es el único punto por el que pasan todas las unidades de la
+etapa, así que filtrando ahí la rejilla, los ceros medidos, el conteo de
+`eligible_pairs`, la búsqueda, los coeficientes, la frecuencia de selección y las
+figuras ven las mismas veintinueve. **Un filtro más abajo dejaría el umbral de
+elegibilidad juzgado sobre treinta y todo lo demás sobre veintinueve**, que es
+exactamente la incoherencia que D56 existe para evitar.
+
+**Hace falta una constante declarada**, al lado del universo del estudio y con su razón
+escrita, no un literal `"UPL07"` dentro de la función. El día que se proponga una
+segunda unidad el cambio tiene que ser añadir un elemento a una lista.
+
+**Y hay que registrarlo en la bitácora de la corrida.** `log.record` de ese paso ya
+cuenta la rejilla como `n unidades x 8 parejas x 13 años`; tiene que decir además qué
+unidad se excluyó y por qué, para que una corrida vieja y una nueva se distingan sin
+leer el código.
+
+**Qué más hay que cambiar, y esto es lo que se olvida:**
+
+- **Cada pie de figura de regresión que diga «treinta»**, que son los mismos sitios que
+  14.2 listaba para las tres de dispersión, más los de observado contra predicho, más la
+  tabla maestra de modelos. El número es ahora veintinueve **en las figuras de
+  regresión y sólo en ellas**.
+- **Las figuras de las once predictoras conservan las treinta**, al contrario de lo que
+  pedía el punto 2 de 14.2. Describen los datos y no la estimación, y ahora los dos
+  conjuntos son de verdad distintos.
+- **Los grados de libertad.** Veintinueve filas y hasta tres predictoras más la
+  constante. Sigue estando bien, pero el margen es menor y conviene que la bitácora lo
+  diga.
+
+**Todo lo citado de `run_20260928_112330` queda superado el día que esto corra.** Cada
+coeficiente, cada AIC, cada R², cada Moran y cada selección cambian al quitar una
+observación. **Los ganadores también pueden cambiar**: en 2017 el margen con el
+subcampeón era de 0,2 puntos de AIC.
+
+#### B. R² y AIC en los cuatro paneles de ajuste
+
+Hoy los paneles de observado contra predicho muestran **R² en mínimos cuadrados** y
+**AIC en los GLM**, y Moran en los dos. Pasan a mostrar **R² y AIC en todos**.
+
+El sitio es la bifurcación de `_render_fit`:
+
+```python
+if family == config.OLS_FAMILY:
+    goodness = _count_r_squared(observed, predicted)
+    label = f"R² {goodness:.3f}".replace("-", "−")
+else:
+    label, label_colour = f"AIC {float(row['AIC'].iloc[0]):.0f}", "#555555"
+```
+
+**El comentario que hay ahí mismo es la advertencia que hay que atender, no borrar:**
+mínimos cuadrados ajusta la tasa, así que su AIC está en la tasa, y el del GLM está en
+el conteo. Imprimir los dos sin decirlo hace que dos cifras parezcan comparables cuando
+no lo son, y eso es peor que mostrar una sola. **El pie tiene que repetir lo que ya dice
+`modelos.png`: el AIC compara dentro de una familia y un offset, nunca entre ellos.**
+
+**El R² sí compara entre los cuatro paneles**, porque está sobre conteos en los dos
+casos: mínimos cuadrados multiplica su predicción por la exposición antes de comparar.
+Esa es la razón de que sea lo correcto para poner en todas partes, y conviene que el pie
+lo diga en una frase.
+
+**Y `predict`, no `fittedvalues`**, para el R² de la binomial negativa: `fittedvalues`
+devuelve el predictor lineal y da un R² de −4,67 idéntico en toda la columna. Es el error
+de 14.1 y ya mordió una vez.
+
+**Moran sale, decidido el 2026-10-02.** No se dibuja. Sigue en
+`analysis__regression_models.csv`, en el informe de verificación y en la tabla maestra de
+modelos, así que la etapa del panel lo tiene donde lo va a leer; lo que desaparece es una
+cifra impresa sobre una nube.
+
+#### Lo que vieron las dos figuras preliminares
+
+En `tmp/ajustes_r2_aic/`, las dos de 2024 que Mateo señaló, con
+`tmp/ajuste_r2_y_aic.py`. El cambio funciona y deja a la vista una cosa que el pie tiene
+que responder.
+
+**El AIC de mínimos cuadrados es negativo**, entre −1 048 y −291 en toda la corrida,
+porque ajusta la tasa y la tasa es pequeña. Quien sepa que un AIC más bajo es mejor leerá
+−398 como el mejor panel de los ocho.
+
+**Y en 2024 ese panel es el peor.** Peatones-Automóvil tiene el AIC más bajo de sus ocho,
+−398, y el R² más bajo de sus ocho, −0,794, dibujado en rojo. Las dos cifras apuntan en
+sentidos opuestos sobre el mismo panel, y la nube le da la razón al R².
+
+**No es un defecto del cambio: son dos cantidades que responden preguntas distintas.**
+Medido sobre las 39 figuras de cada familia, el rho de Spearman entre R² y AIC a lo largo
+de los ocho paneles tiene mediana **+0,02 en la binomial negativa y −0,14 en mínimos
+cuadrados**, y las dos ordenan **al revés en cerca de la mitad de las figuras**, 20 de 39
+y 19 de 39.
+
+**Y el fondo es que el AIC entre los ocho paneles no es una comparación.** Cada panel es
+una pareja distinta, o sea otra respuesta sobre otros datos, y el AIC sólo compara
+modelos ajustados a las mismas observaciones. El de un panel informa frente a los otros
+candidatos **de esa pareja**, que la figura no muestra. Ya pasaba en los GLM, que siempre
+han impreso AIC; el cambio dobla la superficie y añade los valores negativos.
+
+**Por eso la figura lleva una tercera línea de título**, que es parte del cambio:
+
+> R² sobre conteos, que es la nube dibujada · AIC en la escala que cada familia ajusta, y
+> sólo comparable contra otros modelos de la misma pareja
+
+**El R² sí compara entre las cuatro familias**, porque está sobre conteos en todas:
+mínimos cuadrados multiplica su predicción por la exposición antes de comparar.
+
+### 14.4 El AIC negativo de mínimos cuadrados, verificado
+
+La pregunta la hizo Mateo al ver las figuras preliminares de D57: si el AIC de mínimos
+cuadrados sale negativo, ¿cómo sabemos que la búsqueda no está eligiendo las peores
+variables por una cuestión de aritmética? `tools/seleccion_por_aic.py` la
+responde reajustando fuera del *pipeline* todos los subconjuntos declarados de 104
+celdas, 27 632 modelos.
+
+Dentro de esa pregunta hay dos, y tienen respuestas distintas.
+
+#### La aritmética está bien, y no por casualidad
+
+**El signo no puede romper un `argmin`.** El código compara `described.aic < best.aic`,
+sin valor absoluto, así que ordena igual con cifras negativas que con positivas. Y el AIC
+negativo tiene una causa entendida: mínimos cuadrados ajusta la tasa, la tasa es del
+orden de una diezmilésima, y la verosimilitud de una densidad continua sobre valores
+pequeños es grande y positiva, de modo que `2k − 2·logL` sale muy por debajo de cero.
+
+**Comprobado además sobre los datos.** A igual número de predictoras el penalizador es
+una constante, así que minimizar el AIC tiene que ser maximizar el ajuste; si el signo
+estropeara algo, estropearía justo ahí. No lo hace:
+
+| predictoras | modelos | AIC más bajo | mejor ajuste a la tasa | ¿el mismo modelo? |
+|---|---:|---:|---:|:--:|
+| 2 | 55 | −373,9 (R² 0,2401) | −373,9 (R² 0,2401) | sí |
+| 3 | 165 | −376,0 (R² 0,3374) | −376,0 (R² 0,3374) | sí |
+
+Y a lo largo de toda la celda, el AIC más bajo tiene R² sobre la tasa de 0,3374 contra
+0,0320 del más alto. **El mecanismo elige el mejor, no el peor.**
+
+#### Pero optimiza la tasa, y el estudio lee conteos
+
+Ésta es la parte que sí encontró algo. El percentil del ganador entre todos los modelos
+de su celda, sobre las 104:
+
+| ordenado por | mediana | media | peor | en el decil superior | por debajo de su propia mediana |
+|---|---:|---:|---:|---:|---:|
+| R² sobre la **tasa**, que es lo que ajusta | 99,5 | 98,1 | 88,8 | 103 de 104 | 0 |
+| R² sobre el **conteo**, que es lo que dibuja | 88,3 | 77,8 | **5,9** | 48 de 104 | **14** |
+
+**Sobre lo que ajusta es casi óptimo**: ninguna celda por debajo de su mediana y 103 de
+104 en el decil superior. Sobre conteos no, y el desacuerdo no es uniforme: la mediana de
+R² sobre conteos que se cede por seguir el AIC es 0,078, pero el peor caso es 2,255.
+
+Las cinco celdas donde más se separan:
+
+| pareja | año | percentil tasa | percentil conteo | R² del ganador | R² del mejor |
+|---|---:|---:|---:|---:|---:|
+| Automóvil-Automóvil | 2015 | 99,7 | 5,9 | **−0,335** | 0,688 |
+| Automóvil-Automóvil | 2014 | 99,5 | 6,4 | **−1,705** | 0,551 |
+| Bicicleta-Motocicleta | 2024 | 99,5 | 10,5 | 0,277 | 0,633 |
+| Motocicleta-Motocicleta | 2023 | 99,7 | 14,7 | 0,716 | 0,848 |
+| Bicicleta-Motocicleta | 2012 | 99,5 | 15,9 | 0,309 | 0,557 |
+
+**Dos de ellas publican un R² negativo teniendo disponible uno de 0,69 y de 0,55.** Son
+las dos que un lector de la figura señalaría, y la respuesta correcta no es que el
+modelo sea malo sino que está ajustando otra cosa.
+
+#### Por qué pasa, y qué no es
+
+**No es un defecto corregible dentro de mínimos cuadrados ordinarios.** Es la
+consecuencia aritmética de que el método no admite offset: la única manera de meter la
+exposición es dividir la respuesta por ella, y entonces la suma de cuadrados pesa a todas
+las unidades por igual en el espacio de la tasa. En el espacio del conteo esas mismas
+unidades pesan por la exposición al cuadrado, y la exposición abarca un factor de 171
+entre unidades. Las dos sumas de cuadrados no se minimizan con el mismo modelo, y no hay
+razón para que lo hagan.
+
+**Tampoco invalida nada de lo publicado.** Lo que el estudio reporta es el GLM; mínimos
+cuadrados entra porque la asesora del panel lo pidió junto al GLM, y el conteo de
+selección de D53 se cuenta dentro de una especificación y nunca entre ellas, así que
+ninguna cifra mezcla las dos familias.
+
+#### La binomial negativa, que no se podía dar por supuesta
+
+La primera versión de esta comprobación medía sólo mínimos cuadrados, porque la pregunta
+venía de su AIC negativo. Eso dejaba sin verificar la familia que el estudio reporta, así
+que `tools/seleccion_por_aic.py` mide las dos. **El GLM sale mucho mejor, y no sale
+perfecto.**
+
+| | mediana del percentil | peor | bajo su propia mediana | es el máximo exacto |
+|---|---:|---:|---:|---:|
+| GLM binomial negativa | 97,0 | 14,1 | 3 de 104 | 24 de 104 |
+| Mínimos cuadrados | 88,3 | 5,9 | 14 de 104 | 8 de 104 |
+
+En la binomial negativa el R² que se cede por seguir el AIC tiene mediana **0,024** y
+peor caso 0,351 —Motocicleta-Motocicleta 2014, 0,089 contra 0,422 disponible—, contra
+0,078 y 2,255 en mínimos cuadrados.
+
+**Y hay una razón de fondo por la que ni siquiera el GLM puede dar el máximo.** A tres
+predictoras, el modelo de AIC más bajo de esa celda (265,4) **no es** el de mejor R²
+(266,7). No es un defecto: el AIC maximiza una verosimilitud con penalización, el R² mide
+error cuadrático, y la binomial negativa estima además su propio parámetro de dispersión.
+Son dos criterios distintos, así que coinciden a menudo y no por construcción. En
+mínimos cuadrados sí coinciden a tamaño fijo, porque ahí la verosimilitud es función
+decreciente de la suma de cuadrados y nada más.
+
+**En 80 de 104 celdas del GLM existe un modelo con peor AIC y mejor R² sobre conteos.**
+Casi siempre por muy poco, y en tres casos por bastante.
+
+#### Decidido: se declara
+
+**Mateo decidió el 2026-10-02 declararlo y no cambiar el mecanismo.** Ni seleccionar por
+R², que rompería la simetría entre familias, ni pesar por la exposición, que dejaría de
+ser mínimos cuadrados ordinarios.
+
+**Lo que la declaración tiene que decir, y lo que no puede decir.** No puede decir que la
+figura muestre el mejor ajuste posible, porque está medido que no: en 80 de 104 celdas
+del GLM y en 96 de 104 de mínimos cuadrados existe otro modelo con mejor R² sobre
+conteos. Lo que sí es cierto, y es lo que va:
+
+> La figura muestra el ajuste del modelo que la búsqueda seleccionó por AIC, que no es
+> el de mejor R² de su celda. El AIC elige por verosimilitud penalizada y el R² mide
+> error cuadrático: son criterios distintos y no tienen por qué coincidir. En la binomial
+> negativa el ajuste cedido tiene mediana de 0,024 de R²; en mínimos cuadrados, que ajusta
+> la tasa mientras la figura dibuja conteos, la mediana es 0,078 y hay catorce celdas de
+> ciento cuatro en que el modelo seleccionado queda por debajo de la mediana de su celda.
+
+Va al pie de las figuras de ajuste y al capítulo de metodología. **Las cifras se vuelven
+a medir sobre veintinueve unidades** antes de escribirlas en un entregable.
+
+---
+
+## 15. Lo que entra en la próxima corrida limpia
+
+La lista completa, al 2026-10-02. Nada de esto está implementado. Lo que no aparezca
+aquí no cambia.
+
+### 15.1 Lo que cambia los números
+
+**1. Torca fuera de las regresiones.** D56. Filtro en `build_dataset`, donde nacen las
+unidades de la rejilla, por constante declarada y no por literal, y registrado en
+`log.record` de ese paso. Los modelos pasan a veintinueve unidades. **Todo coeficiente,
+AIC, BIC, R², Moran y selección cambian**, y el ganador de una celda puede cambiar.
+
+### 15.2 Lo que cambia las figuras
+
+**2. Los paneles de ajuste llevan R² y AIC, y Moran sale.** D57. La bifurcación por
+familia de `_fit_panel` desaparece: las dos cifras en las dos familias, R² arriba y AIC
+debajo, el R² negativo en rojo como hasta ahora. Moran deja de dibujarse y **sigue
+exportado** en `analysis__regression_models.csv`, en el informe de verificación y en la
+tabla maestra. La tercera línea de título es parte del cambio:
+
+> R² sobre conteos, que es la nube dibujada · AIC en la escala que cada familia ajusta, y
+> sólo comparable contra otros modelos de la misma pareja
+
+Referencia: `tmp/ajuste_r2_y_aic.py`, aprobado el 2026-10-02.
+
+**3. La tabla de betas poblada reemplaza a `betas.png`.** Punto 3 de 14.2, y la
+decisión de reemplazo es del 2026-10-02. **Mismo archivo y misma ruta**,
+`parejas/<pareja>/betas.png`: nada que apunte a esa figura se rompe, y no quedan dos
+imágenes del mismo coeficiente que puedan verse distintas. Las celdas vacías llevan la
+mediana del coeficiente sobre los modelos de ese año que contienen la variable, **sin
+paréntesis**; lo que marca a las seleccionadas es un recuadro negro.
+**Aplica a todas las especificaciones, mínimos cuadrados incluido**, y ahí es donde
+muerde la trampa de 14.1.
+
+**4. La tabla por variable y año, en las dieciocho especificaciones.** Punto 4 de 14.2.
+Doce filas ordenadas por AIC, cada una el mejor modelo que contiene esa variable, con su
+beta, su AIC, su BIC, su R² y sus acompañantes. Ruta
+`parejas/<pareja>/por_anio/variables__<año>.png`.
+
+**El volumen quedó decidido el 2026-10-02: las dieciocho.** Tres familias por dos
+conjuntos por tres offsets, y dentro de cada una las ocho parejas y los trece años:
+
+| | |
+|---|---:|
+| especificaciones | 3 × 2 × 3 = **18** |
+| figuras por especificación | 8 × 13 = 104 |
+| **figuras nuevas** | **1 872** |
+
+Para dimensionarlo: la corrida entera produce hoy **678** figuras. Con esto pasa a unas
+2 550, y `figures/` pasa de 128 MB a unos 420 MB a 157 KB por tabla. No toca el
+repositorio, porque `results/` no se versiona.
+
+**Y aquí está lo que decide si esto es barato o es imposible.** La tabla necesita, por
+celda, **el mejor modelo que contiene cada candidata**: doce modelos en vez de uno. Eso
+**no se recalcula**. La búsqueda ya los ajusta todos —una corrida ajusta 489 448 modelos
+y guarda 1 868— así que lo que hay que cambiar es qué se guarda, no qué se calcula:
+`search` devuelve, además del ganador, el mejor por cada candidata. Son unas 22 500 filas
+retenidas en lugar de 1 872, y cero ajustes nuevos.
+
+**Implementarlo recorriendo las candidatas y reajustando por fuera multiplicaría la
+corrida por doce**, y es el error que esta nota existe para evitar.
+
+**5. `boxed_cells` en `_grid_table`.** Punto 5 de 14.2. Hermano de `crossed_cells`.
+
+**6. La redacción de los pies que dicen «treinta».** En las figuras de regresión pasan a
+veintinueve: las tres de dispersión, las de observado contra predicho y la tabla maestra
+de modelos. **Las figuras de las once predictoras conservan las treinta**, porque
+describen los datos y no la estimación.
+
+### 15.3 Lo que no entra, y por qué
+
+- **Marcar las celdas de signo inestable.** Mateo decidió dejarlo fuera. El argumento,
+  por si se retoma, está al final de 14.2.
+- **Excluir las tres predictoras que `MODEL_PREDICTOR_NAMES` deja fuera.** Olmos aplazó
+  la exclusión en la sesión de panel; la constante existe y las regresiones no la leen.
+  Sección 5.
+- **IPF.** D54, declarada y sin implementar.
+- **Cualquier cambio en la selección por AIC.** Decidido el 2026-10-02: se declara y no
+  se cambia el mecanismo. Lo que sí entra es la frase, en el pie de las figuras de ajuste
+  y en la metodología; la redacción está en 14.4.
+- **Por qué los paraderos SITP pierden un tercio de sus selecciones al quitar Torca.**
+  **Pendiente declarado**, a resolver cuando los ocho pasos estén hechos y no antes: el
+  paso 3 deja disponibles los modelos no ganadores, que es lo que hace falta para
+  contestarlo. 16.1 tiene las cuatro cosas que habría que mirar. Mientras tanto, esa
+  frecuencia no se cita en un entregable.
+
+### 15.4 Qué verificar después de correr
+
+- **Que la bitácora diga veintinueve** y nombre la unidad excluida.
+- **Que la tabla maestra siga teniendo `MORANS_I`** pese a que ninguna figura lo dibuje.
+- **Que ninguna mediana de la tabla de betas de mínimos cuadrados se redondee a 0,00**,
+  que es cómo se manifiesta la trampa de 14.1.
+- **Que `tools/seleccion_por_aic.py` vuelva a dar la misma conclusión** sobre
+  veintinueve unidades: la aritmética no debería moverse y los percentiles sí un poco.
+- **Que los ganadores se comparen contra los de `run_20260928_112330`** y se anote
+  cuántas celdas cambiaron de modelo, porque es la cifra que el comité va a pedir cuando
+  se pregunte qué hizo quitar una unidad.
+
+### 15.5 Lo que la comprobación previa encontró, y dónde va el filtro
+
+`tools/exclusion_de_una_unidad.py`, escrito antes de tocar nada. Dos cosas habrían
+abortado la corrida y una la habría falseado en silencio.
+
+#### El filtro va en un punto y afecta a dos objetos
+
+`run_pipeline.py` carga `units` en la línea 303 y lo pasa a `fit_all` y a `verify`;
+`predictor_table` va por otro lado a `build_dataset`. **Los dos tienen que perder a
+Torca**, y el sitio donde eso es una sola decisión es justo después de cargarlos, antes
+de construir los conjuntos.
+
+**Qué pasa si sólo se filtra uno**, que es el error fácil:
+
+- **Sólo las predictoras.** `fit_all` construye los pesos de contigüidad desde `units`,
+  que seguiría en 30, y `morans_i` hace `centred @ weights @ centred` con 29 residuos
+  contra una matriz de 30 × 30. Revienta. Ruidosamente, que es lo bueno.
+- **Sólo `units`.** La rejilla se sigue construyendo sobre treinta y la exclusión no
+  ocurre, salvo en Moran, que pasaría a calcularse contra los vecinos equivocados.
+
+**`loading.load_territorial_units` no se toca.** Su guarda de treinta unidades es sobre
+la capa y tiene que seguir fallando si la capa cambia; lo que se excluye se excluye
+después, dentro de la etapa, que es también lo que mantiene a las otras rutas en treinta.
+
+#### La comprobación de `verify` se ajusta sola, y su rótulo no
+
+La línea 1179 compara `models["N_OBSERVATIONS"] != len(units)`, contra la longitud y no
+contra un literal, **así que pasa sola si `units` se filtró y falla si no**. Es la red que
+atrapa una implementación a medias. Lo que sí hay que cambiar es el rótulo, que dice
+«every model was fitted on exactly the thirty units» y tiene que leer la cifra.
+
+#### Torca no aísla a nadie
+
+`contiguity_weights` lanza `ValueError` si alguna unidad se queda sin vecinos, lo que
+abortaría la corrida. No pasa:
+
+| | |
+|---|---|
+| Torca limita con | Toberín y Britalia, nada más |
+| Toberín | 3 vecinos → 2 |
+| Britalia | 4 → 3 |
+| mínimo tras la exclusión | **1 vecino**, ninguna aislada |
+
+#### Ninguna pareja se cae del umbral
+
+`eligible_pairs` juzga con una **proporción** y no con un conteo, así que no se rompe al
+cambiar el denominador. Pero la proporción se mueve, y una pareja que cruzara el máximo
+dejaría de modelarse sin que nadie lo hubiera decidido. Peor año de cada pareja contra el
+máximo declarado de 0,50, en el conjunto observado:
+
+| pareja | con 30 | con 29 |
+|---|---:|---:|
+| Automóvil-Motocicleta | 0,367 | **0,345** |
+| Bicicleta-Motocicleta | 0,100 | 0,103 |
+| Motocicleta-Motocicleta | 0,067 | 0,034 |
+| Automóvil-Automóvil | 0,067 | 0,069 |
+| el resto | ≤ 0,033 | ≤ 0,034 |
+
+Las ocho siguen pasando con holgura, y la peor mejora en vez de empeorar: Torca era una
+de las celdas en cero de automóvil contra motocicleta.
+
+#### El texto que queda desfasado
+
+Trece sitios en `src/regressions.py` dicen «thirty» o «treinta», y tres en `tools/`. Los
+que importan porque los lee alguien: el *docstring* de `eligible_pairs`, la cabecera de su
+tabla de bitácora, el rótulo de `verify`, el pie de la figura de dispersión —«sobre las
+mismas treinta unidades»— y el de `comparar_candidatas.py`, que compara dos corridas
+«sobre las mismas treinta unidades» y a partir de ahora compara veintinueve.
+
+**Los que hablan del diseño y no de esta corrida se quedan**: que doce candidatas no caben
+sobre treinta observaciones, o que la capa trae treinta unidades, siguen siendo ciertos.
+
+## 16. El plan de implementación, paso a paso
+
+Escrito el 2026-10-02, con todo decidido y nada implementado. **Siete pasos, y cada uno
+se verifica antes de empezar el siguiente.** El orden no es negociable en un punto: el
+paso 3 produce el dato que consumen el 4 y el 5, así que va antes.
+
+**La corrida que importa es `--candidates urban-only`**, que es la que sale sin pedir
+nada y la que va a Olmos y a la asesora. Los cambios no distinguen conjunto de
+candidatas, así que `with-leftovers` los recibe igual; lo que no puede pasar es que la
+verificación se haga sobre ella.
+
+```
+.venv/Scripts/python.exe -m src.run_pipeline regressions
+```
+
+### Paso 0 — Dos rótulos que D52 dejó al revés — HECHO el 2026-10-02
+
+Ninguno es consecuencia de estos cambios. Se arreglan aquí porque el paso 1 los va a
+tener delante y porque un rótulo falso en código publicado no debe sobrevivir a una
+sesión que lo vio. **Los dos dicen lo mismo y lo dicen invertido**: que la corrida que el
+estudio reporta es la de robustez.
+
+**1. El `--help` de `--candidates`, en `run_pipeline.py`.** Decía que `urban-only` «is a
+robustness run and it estimates no elasticity». Desde D52 `urban-only` **es la corrida
+que el estudio reporta** y la de robustez es `with-leftovers`. El comentario de
+`config.DEFAULT_CANDIDATE_SET` siempre lo tuvo bien y `_write_readme` también —separa
+desde D52 cuál reporta el estudio de qué preguntas no tienen respuesta—, así que lo único
+que no se siguió fue este texto.
+
+Reescrito separando las dos frases, como hace `_write_readme`: cuál reporta el estudio, y
+a qué precio. **En ASCII**, porque era el único texto de `--help` del archivo con un
+carácter fuera de ASCII y la consola de Windows lo imprimía como un signo de
+interrogación.
+
+**2. El bloque de D50 que enumera las dos corridas**, en `design-decisions.md`. Dice que
+«`with-leftovers` is the run the study reports … still the default» y que `urban-only` es
+una comprobación de robustez. Era cierto cuando se escribió y D52 lo invirtió sin
+marcarlo. **No se reescribe**: la asimetría que describe sigue siendo el punto, y lo que
+cada corrida no puede contestar no cambió cuando cambiaron los papeles. Lleva encima una
+nota que manda a D52 y dice que los dos nombres se leen al revés, igual que la que D55
+lleva desde que la reemplazó D56.
+
+**Verificación, hecha.**
+
+- `python -m src.run_pipeline --help` nombra `urban-only` como la del estudio y
+  `with-leftovers` como la de las elasticidades.
+- Ninguna cadena de `help=` del archivo tiene caracteres fuera de ASCII. Se comprueba
+  sobre las cadenas, no con un `grep` de la palabra: el texto nuevo lleva un comentario
+  que explica el defecto y contiene la frase que se corrigió, así que buscar la frase
+  encuentra la explicación y no el defecto.
+- Quien abra D50 por el índice ve la nota antes que la lista.
+
+### Paso 1 — Torca sale de las regresiones (D56) — HECHO el 2026-10-02
+
+**Una constante declarada**, junto al universo del estudio y con su razón escrita —la
+población se multiplica por 4,61 entre 2012 y 2024 contra una mediana de 1,09—, no un
+literal dentro de una función. Hermana en espíritu de `POPULATION_UNITS_OUTSIDE_STUDY`,
+que ya existe y significa otra cosa: aquélla son unidades fuera del estudio, ésta es una
+unidad dentro del estudio y fuera de la estimación. El nombre tiene que impedir
+confundirlas.
+
+**El filtro se aplica una vez y alcanza dos objetos.** En `run_pipeline.py`, después de
+`loading.load_territorial_units` y de `read_inputs`, y antes de `build_dataset`: a
+`units` y a `predictor_table`. Las razones están medidas en 15.5 y se repiten aquí porque
+son la trampa del paso: filtrar sólo las predictoras revienta en `morans_i` por forma;
+filtrar sólo `units` no excluye nada salvo en Moran, que pasa a calcularse contra los
+vecinos equivocados **sin error**.
+
+**`loading.load_territorial_units` no se toca.** Su guarda de treinta es sobre la capa y
+tiene que seguir fallando si la capa cambia.
+
+**La bitácora tiene que decirlo.** `log.record` del ensamblado ya cuenta la rejilla; añade
+qué unidad se excluyó y por qué, para que una corrida vieja y una nueva se distingan sin
+leer el código.
+
+**Verificación.**
+
+- La bitácora dice `29 units x 8 pairs x 13 years` y nombra a Torca.
+- `verify` pasa entero. Su comprobación de `N_OBSERVATIONS != len(units)` se ajusta sola
+  si el filtro llegó a `units`, y falla si no: **es la red que atrapa media
+  implementación, y verla pasar es parte del paso.**
+- `analysis__regression_models.csv`: `N_OBSERVATIONS` vale 29 en todas las filas, y
+  `MORANS_I` es finito en todas.
+- `UPL07` no aparece en ninguna tabla de la carpeta `data/` de la corrida salvo donde
+  deba: la matriz, ρ, la exposición, la población y las predictoras la conservan.
+- Las ocho parejas siguen modelándose. `tools/exclusion_de_una_unidad.py` lo predijo
+  —la peor pasa de 0,367 a 0,345 contra un máximo de 0,50— y la bitácora lo confirma.
+
+#### Hecho, y qué hizo falta además de lo planeado
+
+**Corrida `run_20261002_094610`**, `urban-only`, dieciocho minutos. Las seis
+comprobaciones pasan y `verify` pasa entero: sus veinte comprobaciones en OK, incluida
+«every model was fitted on exactly the 29 units that enter», que es la que delata media
+implementación.
+
+Cómo quedó: `UnitExclusion` y `REGRESSION_EXCLUDED_UNITS` en `config`, siguiendo el
+patrón de `PredictorExclusion`; `regressions.exclude_units`, que filtra los dos objetos y
+falla si una unidad declarada no está en ambos; y una línea en `run_pipeline.py` entre
+cargar y construir.
+
+**Tres rótulos se corrigieron aquí y no en el paso 7**, porque son de lo que este paso
+vuelve falso y dejarlos habría hecho que la verificación del propio paso imprimiera
+«the thirty units» mostrando 29: el *docstring* de `eligible_pairs`, la cabecera de su
+tabla de bitácora —que ahora lee la cifra en vez de escribirla— y el rótulo de `verify`.
+
+**Un defecto propio, atrapado antes de correr.** La primera versión pasaba `changes=[]` a
+`log.record` con treinta entrando y veintinueve saliendo. `log.record` exige que los
+cambios expliquen la diferencia de filas, así que **habría detenido la corrida**. Ahora
+pasa un delta firmado por unidad excluida, que es lo que hace cerrar el balance.
+
+Lo predicho por `tools/exclusion_de_una_unidad.py` se cumplió: ninguna unidad quedó
+aislada y `CAR__MOTORCYCLE`, la peor del umbral, salió en 0,34 contra el 0,345 previsto.
+
+### 16.1 Lo que quitar una unidad movió, que es más de lo que esperábamos
+
+`tools/efecto_de_la_exclusion.py`, sobre las dos corridas del mismo conjunto de
+candidatas. Es la cifra que §15.4 pedía y que el comité va a pedir.
+
+#### El ganador de una celda no es un objeto estable
+
+**Cambió en 563 de 1 868 celdas, el 30,1 %.**
+
+| familia | celdas | cambian | |
+|---|---:|---:|---:|
+| Mínimos cuadrados | 624 | 255 | **40,9 %** |
+| GLM binomial negativa | 620 | 222 | 35,8 % |
+| GLM Poisson | 624 | 86 | 13,8 % |
+
+**No es un defecto de la implementación ni una consecuencia de Torca en particular.** Es
+lo que le pasa a una búsqueda por AIC sobre 220 o 286 candidatos con veintinueve o
+treinta observaciones: el paisaje del AIC es plano cerca del mínimo, y quitar una
+observación basta para que gane otro. Poisson se mueve mucho menos porque no estima un
+parámetro de dispersión y sus diferencias de AIC son mayores, así que su mínimo está
+mejor separado.
+
+**Esto pertenece a la metodología y no a una nota al pie.** Dice que el modelo ganador de
+una celda es una elección entre casi-empates, que es exactamente lo que D59 ya declara
+sobre el R² y lo que D53 dio por supuesto sin medirlo.
+
+#### Lo que el estudio reporta sí es estable, y ahora está medido
+
+D53 dice que lo que se lee es **cuántas veces se selecciona una variable dentro de una
+especificación**, no qué ganó una celda. Esa distinción deja de ser un argumento y pasa a
+ser una medición:
+
+- El orden de las doce candidatas por frecuencia tiene **rho de Spearman de mediana
+  +0,943** dentro de cada especificación, entre +0,818 y +0,988, y **las dieciocho están
+  por encima de 0,8**.
+- La variable más seleccionada es la misma en 14 de las 18.
+- Sobre el total, **rho +0,986 y ningún desplazamiento mayor de un puesto de doce**. Las
+  cuatro primeras no se mueven: andén, cruces peatonales, vía arterial, cámaras.
+
+**Un recuento sobre 104 celdas es estable aunque sus sumandos no lo sean**, y ésa es la
+razón de D53 escrita con cifras en vez de con un argumento.
+
+#### La que sí se movió — PENDIENTE, se resuelve al terminar los ocho pasos
+
+**Paraderos SITP pierde un 34 % de sus selecciones**, de 307 a 202, y es la única con un
+cambio de esa magnitud. Baja un puesto. Parque urbano pierde un 16 %, arbolado gana un
+14 % y señalización vertical un 17 %; el resto se mueve menos de un diez por ciento.
+
+**Que una variable dependa en un tercio de una sola unidad de veintinueve no lo explica
+la inestabilidad general.** Si el ganador cambia en el 30 % de las celdas por un paisaje
+de AIC plano, los cambios deberían repartirse entre las doce candidatas, y aquí hay una
+que se lleva una parte desproporcionada. Eso apunta a algo de la variable y no de la
+búsqueda.
+
+**Mateo lo dejó marcado el 2026-10-02 como pendiente a resolver cuando los ocho pasos
+estén hechos**, no antes: resolverlo ahora obligaría a rehacerlo cuando los pasos 3 a 7
+cambien lo que la corrida guarda, y el paso 3 en particular deja disponibles los modelos
+no ganadores, que es justo lo que hace falta para contestarlo bien.
+
+**Qué habría que mirar, para no empezar de cero:**
+
+- **Si Torca era atípica en la variable misma.** La densidad de paraderos de una unidad
+  de borde en expansión no tiene por qué parecerse a la del resto, y si lo era, su
+  ausencia cambia la desviación con que se estandariza y por tanto el coeficiente de
+  todas las unidades.
+- **Con quién competía.** Si los paraderos ganaban casi siempre en compañía de una
+  variable concreta, y esa pareja dependía de Torca, la pérdida está en la pareja y no en
+  la variable.
+- **En qué especificaciones cayó.** 34 % sobre el total puede ser una caída repartida o
+  un desplome en dos o tres de las dieciocho, y las dos cosas significan lo contrario.
+- **Si cae también la frecuencia en la corrida `with-leftovers`**, donde compite contra
+  las cantidades del offset. Si allí no cae, la causa está en la competencia y no en la
+  unidad.
+
+**Hasta que esto se resuelva, no citar la frecuencia de selección de los paraderos SITP
+en un entregable.** Las otras once no tienen este problema.
+
+### Paso 2 — Los paneles de ajuste: R² y AIC, sin Moran (D57, D59) — HECHO el 2026-10-02
+
+**`_panel_grid` gana un parámetro `note`**, hermano del que `_grid_table` ya tiene. La
+declaración de D59 es un párrafo y no cabe en un título que ya lleva tres líneas; sin
+zona de pie no hay dónde ponerla, y ése es el motivo del parámetro.
+
+**La bifurcación por familia de `_fit_panel` desaparece.** R² arriba, AIC debajo, en las
+tres familias. El R² negativo sigue en rojo, porque no es un valor pequeño sino un modelo
+que predice peor que la media. Moran deja de dibujarse.
+
+**El título lleva su tercera línea** y el pie lleva la declaración de D59, las dos
+aprobadas y transcritas en 14.3 y en D59.
+
+**Verificación.**
+
+- Ninguna figura de `ajustes/` contiene la palabra Moran. Se comprueba sobre la figura
+  generada, no sobre el código.
+- `MORANS_I` sigue en `analysis__regression_models.csv` y en la tabla maestra de modelos,
+  que es donde la etapa del panel lo va a leer.
+- Las dos figuras de 2024 de la corrida nueva se parecen a las preliminares de
+  `tmp/ajustes_r2_aic/` en todo menos en las cifras, que cambian porque ahora son 29
+  unidades.
+- El R² de la binomial negativa se calcula con `predict` y no con `fittedvalues`. Si
+  saliera −4,67 idéntico en toda una columna, es eso.
+
+#### Hecho, y qué salió distinto de lo planeado
+
+**Corrida `run_20261002_101820`**, veintidós minutos. Las 234 figuras de ajuste —dieciocho
+especificaciones por trece años— con R² arriba, AIC debajo y sin Moran. `MORANS_I` sigue
+en las 1 868 filas de la tabla de modelos y las 144 tablas maestras se siguen generando.
+
+**`_panel_grid` no necesitó el parámetro `note` que el plan pedía.** Ya existía
+`_figure_note(figure, texto)`, que es lo mismo y lo usan las figuras de dispersión. Se
+reutiliza, con `tight_layout(rect=(0, 0.10, 1, 1))` para dejarle sitio, que es el mismo
+rectángulo que usan ellas.
+
+**Las cifras de D59 se midieron sobre veintinueve antes de escribirlas**, en vez de poner
+las de treinta y volver en el paso 8. Para eso `tools/seleccion_por_aic.py` toma ahora la
+corrida por la línea de órdenes:
+
+| | 30 unidades | 29 unidades |
+|---|---:|---:|
+| binomial negativa, mediana de R² cedida | 0,024 | **0,026** |
+| mínimos cuadrados, mediana de R² cedida | 0,078 | **0,073** |
+| celdas por debajo de su propia mediana | 14 de 104 | **12 de 104** |
+
+**Cinco rótulos de figura más**, que el paso 1 volvió falsos y que son de figuras y no de
+prosa, así que se arreglaron aquí y no en el paso 7: el *docstring* y el pie de
+`_render_dispersion`, el `suptitle` de la figura de series anuales, y los dos de
+`_beta_heatmap`. Los tres primeros **leen ahora la cifra de los datos en vez de
+escribirla**, que es lo que los había dejado atrás. Los de `_beta_heatmap` quedaron sin
+cifra, porque la tabla de coeficientes no lleva el código de unidad y no hay de dónde
+leerla; su pie se reescribe entero en el paso 5.
+
+**Un fallo del verificador, no del *pipeline*.** La primera comprobación dio «78 de 234» y
+el *pipeline* estaba bien: `FAMILY_PATHS` da `minimos-cuadrados` para una familia y
+`glm/binomial-negativa` para otra, o sea uno y dos segmentos de ruta, así que un patrón
+de profundidad fija sólo encontraba mínimos cuadrados. Con `rglob` salen las 234. **Es la
+tercera vez que un número que empeora resulta ser el instrumento**, y la regla de
+`contar-nunca-desde-el-shell` vale igual para un glob.
+
+### Paso 3 — Dejar de botar los modelos que ya se ajustan — HECHO el 2026-10-02
+
+**Es el paso que hace posibles el 4 y el 5, y el único con riesgo de coste.** La tabla
+poblada y la tabla por variable necesitan, por celda, **el mejor modelo que contiene cada
+candidata**. Esos modelos ya se ajustan: una corrida ajusta 489 448 y guarda 1 868.
+
+**`search` devuelve, además del ganador y del nulo, el mejor por cada candidata.** Un
+diccionario de nombre a `Fitted`, llenado dentro del bucle que ya existe, sin un solo
+ajuste nuevo.
+
+> **Corregido el 2026-10-02, al llegar al paso 5: esto no basta.** Tal como estaba escrito,
+> este paso afirmaba que las dos figuras necesitan «el mejor modelo que contiene cada
+> candidata», y eso es cierto para la tabla por variable del paso 6 y **falso para la tabla
+> de betas**, que según 14.2 y 15.2 lleva **la mediana sobre los 55 o 66 modelos** que
+> contienen la variable. Son dos cantidades distintas: el mejor modelo dice dónde la
+> variable rinde más, la mediana dice cuánto vale cuando entra. `search` acumula además
+> cada coeficiente en una lista por candidata —sigue sin ajustar nada nuevo— y `fit_cell`
+> guarda la mediana, el mínimo, el máximo y cuántos modelos la contienen. De ahí sale una tabla más, al lado de `models`, `coefficients` y
+`predictions`, con una fila por celda y candidata: unas 22 500 en vez de 1 872.
+
+**Implementarlo recorriendo las candidatas y reajustando por fuera multiplica la corrida
+por doce.** Es el error que este paso existe para no cometer.
+
+**La bifurcación por familia de 14.1 vive aquí**, no en las figuras: la tabla guarda el
+coeficiente crudo y el que se dibuja, como ya hace `coefficients`, para que ninguna
+figura tenga que acordarse.
+
+**Verificación.**
+
+- La tabla nueva tiene exactamente una fila por celda y candidata disponible ese año:
+  doce en los años con señalización vertical y once en los cuatro que no la alcanzan.
+- **Ninguna fila tiene AIC menor que el del ganador de su celda.** Si alguna lo tuviera,
+  el ganador no sería el ganador y el error está en el paso 3 o en la búsqueda.
+- Para las dos o tres candidatas que sí entraron, el AIC de la fila **es** el del ganador,
+  porque el mejor modelo que las contiene es ése.
+- **El tiempo de corrida no se dispara.** Se mide contra el de la corrida anterior; un
+  factor cercano a doce significa que se está reajustando.
+
+#### Hecho, y lo que la tabla trajo consigo
+
+**Corrida `run_20261002_111025`.** `search` devuelve `per_candidate` llenado dentro del
+bucle que ya existía, `fit_cell` arma las filas y `export` escribe
+`analysis__regression_candidate_models.csv`, 8,8 MB y **21 842 filas**.
+
+**El coste es el que se prometió.** La corrida pasa de 22,2 a **22,4 minutos**, un uno
+por ciento, y la bitácora lo dice en sus propios términos: «21 834 per-candidate best
+model(s) retained out of the same 489 503 fits, with no refitting». Una prueba de humo
+antes de correr había medido 220 modelos en 0,60 s, idéntico a los 0,6 s de antes del
+cambio.
+
+**`verify` gana cuatro comprobaciones** y las cuatro pasan: el recuento exacto, que
+ninguna candidata le gane al ganador, que toda seleccionada tenga modelo, y que el mejor
+modelo de una seleccionada **sea** el ganador —5 202 de 5 202, contra los 5 202 términos
+de la tabla de modelos—.
+
+#### Las ocho filas sin modelo, que no se saltan
+
+La primera corrida dio 21 834 de 21 842. Las ocho faltantes son todas de `CAR__CAR` con
+el offset de ambas exposiciones y binomial negativa, en celdas donde el estimador no
+ajusta 204 de 220 especificaciones, o 273 de 286; para cruces peatonales, paraderos SITP
+y parque urbano, todos los modelos que las contienen están entre los fallos.
+
+**La ausencia es legítima y saltársela no.** En una tabla que lee una figura, «no se pudo
+ajustar ningún modelo» y «no fue seleccionada» habrían quedado indistinguibles, que es el
+defecto que D10 arregló para la matriz. La fila se emite con la identidad,
+`HAS_FITTED_MODEL = False` y **ninguna cifra**, para que nada pueda leerse como una
+medición, y el paso 6 podrá marcar esas celdas como el mapa de betas marca las aspas.
+
+La cuarta comprobación salió de aquí: **toda candidata seleccionada tiene que tener
+modelo**. Una seleccionada sin él no sería un vacío sino una contradicción, porque el
+ganador mismo la contiene.
+
+#### La trampa de 14.1, ahora con su cifra exacta
+
+De los coeficientes de mínimos cuadrados de esta tabla, **7 296 de 7 296 se redondearían
+a «0,00»** en una tabla de dos decimales. El que la figura va a dibujar, el totalmente
+estandarizado, lo hace en 104.
+
+**Por eso la bifurcación vive en la tabla y no en las figuras.** `COEFFICIENT_FULLY_STANDARDISED`
+llega llena en las 7 296 filas de mínimos cuadrados y **nula en las 14 538 de los GLM**,
+que es D51: el coeficiente del GLM ya es adimensional y dividirlo rompería su
+significado, así que llega nulo y no cero, que se leería como una medición.
+
+#### Comprobado además, fuera de `verify`
+
+- Las ocho filas sin modelo no llevan cifra en ninguna de sus siete columnas numéricas.
+- El beta de una seleccionada **coincide exactamente** con el de la tabla de coeficientes
+  que el estudio ya reportaba: 5 202 de 5 202, diferencia máxima cero.
+- El R² sobre conteos de una fila seleccionada **es el que el panel de ajuste imprime**:
+  200 modelos comprobados, diferencia máxima 3·10⁻¹⁶.
+
+### Paso 4 — `boxed_cells` en `_grid_table` — HECHO el 2026-10-02
+
+Un parámetro hermano de `crossed_cells` que dibuja un rectángulo negro en las celdas
+indicadas, por encima del relleno y sin taparlo. Con él desaparecen las doce líneas de
+envoltura de `tmp/betas_pobladas.py`.
+
+**Verificación.** Una figura cualquiera con celdas marcadas: el recuadro se ve, el color
+de fondo se sigue viendo debajo, y el aspa y el recuadro no se estorban si coinciden.
+
+#### Hecho
+
+Un parámetro hermano de `crossed_cells`, y con él desaparecen las doce líneas de
+envoltura de `tmp/betas_pobladas.py`.
+
+**Es un contorno y no un relleno**, y eso es el diseño: el color dice el signo y la
+magnitud, el recuadro dice cuál eligió la búsqueda, y un lector tiene que poder leer los
+dos a la vez.
+
+**Va por dentro del borde de la celda y no sobre él.** Sobre el borde caería encima de la
+retícula blanca que separa las celdas, y dos celdas recuadradas vecinas compartirían un
+trazo: se leerían como un bloque de dos en lugar de como dos marcas. Por dentro, cada una
+conserva su cuadro, que es lo que la prueba comprobó en horizontal y en vertical.
+
+**`GRID_BOX_COLOR` es casi negro, al contrario que `GRID_CROSS_COLOR`**, que es gris. No
+es una elección de gusto: el aspa dice «aquí no hay nada» y tiene que ceder el paso a las
+cifras de alrededor, y el recuadro dice «ésta es la cifra» y tiene que ganarle a la
+cuadrícula y al color de fondo.
+
+**`import matplotlib.patches` explícito.** `import matplotlib` a secas no trae el
+submódulo, y `matplotlib.patches.Rectangle` habría fallado sólo el día que una tabla
+recuadrara una celda — es decir, en el paso 5 y no aquí.
+
+#### Qué se probó, y a qué escala
+
+En `tmp/paso4/`, con `tmp/verifica_paso4.py` y `tmp/paso4_escala.py`. El recuadro se puso
+a propósito encima de cada cosa que podía estorbarlo: sombra oscura y sombra clara, una
+celda con aspa, dos vecinas en horizontal y dos en vertical, y una fila atenuada. Ninguna
+combinación rompe el dibujo ni tapa la cifra.
+
+**Y luego a la escala de verdad**, doce candidatas por trece años con dos o tres
+recuadros por columna, que es la forma que tendrá la figura del paso 5. Una tabla de
+cuatro columnas no prueba nada sobre una de trece: la celda es mucho más pequeña y el
+grosor que se lee bien en una se lee como un borrón en la otra. A escala real el
+recuadro se distingue contra el azul más oscuro y contra el rojo profundo con texto
+blanco, y las vecinas conservan su cuadro.
+
+**La llamada sin el parámetro se probó aparte**, porque es como la hacen todas las
+figuras de hoy. Y la corrida `run_20261002_113737` lo confirmó del modo más fuerte que
+hay: **las 678 figuras salieron idénticas byte a byte** a las de la corrida del paso 3,
+con cero comprobaciones en fallo. Añadir el parámetro no movió un píxel de lo que ya
+existía.
+
+### Paso 5 — `betas.png` pasa a ser la tabla poblada (D58 y punto 3 de 14.2) — HECHO el 2026-10-02
+
+**Reemplaza, no convive.** Decidido por Mateo el 2026-10-02. Mismo archivo y misma ruta,
+`parejas/<pareja>/betas.png`, así que nada que apunte a esa figura se rompe y no hay dos
+imágenes del mismo coeficiente que puedan verse distintas.
+
+Lo que cambia dentro de `_beta_heatmap`:
+
+- Las celdas hoy vacías llevan **la mediana del coeficiente sobre los modelos de ese año
+  que contienen esa variable**, 55 o 66 según el año. **Sin paréntesis**: es la misma
+  clase de cantidad y el paréntesis marcaba lo que no era.
+- Lo que distingue a las seleccionadas es **el recuadro negro** del paso 4.
+- El aspa se queda tal cual: la variable no tenía capa ese año.
+- El pie cambia entero, porque el que hay explica una celda vacía que ya no existe.
+- **La fuente de datos deja de ser sólo `coefficients`** y pasa a ser también la tabla
+  del paso 3.
+
+**Verificación.**
+
+- **Ninguna celda de mínimos cuadrados se redondea a «0,00».** Es la trampa de 14.1 y
+  ésta es la figura donde muerde: las recuadradas vienen del CSV y saldrían bien, así que
+  sólo las demás serían cero, y eso se lee como «lo que no entró no vale nada».
+- El número de celdas recuadradas de una figura coincide con el número de términos que
+  `coefficients` tiene para esa pareja y especificación.
+- No queda ninguna celda vacía salvo donde el modelo de ese año no pudo ajustarse.
+- La figura de la binomial negativa con offset de exposición del modo se parece a
+  `tmp/tabla_variables/.../betas__tabla_completa.png`, salvo en las cifras.
+
+#### Hecho
+
+**Corrida `run_20261002_120408`**, cero comprobaciones en fallo. **Sólo cambiaron las 144
+`betas.png`** —dieciocho especificaciones por ocho parejas— y las otras 534 figuras
+salieron idénticas byte a byte.
+
+**Los 5 202 recuadros cuadran con los 5 202 términos seleccionados**, figura por figura:
+144 comparadas, cero diferencias, entre 28 y 39 recuadros por figura.
+
+#### Lo que la celda dice ahora, que son cuatro cosas y antes eran tres
+
+- **cifra y recuadro**, entró, y es el coeficiente que el estudio reporta;
+- **cifra sin recuadro**, compitió y no entró, y es la mediana sobre los modelos que la
+  contienen;
+- **raya**, ningún modelo que la contuviera pudo ajustarse;
+- **aspa**, no tenía capa ese año.
+
+La tercera no se dibuja con un aspa aunque también sea una ausencia: «no había capa» y
+«no se pudo ajustar» son cosas distintas y juntarlas mentiría sobre la segunda.
+
+**Lo que esto resuelve y que la figura anterior no podía:** una fila entera en gris decía
+que la variable compitió siempre y no ganó nunca, y se leía como «no vale nada». Ahora
+lleva sus trece medianas. En la binomial negativa de peatones contra motocicleta, la fila
+de semáforos sostiene entre +0,10 y +0,23 en los trece años **sin ganar ni uno**, y eso
+es un resultado que antes era una fila en blanco.
+
+#### `_plotted_median`, hermana de `_plotted_coefficient`
+
+La bifurcación de D51 la decide una función y no cada figura. Existe aparte y no como un
+cuarto valor de aquélla porque aquélla devuelve tres columnas que salen juntas —el punto
+y los dos extremos de su intervalo— y **una mediana de coeficientes no tiene intervalo**:
+no hay contraste detrás, y por eso tampoco lleva asterisco.
+
+**Medido sobre la corrida:** de las 7 296 medianas de mínimos cuadrados, **las 7 296 se
+redondearían a «0,00»** en su escala cruda, y 105 en la que la figura dibuja. En los GLM
+la columna dividida llega **nula en las 14 538**, que es D51. Si una figura hubiera
+elegido la columna por su cuenta, mínimos cuadrados habría pintado bien las celdas
+recuadradas y todas las demás en cero, que se lee como «lo que no entró no vale nada».
+
+#### Tres columnas que no dibuja nadie todavía
+
+`COEFFICIENT_MIN_STANDARDISED`, `COEFFICIENT_MAX_STANDARDISED` y
+`SIGN_CHANGES_ACROSS_MODELS` entran en la tabla aunque ninguna figura las use: marcar los
+signos inestables se propuso y Mateo lo dejó fuera. Los valores ya estaban en la mano y
+tirarlos es lo que este paso existe para dejar de hacer, y son exactamente lo que hace
+falta para el pendiente de los paraderos SITP de 16.1.
+
+**Lo que dicen ya, de paso: 14 361 de 21 834 candidatas cambian de signo** según con
+quién estén en el modelo. Es el 66 %, y da la medida de qué significa una mediana ahí.
+
+### Paso 6 — La tabla por variable y año, en las dieciocho (D58) — HECHO el 2026-10-02
+
+`render_figures` ya recorre familia × conjunto × offset × pareja, que son las dieciocho
+especificaciones por sus ocho parejas. Añadir la figura es añadir el bucle de años
+dentro: 18 × 8 × 13 = **1 872**.
+
+Doce filas, una por candidata, ordenadas por AIC; cada fila es el mejor modelo que la
+contiene, con su beta, su AIC, su BIC, su R² y sus acompañantes. Las filas del modelo
+ganador van sombreadas y comparten AIC porque son el mismo modelo. Ruta
+`parejas/<pareja>/por_anio/variables__<año>.png`, que reutiliza el patrón `por_anio/` de
+`entradas/predictoras/`.
+
+**El pie repite que AIC y BIC no se comparan entre familias**, igual que hace
+`modelos.png`.
+
+**Verificación.**
+
+- `find ... -name 'variables__*.png' | wc -l` da **1 872**.
+- Ninguna fila se sale de su celda. Ya pasó una vez, en 2023, con la fila de semáforos.
+- Las figuras de 2017 y 2023 de la especificación de ejemplo se parecen a las de
+  `tmp/tabla_variables/`, salvo en las cifras.
+- `figures/` pesa del orden de 420 MB y la corrida produce unas 2 550 figuras.
+
+#### Hecho
+
+**Corrida `run_20261002_131557`**, cero comprobaciones en fallo. **1 872 de 1 872**, y de
+la corrida anterior no cambió ni una figura: las cuatro de diferencia son las cuatro
+nuevas y ninguna otra se movió.
+
+`_variables_table` lee `candidate_models` y no reajusta nada. La llamada va dentro del
+bucle de parejas que ya recorría las dieciocho especificaciones, así que añadir la figura
+fue añadir los trece años.
+
+#### El coste, que es el precio de las dieciocho
+
+| | antes | después |
+|---|---:|---:|
+| corrida | 22,4 min | **39,9 min** |
+| figuras | 678 | **2 550** |
+| `figures/` | 128 MB | **434 MB** |
+
+Medido antes de lanzarla: 0,56 s por figura, que sobre 1 872 son dieciocho minutos. No
+hay forma de bajarlo sin reducir el alcance.
+
+#### Las cuatro celdas sin modelo, que ahora tienen figura
+
+La primera corrida dio **1 868 de 1 872**. Las cuatro son celdas donde **ninguna** de las
+220 o 286 especificaciones pudo ajustarse: automóvil contra automóvil bajo las dos
+exposiciones, binomial negativa, 2014 y 2015, en los dos conjuntos. La bitácora ya avisa
+de cada una.
+
+**El criterio de verificación estaba mal, no el *pipeline*.** 1 872 es 18 × 8 × 13, pero
+la tabla de modelos tiene 1 868 filas justamente por esas cuatro. Es la cuarta vez en esta
+sesión que un número que parece empeorar resulta ser el instrumento.
+
+**Aun así se dibujan.** Una carpeta con doce años en vez de trece deja al lector deducir
+el motivo, y `_fit_panel` ya pone «sin modelo» en su panel para el mismo caso. La figura
+dice que no hay nada y explica por qué —el estimador no convergió, o lo hizo sin errores
+estándar, que es lo mismo que no ajustar porque el coeficiente llegaría sin intervalo ni
+valor p— y aclara que la pareja sí tiene datos ese año y que las otras dos familias sí la
+ajustan. Con eso el recuento es exactamente 1 872 y la comprobación deja de necesitar una
+excepción.
+
+**Un error de orden que hubo que corregir:** la primera versión del marcador no llegaba a
+dibujarse nunca. La función miraba primero la tabla por candidata, y una celda sin ningún
+modelo tampoco tiene filas ahí, así que salía por la guarda equivocada. Ahora mira la
+tabla de modelos primero, y el comentario lo dice para que nadie las reordene.
+
+#### Lo que la figura enseña y ninguna otra enseñaba
+
+En peatones contra motocicleta de 2023, binomial negativa con exposición del modo: el
+ganador son dos variables —cámaras y TransMilenio— y **el margen con la siguiente fila es
+de 0,3 puntos de AIC**. La selección de ese año es casi un empate, y de las figuras
+anteriores no había forma de saberlo.
+
+El pie gana además la frase que 15.2 exigía y que `modelos.png` ya decía: **AIC y BIC
+están en la escala que esa familia ajusta y no se comparan con los de otra.**
+
+### Paso 7 — El texto que dice «treinta» — HECHO el 2026-10-02
+
+Los cinco sitios que un lector ve, listados en 15.5: el *docstring* de `eligible_pairs`,
+la cabecera de su tabla de bitácora, el rótulo de `verify`, el pie de la figura de
+dispersión y el de `tools/comparar_candidatas.py`.
+
+**Los que hablan del diseño se quedan.** Que doce candidatas no caben sobre treinta
+observaciones, o que la capa trae treinta unidades, siguen siendo ciertos. **El universo
+del estudio sigue siendo treinta**; lo que cambia es sobre cuántas se estima.
+
+**Verificación.** `grep -rn "thirty\|treinta" src/ tools/` y revisar uno por uno que cada
+superviviente se refiera al diseño o a la capa, nunca a la estimación.
+
+#### Hecho
+
+**Corrida `run_20261002_141517`**, cero comprobaciones en fallo y **las 2 550 figuras
+idénticas byte a byte** a las del paso 6, que es lo que tenía que pasar si este paso tocó
+sólo prosa.
+
+#### El que importaba no era un rótulo
+
+**`contiguity_weights` afirmaba tres cosas sobre las treinta** —«thirty polygons», «none
+of the thirty is isolated» y, dentro del mensaje de error, «the thirty are known to be
+contiguous»— y la matriz se construye **después** del filtro, así que las tres hablaban de
+otra cosa. Ahora dice lo que D56 le hizo al grafo: Torca limitaba sólo con Toberín y
+Britalia, esas dos perdieron un vecino y el mínimo del resto bajó a uno. Y manda a
+`tools/exclusion_de_una_unidad.py`, que es la comprobación previa de si una exclusión
+propuesta aísla a alguien.
+
+Los otros siete de `src/regressions.py`: el *docstring* del módulo —que además decía
+«quince candidatas», cifra muerta desde D52—, los dos de `_describe` sobre cuándo la
+binomial negativa lleva alpha a la frontera, el de colinealidad y dos cosméticos.
+
+#### `tools/respuesta.py` tenía un defecto, no un rótulo
+
+Medía la cuota de ceros con `UNIDADES = 30` escrito a mano, así que daba un número
+**distinto del que la etapa juzga**: 0,367 contra 0,345 en automóvil contra motocicleta.
+Una herramienta cuyas cifras cita la sección 2 de este documento y que contestaba sobre
+otro conjunto.
+
+Ahora lee `config.REGRESSION_EXCLUDED_UNITS`, filtra las mismas unidades y declara en su
+cabecera sobre cuántas cuenta. `comparar_candidatas.py` y `tools/README.md` dejan de
+prometer «las mismas treinta unidades».
+
+#### Lo que sobrevive, a propósito
+
+Cuatro menciones en `regressions.py`: tres son el texto de `exclude_units` explicando
+precisamente la diferencia, y una cuenta archivos. **Y todo lo de las demás rutas se
+queda** —`casualty_maps`, `exposure`, `interpolation`, `maps`, `matrix`, `population`,
+`predictors`, `rho`, `surveys`— porque siguen trabajando sobre treinta. No es un descuido:
+es la distinción que D56 existe para mantener, y borrarla de ahí sería el error contrario.
+
+### Paso 8 — La corrida limpia — HECHO el 2026-10-02
+
+```
+.venv/Scripts/python.exe -m src.run_pipeline regressions
+```
+
+sin `--candidates`, que es `urban-only`, que es la que va a Olmos y a la asesora. Después,
+si se quiere, `--candidates with-leftovers` para la de robustez.
+
+#### Hecho
+
+**No se repitió la corrida.** `run_20261002_141517`, la del paso 7, ya salió del código
+final: `src/regressions.py` se modificó por última vez a las 14:12:53 y la corrida empezó
+a las 14:15:17. Repetirla habría producido un gemelo idéntico, que es precisamente lo que
+el paso 7 acababa de comprobar byte a byte.
+
+| | |
+|---|---|
+| **La que el estudio reporta** | `run_20261002_141517`, solo urbanas, 40,1 min, **23 comprobaciones todas en OK** |
+| **La de robustez** | `run_20261002_145959`, con restos de offset, 48,7 min, 22 todas en OK |
+
+La de robustez **hubo que construirla**, no bastaba con conservar una: todas las de ese
+conjunto eran de treinta unidades, y `comparar_candidatas.py` compara AIC sólo dentro de
+una celda —misma respuesta, mismo offset, misma familia, mismas unidades—, así que
+enfrentar una corrida de veintinueve contra una de treinta es exactamente la comparación
+que esa herramienta existe para rechazar. Con las dos sobre veintinueve corre, y reproduce
+la medición en que se apoya D52: **los restos se llevan 1 123 de 5 412 términos
+seleccionados, el 20,8 %**.
+
+#### Las comprobaciones, hechas
+
+- **Los ganadores contra `run_20260928_112330`** dan exactamente lo mismo que el paso 1
+  midió: 30,1 % de celdas cambiadas, rho +0,986 en la frecuencia. Eso confirma de paso que
+  los pasos 2 a 7 no movieron ninguna cifra, sólo figuras y prosa.
+- **`tools/seleccion_por_aic.py` sobre la corrida final** da 0,026, 0,073 y 12 de 104, que
+  son **los tres números impresos en el pie de las figuras de ajuste**. Se midieron sobre
+  veintinueve antes de escribirlos.
+- **La bitácora cierra y `verify` pasa entero**, las 23 comprobaciones.
+- **La sección 27 del informe de verificación** recoge la corrida, y la 26 queda marcada
+  como superada con una nota que manda a ella.
+
+---
+
+Lo que hay que mirar está en 15.4, y se repite aquí lo que no se puede omitir:
+
+- **La bitácora cierra**, el balance de registros cuadra y `verify` pasa entero.
+- **Comparar los ganadores contra `run_20260928_112330`** y anotar cuántas celdas
+  cambiaron de modelo. Es la cifra que el comité va a pedir cuando pregunte qué hizo
+  quitar una unidad, y no se puede reconstruir después sin volver a correr la vieja.
+- **Volver a pasar `tools/seleccion_por_aic.py`** sobre la corrida nueva: la aritmética no
+  debería moverse y los percentiles sí un poco. **Las cifras de la declaración de D59 se
+  reescriben con las de veintinueve unidades** antes de que ninguna llegue a un
+  entregable.
+- **Anotar el número de la corrida** en el informe de verificación, en una sección nueva,
+  y decir qué sustituye.

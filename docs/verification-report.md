@@ -4740,7 +4740,11 @@ The nineteenth is the one that only applies where no leftover competes — that 
 offset quantity was selected — so the difference between the two counts is
 itself correct rather than a gap.
 
-**This is the run to quote from here on.** It supersedes sections 24 and 25,
+> **Superseded on 2026-10-02 by section 27**, which reports the run on twenty-nine
+> units. This section stays as the record of what the changes of that day were
+> measured against.
+
+**This was the run to quote until 2026-10-02.** It supersedes sections 24 and 25,
 which stay as the record of what the changes were measured against.
 
 ### The five changes, and what each was for
@@ -4856,3 +4860,143 @@ captured `4.5.` with the sentence's full stop and failed a comparison against
 Neither was a defect in what was being verified. **A verification that fails is
 not evidence that the code is wrong**, and both times the first thing to check was
 the check.
+
+## 27. The run on twenty-nine units, with the figures the panel adviser asked for
+
+Route `regressions`, 2026-10-02, **`run_20261002_141517`**, candidate set urban only,
+40.1 minutes, **23 checks and every one passing**.
+
+**This is the run to quote from here on.** It supersedes section 26, which stays as the
+record of what the changes of 2026-10-02 were measured against.
+
+**And the robustness run was rebuilt on the same basis**, `run_20261002_145959`, with the
+offset leftovers, 48.7 minutes, 22 checks all passing — one fewer than the reported run
+because the check that no offset quantity was selected only applies where none competes,
+so the difference between the two counts is itself correct. 1,870 models against 1,868:
+the two sets do not fail on exactly the same cells.
+
+**It had to be rebuilt and not merely kept.** Every with-leftovers run before it was on
+thirty units, and `tools/comparar_candidatas.py` compares AIC only inside a cell — same
+response, same offset, same family, same units — so a 29-unit reported run against a
+30-unit robustness run is the comparison that tool exists to refuse. With both on
+twenty-nine it runs, and it reproduces the measurement D52 rests on: **the leftovers take
+1,123 of 5,412 selected terms, 20.8 %**.
+
+| | |
+|---|---:|
+| Units entering the models | **29** |
+| Models | 1,868 |
+| Per-candidate rows | 21,842, of which 8 carry no model |
+| Exported tables | 7 |
+| Figures | 2,550 |
+| `figures/` | 434 MB |
+
+### The four decisions, and what each was for
+
+Agreed on 2026-10-02 and implemented in the eight steps of section 16 of
+`regression-inventory.md`, each step with a run of its own.
+
+| | What | Why |
+|---|---|---|
+| D56 | Torca leaves the regressions, and only the regressions | Its population multiplies by 4.61 over the window against a median of 1.09, so the offset's denominator there is not the quantity it is elsewhere |
+| D57 | R² and AIC on every fit panel, Moran off them | The two figures the families printed were not comparable with each other, and Moran is read from the table the panel stage uses |
+| D58 | The per-variable table in all eighteen specifications, and the betas table populated | What a variable would have been worth had it entered was already being computed and then dropped |
+| D59 | The AIC selection is declared, not changed | A model with a worse AIC does give a better R², in both families, and the figure has to say so |
+
+### The two universes, which is the thing most likely to get stated wrong
+
+**The study's universe is thirty UPL and that has not changed.** It is the denominator of
+every coverage figure, and the matrix, ρ, the predictors, the exposure, the population and
+the maps all keep the thirty. **The regressions estimate on twenty-nine**, and that is a
+separate statement that belongs wherever the regressions are described.
+
+So a predictor figure that says thirty is right and a regression figure that says
+twenty-nine is right, and the two are not in conflict. Fourteen texts across `src/` and
+`tools/` said thirty where the estimation now says twenty-nine and were corrected; the ones
+that describe the layer or the design were left alone, which is most of them.
+
+### What removing one unit actually moved
+
+Measured by `tools/efecto_de_la_exclusion.py` against `run_20260928_112330`, the run
+section 26 reports, on the same candidate set.
+
+**The selected model changed in 563 of 1,868 cells — 30.1 %**: 40.9 % in least squares,
+35.8 % in the negative binomial, 13.8 % in Poisson. **This is not a property of the unit
+removed.** It is what a best-subset search over 220 or 286 candidates does on twenty-nine
+observations: the AIC landscape is flat near its minimum, and one observation is enough to
+change which model sits there. Poisson moves least because it estimates no dispersion
+parameter and separates its minimum better.
+
+**That belongs in the methodology and not in a footnote.** The winning model of a cell is a
+choice among near-ties, which is the same thing D59 declares about R².
+
+**And what the study reports did not move.** D53 says the study reads how often a variable
+is selected **within one specification**, not which model won a cell, and that distinction
+stops being an argument here:
+
+| | |
+|---|---|
+| Spearman of the candidate ordering, within each of the 18 specifications | median **+0.943**, from +0.818 to +0.988 |
+| Specifications above 0.8 | **18 of 18** |
+| Same most-selected variable | 14 of 18 |
+| Spearman of the totals | **+0.986** |
+| Largest move in the overall ranking | **1 place of 12** |
+
+The first four are unchanged: sidewalk, pedestrian crossings, arterial road, cameras. **A
+count over 104 cells is stable although its summands are not**, and that is D53's reasoning
+written in figures rather than argued.
+
+**One variable moved and it is not explained by any of the above.** SITP bus stops lose
+34 % of their selections, 307 to 202, where nothing else moves more than 17 %. If the
+winner changes because the AIC landscape is flat, the changes should spread across the
+twelve; one taking a disproportionate share points at the variable. **Declared as pending
+in section 16.1 of `regression-inventory.md`, to be resolved now that the eight steps are
+done, and that frequency is not quoted in a deliverable until it is.**
+
+### What the AIC search gives up, measured on this run
+
+`tools/seleccion_por_aic.py`, which refits every declared subset of 104 cells in two
+families outside the pipeline.
+
+**The arithmetic is sound and the negative AIC of least squares breaks nothing.** The code
+compares `described.aic < best.aic` with no absolute value, and a sign cannot break an
+argmin; at a fixed number of predictors the lowest AIC is the best fit, in every size,
+which is where a sign error would have to show.
+
+**What it gives up is real and is now on the figure:**
+
+| | median percentile | worst | below its own median |
+|---|---:|---:|---:|
+| Negative binomial | 96.4 | 33.6 | 4 of 104 |
+| Least squares | 89.5 | 14.0 | 12 of 104 |
+
+The median R² given up by following the AIC is **0.026** in the negative binomial and
+**0.073** in least squares. Those three numbers — 0.026, 0.073, twelve of a hundred and
+four — are printed in the footnote of every fit figure, and they were measured on
+twenty-nine units before being written there rather than carried over from the thirty-unit
+run.
+
+### Four checks that were wrong before the thing they checked was
+
+This is the fourth and fifth time in the project and it is the same lesson, so it is worth
+the list rather than the moral.
+
+| Step | What the check said | What was actually wrong |
+|---|---|---|
+| 2 | «78 of 234 fit figures» | `FAMILY_PATHS` gives one path segment for least squares and two for the GLMs, so a fixed-depth glob found one family of three |
+| 3 | «21,834 of 21,842 candidate rows» | Eight candidates genuinely have no fittable model — but skipping their row silently was a defect, so the row is now emitted with a flag and no figures |
+| 6 | «1,868 of 1,872 per-variable figures» | 1,872 is 18 × 8 × 13, and four cells admit no model at all; they now get a figure that says so |
+| 7 | — | `tools/respuesta.py` counted zeros over thirty units with the number written by hand, so it answered 0.367 where the stage judges 0.345 |
+
+The first and third were the instrument. The second and fourth were real, and both were
+the same defect: **an absence that cannot be told from a measurement**. That is the one
+this project keeps having to fix, and it is why `HAS_FITTED_MODEL` exists and why the four
+empty cells get a figure instead of a gap in a folder.
+
+### Two things this run does not settle
+
+- **Why SITP bus stops depend on one unit for a third of their selections.** Pending, with
+  four things to look at listed in section 16.1.
+- **Which of the twelve candidates are finally excluded.** Deferred by my advisor after the
+  panel session; `MODEL_PREDICTOR_NAMES` holds the earlier decision and the regressions do
+  not read it. Section 5 of `regression-inventory.md`.

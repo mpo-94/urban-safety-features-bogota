@@ -15,7 +15,7 @@ preguntas que no se pueden contestar mirando una sola:
      especificación** y no sobre la corrida entera;
   3. cuánto del ajuste venía de los restos, medido por AIC en la misma celda, que
      es comparable porque son la misma respuesta, el mismo offset y la misma
-     familia sobre las mismas treinta unidades;
+     familia sobre las mismas unidades;
   4. si alguna urbana cambia de signo al quedarse sin ellos.
 
 **La segunda y la cuarta se miden por especificación por D53**, y no es un
@@ -47,7 +47,7 @@ MODELOS = f"{config.ANALYSIS_PREFIX}__regression_models.parquet"
 COEFICIENTES = f"{config.ANALYSIS_PREFIX}__regression_coefficients.parquet"
 
 # Las columnas que identifican una celda: la misma respuesta, el mismo
-# denominador y la misma familia sobre las mismas treinta unidades. Dos modelos
+# denominador y la misma familia sobre las mismas unidades. Dos modelos
 # que comparten las cinco se pueden comparar por AIC aunque hayan recorrido
 # bolsas distintas, porque el AIC es de la verosimilitud y no de la búsqueda.
 CELDA = ["DATASET", config.OFFSET_COL, "PAIR", config.YEAR_COL, config.FAMILY_COL]

@@ -6516,6 +6516,13 @@ what is left after it.
 
 So there are two runs, and they are not symmetric:
 
+> **The two roles below were swapped on 2026-09-27 by D52, which is where the
+> current arrangement is.** `urban-only` is the run the study reports and the
+> default; `with-leftovers` is the robustness run and the one the elasticities
+> come from. The paragraph is kept as written because the asymmetry it describes
+> is still the point, and because what each run cannot answer did not change when
+> the roles did. **Read the two names the other way round.**
+
 - **`with-leftovers` is the run the study reports.** Unchanged, and still the
   default when the flag is not given.
 - **`urban-only` is a robustness check on its urban coefficients.** It answers one
@@ -6822,3 +6829,441 @@ The phrase appears in nine places across the documents and the code. It is not
 deleted anywhere: it is completed with the sentence that says which contexts
 count. `tools/comparar_candidatas.py` is the one that has to change most, because
 its headline is a pooled ranking of exactly the kind this decision retires.
+
+## D54 — Exposure between survey years is reconstructed by iterative proportional fitting, declared before it is implemented
+
+**Status on 2026-09-28: declared in the anteproyecto, not implemented.** This is
+the one decision in this document that the pipeline does not yet satisfy, and it
+says so here so nobody reads the code expecting to find it.
+
+### What is declared
+
+The exposure of a year without a mobility survey is reconstructed as the
+origin-destination matrix that iterative proportional fitting produces from the
+nearest survey's matrix, subject to origin and destination totals interpolated
+between surveys and scaled by the annual population. Desire lines and the trips
+that begin, end or cross each unit are then derived from that matrix.
+
+### What the pipeline does instead, today
+
+D40. The exposure between survey years is interpolated **as a rate and not as a
+level**, per unit and per mode, and the margins are never made to agree with a
+matrix. There is no fitting step at all: no Furness, no biproportional
+adjustment, no iterative proportional fitting. Nothing in `src/` implements any
+of it.
+
+### Why the declaration was kept rather than the description corrected
+
+The advisor's edit of the anteproyecto of 2026-09-28 added a passage arguing the
+method from statistical mechanics: fitting finds the matrix that minimises
+relative entropy with respect to the survey's matrix subject to the new margins,
+which is the matrix that satisfies them without adding structure the survey did
+not already contain; with a uniform seed it reduces to the maximum-entropy trip
+distribution model. He marked it twice asking whether it was what the pipeline
+does. It was not.
+
+Two ways out were put to Mateo on 2026-09-28: correct the text down to rate
+interpolation and lose the argument, or keep the argument and implement it. **He
+chose to implement it**, after the anteproyecto is delivered and after the
+knowledge base is finished. An anteproyecto declares what will be done, so
+declaring the method there is legitimate; declaring it and never implementing it
+would not be, and this section exists so that cannot happen quietly.
+
+### What it costs, so the cost is on the record before the work starts
+
+Every exposure number changes, and with it every offset, so **every
+cross-sectional result in `results/run_20260928_112330` is superseded the day
+this lands**. The regressions do not need rewriting, but they need rerunning, and
+any figure already quoted in a deliverable from that run has to be requoted. That
+is the same class of change as the scale change and the 2024 extract, and it is
+the fourth time the numbers move.
+
+### What the declaration does not claim
+
+That the fitting is better *here* than rate interpolation, as measured. It is
+better argued, and it is standard in transport planning, and that is the case
+made in the anteproyecto. Whether it changes the exposure enough to change a
+coefficient is an empirical question that the implementation answers, and the run
+that answers it reports the comparison against D40 rather than replacing it
+silently.
+
+## D55 — Torca out of the three dispersion figures, proposed and not applied
+
+> **Superseded on 2026-10-02 by D56, and never implemented.** Torca leaves the
+> regressions themselves, not three of their figures. What is kept below is the
+> evidence for picking Torca, which still holds, and the objection this decision
+> raised against itself, which is the reason D56 replaced it. **Do not implement
+> anything from here.**
+
+**Status on 2026-10-01: a candidate, waiting on the advisor.** Nothing in `src/`
+changed. The figures that show what the change would look like are rendered to
+the session's temp folder, mirroring their path inside
+`run_20260928_112330`, so the two versions can be opened side by side.
+
+### What is proposed
+
+That the three dispersion figures of
+`figures/regressions/principal/entradas/predictoras/dispersion/` be drawn on
+twenty-nine units instead of thirty, leaving Torca out, and that each figure say
+so in its title and in its note. **Torca would leave the figures and not the
+study**: it keeps entering every model, and the thirty units stay the universe.
+
+### Why Torca, and why only Torca
+
+Measured on `run_20260928_112330`, year 2023, over the twelve candidates:
+
+- It is the **minimum of 8 of the 12** variables, among the three lowest in 10,
+  its mean percentile is **5.7**, and it sits within 2 % of the floor in **11 of
+  the 12**.
+- Leave-one-out on the Tukey lower whisker, summed over the twelve variables and
+  expressed in standard deviations: **Torca moves it 2.54**, across seven
+  variables — sidewalk +1.46, pedestrian crossings +0.61, vertical signage +0.24.
+  **The next unit, Fontibón, moves it 0.11.** Everyone else moves nothing.
+- The gaps to the second-lowest are not marginal: sidewalk 0.0008 against 0.0389,
+  bus stops 1.00 against 9.94, crossings 6.60 against 58.82, signage 2.10 against
+  32.98.
+
+### What it is not
+
+**Not a measurement defect.** Torca has the **lowest population of the thirty**,
+105 614 against a median of 263 736, and zero traffic lights, zero speed cameras
+and zero TransMilenio stations. It is a unit that is barely urbanised, and the
+figures were telling the truth about it. The case for leaving it out is
+legibility of the other twenty-nine, not doubt about its data.
+
+### What the change does not fix, and the note has to say so
+
+- **Two whiskers keep touching zero and not because of Torca.** Six units have no
+  speed camera at all and seven have no TransMilenio station, so those two panels
+  are unchanged.
+- **On the annual-series figure the gain starts in 2017.** In 2012 five units
+  besides Torca were under 0.05 km of cycleway per km²; from 2019 Torca was the
+  only one, so the floor lifts from 0 to about 0.08 in the later years and not in
+  the early ones.
+- **The ordering of the standardised figure changes**, because it sorts by box
+  width and the widths change. Two panels also gain a named Tukey outlier — Barrios
+  Unidos on traffic lights, Teusaquillo on TransMilenio — since the quartiles move.
+
+### The honest objection to it
+
+If Torca leaves the figures but stays in the models, **the figures stop describing
+the data the models are fitted on**. That is defensible when the note declares it,
+and the note does, but it is the kind of gap a jury looks at twice. The two
+alternatives were put to Mateo on 2026-10-01: leave everything as it is and let the
+figure say that one unit in thirty is barely urbanised, or draw Torca as a named
+point outside the box-and-whisker calculation, reusing the machinery that already
+names Tukey outliers.
+
+### What to change if it is confirmed
+
+`_render_dispersion` in `src/regressions.py`. It takes `per_unit` already
+deduplicated, so the exclusion is one filter at the top plus the wording: the three
+places that say «Treinta unidades» or «las mismas treinta unidades», the three
+titles, and a sentence in each note saying who is out and why. The provisional
+renderer that produced the proposed figures is the reference for the wording.
+
+### It would not stop at the three dispersion figures
+
+**If this is applied, it has to be applied to the eleven-predictor figures of the
+predictor stage as well**, and this is the part that is easy to forget because those
+figures live in another stage and another folder. They are the histograms, the
+Pearson correlation matrix and the master table of
+`config.COMPLETE_FIGURE_PREDICTOR_NAMES`, drawn by `predictors.render_figure_set`,
+plus the candidate set's own figures that `_render_dispersion`'s own stage draws
+alongside it.
+
+**Leaving Torca out of one set and inside the other would be worse than either
+option on its own.** A reader comparing a histogram of thirty units against a
+boxplot of twenty-nine has no way to know the two are not the same sample, and the
+correlation matrix in particular would be computed on a different set of units than
+the dispersion figure that sits beside it. The unit of the decision is "every figure
+that shows the distribution of a predictor across units", not "the three boxplots".
+
+What stays untouched either way is **everything that is not a distribution across
+units**: the models, the coefficients, the selection frequency and the
+observed-against-predicted figures all keep the thirty, because Torca is not leaving
+the study.
+
+## D56 — Torca leaves the regressions, and D55 is superseded before it was ever applied
+
+**Status on 2026-10-02: decided by Mateo, not yet implemented.** It replaces D55,
+which was never built.
+
+### What changes
+
+**Torca is dropped from the regression stage.** The search, the models, the
+coefficients, the predictions, the selection frequency and every regression figure run
+on **twenty-nine units**.
+
+**Nothing else in the pipeline changes.** The casualty matrix, ρ, the predictors, the
+exposure, the population panel and the maps all keep the thirty. Torca stays in every
+dataset the study builds; what it leaves is the estimation.
+
+### Why this is better than D55
+
+D55 proposed taking Torca out of three figures while leaving it in the models, and the
+honest objection written into D55 itself was that **the figures would then stop
+describing the data the models are fitted on**. This removes that objection instead of
+declaring it: the dispersion figures show twenty-nine because the regressions use
+twenty-nine, which is a consequence and not a drawing choice.
+
+The evidence for picking Torca is the same and still holds — minimum of 8 of the 12
+candidates, among the three lowest in 10, mean percentile 5.7, at the floor in 11 of
+12; leaving it out moves the lower whisker by 2.54 standard deviations summed over
+seven variables against 0.11 for the next unit; lowest population of the thirty, zero
+traffic lights, zero cameras, zero TransMilenio.
+
+### What it costs, and this is the part to say out loud
+
+**Every number the regression stage produces changes.** Thirty rows become
+twenty-nine, so every coefficient, every AIC, every BIC, every R², every Moran and
+every selection changes. The winner of a cell can change: a margin of 0.2 AIC points,
+which is what separated the 2017 winner from the runner-up, does not survive dropping
+an observation.
+
+**So everything quoted from `run_20260928_112330` is superseded the day this lands.**
+That includes the figures prepared for the panel adviser on 2026-10-02 and the numbers
+in the message that accompanies them: AIC 222.5 and 246.4, the 0.4-point margin, the
++0.45 coefficient of traffic lights in 2023.
+
+### The reason that does not depend on Torca having low values
+
+The dispersion evidence says Torca sits at the floor of almost everything. That is a
+reason to look at it, but on its own it is weak: **a low value is data, not a defect**,
+and excluding a unit for being extreme is what a jury should object to.
+
+This is the reason that stands up, and it is of a different kind. **Torca's population
+multiplies by 4.61 between 2012 and 2024** — 26,206 to 120,770 — against a median of
+1.09 across the thirty and 1.35 for the next unit up, Tintal. Over the thirteen years
+the cross-sections cover, Torca is not the same unit twice.
+
+That matters because of what the offset is. Every specification divides by an exposure or
+by resident population, so the denominator is what makes a count comparable between
+units. In twenty-nine units that denominator drifts by a tenth over the period; in Torca
+it quintuples. **The quantity being modelled is not the same quantity there**, and
+pooling it with the rest assumes a stability the data deny.
+
+`docs/implementing-2005.md` reaches the same unit from an unrelated direction and says it
+in its own words: **"Torca is not usable from 2005"**, because its figure on a coarse
+zoning is a sixth to a half of what the same trips give on a fine one, and its walking is
+the one cell the municipal ring cannot recover. Three independent measurements —
+the predictor floor, the population trajectory, the exposure reconstruction — pick out the
+same unit, and only the second and third are reasons rather than observations.
+
+**This is the argument to use in the document**, and the dispersion figures are the
+illustration of it rather than the case for it. Getting that order backwards invites
+exactly the objection the exclusion has to survive.
+
+### The two universes, and how to keep them straight
+
+The study's universe is still **thirty UPL** — that is settled and it is the
+denominator of every coverage figure. **The regressions estimate on twenty-nine**, and
+that is a separate statement that has to be made wherever the regressions are
+described: the anteproyecto's methodology, the thesis's chapters, and the note of every
+regression figure.
+
+**The predictor-stage figures keep the thirty**, because they describe the data and not
+the estimation. That is the opposite of what D55 required, and the reason is that the
+two stages now genuinely cover different sets: under D55 the mismatch would have been
+arbitrary, and here it is the fact being reported.
+
+### What to change
+
+The filter goes in the regression stage, once, where the table is read and before the
+pairs are judged eligible — so that `eligible_pairs`, the search, the figures and the
+exports all see the same twenty-nine. A filter applied later would leave the eligibility
+threshold judged on thirty and everything else on twenty-nine.
+
+**Needs a declared constant**, not a literal: the unit left out, and the reason, belong
+in `config` beside the study universe, so that the day a second unit is proposed the
+change is a list and not a search through the code.
+
+## D57 — The fit panels show R² and AIC in every family
+
+**Status on 2026-10-02: decided by Mateo, not yet implemented.**
+
+### What changes
+
+Today the observed-against-predicted panels show **R² on least squares** and **AIC on
+the GLMs**, plus Moran on both. They will show **R² and AIC on all of them**.
+
+### What has to be said in the note, because the code already warns about it
+
+**Least squares fits the rate and the GLMs fit the count, so their AIC are not the same
+quantity.** The comment in `_render_fit` says it plainly: for least squares "a single
+AIC printed on a panel says nothing a reader can use". Printing it is still useful —
+it compares across years within least squares — but it cannot be compared with the
+panel beside it.
+
+So the figure has to carry the sentence the rest of the project already carries: **AIC
+compares only within one family and one offset.** Without it the change makes two
+numbers look comparable that are not, which is worse than showing one of them.
+
+**R² is on counts in both**, which is what makes it the one quantity that does compare
+across the four panels: least squares multiplies its prediction back by the exposure
+before the comparison. That is worth saying too, because it is the reason R² is the
+right thing to put everywhere.
+
+### Moran leaves the panel
+
+**Settled on 2026-10-02: Moran is not drawn on the fit figures.** Only R² and AIC.
+
+**It is not lost, and that is why this is cheap.** `MORANS_I` stays in
+`analysis__regression_models.csv` for every model of every run, the verification report
+keeps its line on how many models cross `MORAN_REPORTING_THRESHOLD`, and the master model
+table keeps its column. What goes is one number printed on a scatter. The stage after
+this one reads the column, not the figure, so nothing the panel needs depends on this.
+
+### What the figures showed when they were drawn
+
+The two preliminary panels for 2024 surfaced something the change makes visible and the
+caption has to answer.
+
+**Least squares AIC is negative** — between −1,048 and −291 across the run — because it
+fits the rate, and the rate is a small number, so the log-likelihood of a continuous
+density over small values is large and positive. A reader who knows that lower AIC is
+better will read −398 as the best panel of the eight.
+
+**And in 2024 that panel is the worst one.** Pedestrian-car has the lowest AIC of its
+eight, −398, and the lowest R² of its eight, −0.794, drawn in red. The two numbers point
+in opposite directions on the same panel, and the scatter agrees with the R².
+
+**This is not a defect introduced by the change; it is the two quantities answering
+different questions.** Measured over the thirty-nine figures of a family: the Spearman
+correlation between R² and AIC across the eight panels has a median of **+0.02 in the
+negative binomial and −0.14 in least squares**, and the two order the panels **inversely
+in about half the figures** — 20 of 39 and 19 of 39. They are independent, and a reader
+who takes them as two views of one thing will be wrong half the time.
+
+**The deeper reason is that AIC across the eight panels is not a comparison at all.**
+Each panel is a different pair, so a different response on different data, and AIC is
+only comparable between models fitted to the same observations. The AIC on a panel is
+informative against the other candidate models **for that pair**, which the figure does
+not show. That was already true of the GLM figures, which have always printed AIC; what
+the change does is double the surface and add the negative values.
+
+**So the figure carries a third title line**, which is part of the change and not
+decoration:
+
+> R² sobre conteos, que es la nube dibujada · AIC en la escala que cada familia ajusta,
+> y sólo comparable contra otros modelos de la misma pareja
+
+**R² is the quantity that does compare across the four families**, because it is on
+counts in all of them: least squares multiplies its prediction back by the exposure
+before the comparison. That is why it is the one to put everywhere, and the first half of
+that line says so.
+
+## D58 — The per-variable table is drawn for all eighteen specifications
+
+**Status on 2026-10-02: decided by Mateo, not yet implemented.**
+
+The table the panel adviser asked for — twelve rows, one per candidate, each the best
+model that contains that variable — is produced for **every specification the run fits**,
+not for the reported one alone.
+
+| | |
+|---|---:|
+| specifications | 3 families × 2 datasets × 3 offsets = **18** |
+| figures per specification | 8 pairs × 13 years = 104 |
+| **new figures** | **1,872** |
+
+The whole run produces **678** figures today, so it goes to roughly 2,550, and `figures/`
+from 128 MB to about 420 MB at 157 KB a table. `results/` is not versioned, so none of
+that reaches the repository.
+
+### The reason it is affordable, which is also how to get it wrong
+
+The table needs, per cell, **the best model containing each candidate** — twelve models
+where the figure tree currently keeps one. **Those models are already fitted.** A run fits
+489,448 and keeps 1,868; what the adviser asked for does not have to be computed, it has
+to stop being discarded. So `search` returns, beside the winner, the best model for each
+candidate, and the run retains some 22,500 rows instead of 1,872 with **no new fits**.
+
+**Implemented by looping over the candidates and refitting outside the search, it would
+multiply the run by twelve.** That is the mistake this entry exists to prevent.
+
+### The populated betas table replaces `betas.png`
+
+**Decided on 2026-10-02.** Not a second figure beside it: the same file, at the same path,
+`parejas/<pareja>/betas.png`.
+
+The populated table is a strict superset of what `betas.png` shows — every selected
+coefficient with its stars and its colour, plus a median in the cells that were blank, and
+a black box where the blank-or-not used to carry the distinction. Keeping both would mean
+two images of the same coefficients that a reader could find looking different, and a
+figure tree where one of them has empty cells the other fills.
+
+Replacing in place also means **nothing that points at that figure breaks**: the thesis,
+the dashboard and the figure-tree description all keep working without a change of path.
+
+### Why all eighteen and not the reported one
+
+The reported specification is one family, one dataset and one offset, and the question the
+table answers — what a variable would have been worth had it entered — is a question about
+the search, which runs identically in all eighteen. Drawing it for one would mean a reader
+comparing two offsets has the answer on one side and a blank on the other, which is the
+shape of the problem D53 already names: the axis where the specifications disagree most is
+the one that must stay visible.
+
+## D59 — The AIC selection is declared, not changed
+
+**Status on 2026-10-02: decided by Mateo.** The search keeps selecting by AIC. What is
+added is a sentence.
+
+### What was measured
+
+`tools/seleccion_por_aic.py` refits every declared subset of 104 cells in two families,
+about 55,000 models, and asks where the AIC winner lands among the models of its own cell.
+
+| | median percentile | worst | below its own median | the exact maximum |
+|---|---:|---:|---:|---:|
+| Negative binomial | 97.0 | 14.1 | 3 of 104 | 24 of 104 |
+| Least squares | 88.3 | 5.9 | 14 of 104 | 8 of 104 |
+
+**The arithmetic is sound and the negative AIC breaks nothing.** The code compares
+`described.aic < best.aic` with no absolute value, and a sign cannot break an argmin. In
+least squares, at a fixed number of predictors, the lowest AIC is the best fit in every
+size — which is the place a sign error would have to show.
+
+### The premise that has to be corrected before the sentence is written
+
+The intuition behind "declare it" was that a model with a worse AIC would not produce a
+better fit figure. **It does, and it is not magic.** The AIC maximises a penalised
+likelihood; R² measures squared error. They are different criteria, so they agree often
+and not by construction.
+
+- **In least squares the two scales differ.** It fits the rate, because the method admits
+  no offset, and the figure draws counts. In 96 of 104 cells a model with a worse AIC fits
+  the drawn counts better; the median R² given up is 0.078 and the worst is 2.255. Two
+  cells publish a negative R² with one of 0.69 and 0.55 available.
+- **In the negative binomial both are on counts, and it still happens.** In 80 of 104
+  cells, almost always by very little — median 0.024 given up. At three predictors in the
+  checked cell, the lowest AIC (265.4) is not the best fit (266.7), because the negative
+  binomial also estimates its own dispersion parameter and its likelihood is not a function
+  of the squared error alone.
+
+### What the declaration says
+
+It cannot say the figure shows the best possible fit. It says:
+
+> La figura muestra el ajuste del modelo que la búsqueda seleccionó por AIC, que no es el
+> de mejor R² de su celda. El AIC elige por verosimilitud penalizada y el R² mide error
+> cuadrático: son criterios distintos y no tienen por qué coincidir. En la binomial
+> negativa el ajuste cedido tiene mediana de 0,024 de R²; en mínimos cuadrados, que ajusta
+> la tasa mientras la figura dibuja conteos, la mediana es 0,078 y hay catorce celdas de
+> ciento cuatro en que el modelo seleccionado queda por debajo de la mediana de su celda.
+
+It goes in the caption of the fit figures and in the methodology chapter. **The figures are
+re-measured on twenty-nine units before any of them is written into a deliverable**, since
+D56 moves every one of them.
+
+### What was rejected and why
+
+- **Selecting least squares by R² on counts.** It would break the symmetry between
+  families — the GLMs would still select by AIC — and make the two halves of a comparison
+  answer different questions.
+- **Weighting the regression by the exposure**, which reconciles the two scales. It is no
+  longer ordinary least squares, and the methodology would have to say so.
+
+Neither is wrong; both are a change of method to fix a reporting problem, and the reporting
+problem has a reporting fix.

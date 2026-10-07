@@ -302,6 +302,11 @@ def run_regressions(log: RunLog, candidate_set: str) -> None:
 
     units = loading.load_territorial_units(log)
     matrices, exposure, population_panel, predictor_table = regressions.read_inputs(log)
+    # Before anything is built from either. The polygons become the contiguity
+    # weights and the predictor table becomes the grid, so this is the one place
+    # where excluding a unit is a single decision rather than two edits that can
+    # drift apart. D56.
+    units, predictor_table = regressions.exclude_units(units, predictor_table, log)
 
     data = {
         dataset: regressions.build_dataset(
@@ -684,11 +689,20 @@ def build_parser() -> argparse.ArgumentParser:
         choices=list(config.CANDIDATE_SETS_BY_CLI.values()),
         default=default_set,
         metavar="{" + ",".join(config.CANDIDATE_SETS_BY_CLI) + "}",
+        # Which set the study reports and what a set cannot answer are two different
+        # statements, and until D52 they pointed at the same run, so one sentence could
+        # carry both. D52 inverted the default and this text was not followed: it went on
+        # calling the reported run a robustness run. The two are separated here for the
+        # same reason `_write_readme` separates them.
         help=(
             "what is allowed to compete in the `regressions` route; every other route "
-            f"ignores it (default: {default_set.cli}). `urban-only` leaves out the offset "
-            "quantities the offset did not take, so the three offsets share one candidate "
-            "list; it is a robustness run and it estimates no elasticity"
+            f"ignores it (default: {default_set.cli}). `urban-only` is the set the study "
+            "reports: the quantities the offset did not take do not compete, so the three "
+            "offsets share one candidate list and the only difference between them is the "
+            # ASCII, like every other help string here: this one reaches a Windows console
+            # whose code page turns a dash or an accent into a question mark.
+            "denominator, at the price that no coefficient is an elasticity. "
+            "`with-leftovers` lets them compete, and is the run the elasticities come from"
         ),
     )
     parser.add_argument(

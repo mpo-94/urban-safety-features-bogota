@@ -1,16 +1,26 @@
 """Cuánta señal tiene la variable respuesta en cada pareja y cada año.
 
-Una regresión sobre 30 unidades no puede estimar nada si la respuesta es cero en
-la mayoría de ellas. El anteproyecto ya declara el umbral: se modelan las parejas
-con menos de la mitad de sus celdas en cero. Esto mide cuántas lo pasan, y se
-puede correr sin implementar nada, porque la matriz ya existe.
+Una regresión no puede estimar nada si la respuesta es cero en la mayoría de sus
+unidades. El anteproyecto ya declara el umbral: se modelan las parejas con menos de
+la mitad de sus celdas en cero. Esto mide cuántas lo pasan, y se puede correr sin
+implementar nada, porque la matriz ya existe.
+
+**Cuenta sobre las unidades que entran en los modelos y no sobre las del estudio.**
+Son dos conjuntos distintos desde D56, y la cuota de ceros se mueve al cambiar el
+denominador: automóvil contra motocicleta en 2012 pasa de 0,367 a 0,345 justamente
+porque la unidad excluida era una de sus celdas en cero. Medir aquí sobre las del
+estudio daría un número que no es el que la etapa juzga.
 
     .venv/Scripts/python.exe tools/respuesta.py [corrida]
 """
 
 import sys
+from pathlib import Path
 
 import pandas as pd
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+import config  # noqa: E402
 
 sys.stdout.reconfigure(encoding="utf-8")
 
@@ -26,12 +36,20 @@ PAREJAS = [
 NOMBRES = {"PEDESTRIAN": "peatón", "BICYCLE": "bici",
            "MOTORCYCLE": "moto", "CAR": "carro"}
 AÑOS = (2015, 2019, 2023)
-UNIDADES = 30
+# Declaradas y no escritas: el día que se excluya una segunda unidad, esta cuenta y
+# la de la etapa tienen que moverse juntas, o la herramienta deja de medir lo que la
+# etapa decide. El total de la capa lo fija `expected_units`.
+EXCLUIDAS = tuple(e.unit for e in config.REGRESSION_EXCLUDED_UNITS)
+UNIDADES = config.active_scale().expected_units - len(EXCLUIDAS)
 
 d = pd.read_csv(TABLA)
 d = d[(d["SCALE"] == "UPL") & (d["DATASET"] == "OBSERVED")]
+d = d[~d["AREA_CODE"].isin(EXCLUIDAS)]
 
-print(f"corrida {CORRIDA}, conjunto observado, escala UPL\n")
+print(f"corrida {CORRIDA}, conjunto observado, escala UPL")
+print(f"sobre {UNIDADES} unidades: las del estudio menos "
+      f"{', '.join(EXCLUIDAS) if EXCLUIDAS else 'ninguna'}")
+print()
 print(f"{'pareja':16s} {'año':>5s} {'unidades':>9s} {'ceros':>6s} "
       f"{'mediana':>8s} {'máximo':>7s} {'total':>7s}  ¿pasa?")
 print("-" * 76)
