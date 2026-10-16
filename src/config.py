@@ -4937,6 +4937,33 @@ SURVEY_2005 = MobilitySurvey(
                 "TRIPS_PER_DAY_OF_TYPE_OVER_15MIN reads 18%"
             ),
         ),
+        # The two endpoint allocations are the same trips counted a different way,
+        # so they inherit the same defect for the same mode: 2005's pedestrian
+        # origin and destination margins are margins of long walking. The fitting
+        # reads them (D60) and would otherwise anchor a 2006-2010 margin on a
+        # quantity the other four surveys do not measure.
+        #
+        # There is no fifteen-minute endpoint column to fall back on, so what the
+        # exclusion leaves is 2011 as the earliest pedestrian anchor, and the
+        # margins of 2005-2010 held from it. That is a loss of one anchor in one
+        # mode, and it is the right loss: an anchor that measures a different
+        # category is worse than no anchor at all.
+        "TRIPS_PER_AVERAGE_DAY_AT_ORIGIN": ColumnNotComparable(
+            actor_types=(PEDESTRIAN,),
+            because=(
+                "built from the same trips as TRIPS_PER_DAY_OF_TYPE, so for 2005 it counts "
+                "only walking of fifteen minutes or more and for the other four years it "
+                "counts all of it. Unlike that column this one has no narrower twin to "
+                "anchor on instead, so the pedestrian margin simply starts at 2011"
+            ),
+        ),
+        "TRIPS_PER_AVERAGE_DAY_AT_DESTINATION": ColumnNotComparable(
+            actor_types=(PEDESTRIAN,),
+            because=(
+                "the same defect at the other endpoint of the same trips, and excluded for "
+                "the same reason"
+            ),
+        ),
     },
     # Torca. Its motorised travel and its cycling come back once the ring is in
     # place, and its walking does not: it is short, local and stays inside expansion
@@ -5246,11 +5273,19 @@ HELD_EXPOSURE = "HELD"                  # before the first survey or after the l
 # from, so the stamp had to change with it: a provenance label that names a
 # method the code no longer uses is worse than no label.
 PATCHED_FROM_MOBILITY_EXPOSURE = "PATCHED_FROM_MOBILITY"
+# A year whose matrix was reconstructed by fitting (D60). It is its own word and not
+# INTERPOLATED, because what was interpolated there is the rate of the exposure itself
+# and what is interpolated here is the margin a matrix was then fitted to — two
+# constructions with different assumptions behind them, and a reader who cannot tell
+# which one a row rests on cannot judge the row.
+FITTED_EXPOSURE = "FITTED"
+
 EXPOSURE_PROVENANCES = (
     MEASURED_EXPOSURE,
     INTERPOLATED_EXPOSURE,
     HELD_EXPOSURE,
     PATCHED_FROM_MOBILITY_EXPOSURE,
+    FITTED_EXPOSURE,
 )
 
 # How far the row is from the nearest year that measured it. Zero on a survey year
@@ -5635,7 +5670,73 @@ PANDEMIC_PATCH_DAY_TYPE = WEEKDAY_TYPE
 EXPOSURE_VARIANT_COL = "EXPOSURE_VARIANT"
 INTERPOLATED_VARIANT = "INTERPOLATED"        # D40 alone: the panel as built
 PANDEMIC_PATCHED_VARIANT = "PANDEMIC_PATCHED"  # D40, with D42 over three years
-EXPOSURE_VARIANTS = (INTERPOLATED_VARIANT, PANDEMIC_PATCHED_VARIANT)
+# D54 and D60: the origin-destination matrix of each year reconstructed by iterative
+# proportional fitting and put through the apportionment, rather than the exposure
+# interpolated as a rate. **It is a third variant and not a replacement**, for the reason
+# the comment above gives about the other two: a study that cannot show both cannot be
+# argued with, and whether the fitting moves the exposure enough to move a coefficient is
+# an empirical question whose answer belongs in the run that produces it.
+#
+# **It carries the weekday alone** where the other two carry three kinds of day, because
+# `RECONSTRUCTION_DAY_TYPES` scopes the reconstruction to the day the models read. Saying
+# so is part of the deliverable: a ragged table nobody explains is a defect even when
+# nothing reads the ragged part.
+FITTED_VARIANT = "FITTED"
+# D63: the fitted panel with D49's pandemic patch over 2020 and 2021. **This is the one
+# the regressions read**, decided by Mateo on 2026-10-07, and it exists as a variant beside
+# the unpatched fitted panel for the reason D42 gives about its own pair: a study that
+# cannot show the unpatched construction cannot be argued with.
+#
+# **The patch applies exactly here and not approximately**, which is why no second fitting
+# is needed. Its factor is one number per mode and year, the same for every unit, and the
+# apportionment is linear in the trips — so multiplying a unit's exposure by it is
+# identical to multiplying every cell of the matrix and apportioning again.
+#
+# **The factors are recomputed from this panel's own trend and never borrowed from D40's.**
+# A factor is the shock divided by the height of the panel's own city curve at that year,
+# which is what turns "2020 against 2022" into "2020 against what 2020 should have been";
+# the two panels expect different things of 2020, so they earn different factors.
+FITTED_PANDEMIC_PATCHED_VARIANT = "FITTED_PANDEMIC_PATCHED"
+EXPOSURE_VARIANTS = (
+    INTERPOLATED_VARIANT,
+    PANDEMIC_PATCHED_VARIANT,
+    FITTED_VARIANT,
+    FITTED_PANDEMIC_PATCHED_VARIANT,
+)
+
+# Which variant of the exposure the models read. **Declared in one place because moving it
+# moves every result**, and until 2026-10-07 the answer was INTERPOLATED only because the
+# fitted panel did not exist yet. The regressions ask for this rather than naming a variant
+# themselves, so the two cannot drift.
+MODEL_EXPOSURE_VARIANT = FITTED_PANDEMIC_PATCHED_VARIANT
+
+# The two panels, each as its unpatched construction and its patched one. **Declared as a
+# pair rather than inferred**, because the figures draw one against the other — a solid
+# line for the construction and a dashed one for the patch over it — and a module that
+# guessed which of the four variants in front of it was the patched one would guess wrong
+# the day a third panel appears.
+EXPOSURE_VARIANT_PAIRS: tuple[tuple[str, str], ...] = (
+    (INTERPOLATED_VARIANT, PANDEMIC_PATCHED_VARIANT),
+    (FITTED_VARIANT, FITTED_PANDEMIC_PATCHED_VARIANT),
+)
+
+
+def variant_pair_of(present: set[str] | frozenset[str]) -> tuple[str, str]:
+    """Which pair a table belongs to, from the variants it actually carries.
+
+    A table holds one pair: the interpolation route writes D40's and the reconstruction
+    route writes D60's, and neither writes into the other's file. The patched half may be
+    absent — a run with no community mobility reports to read produces the unpatched panel
+    alone — so the pair is identified by its base.
+    """
+    for base, patched in EXPOSURE_VARIANT_PAIRS:
+        if base in present:
+            return base, patched
+    raise ValueError(
+        f"the table carries {', '.join(sorted(present)) or 'no variant'}, and none of them "
+        f"is the base of a declared pair ({', '.join(base for base, _ in EXPOSURE_VARIANT_PAIRS)}). "
+        "A panel has to say which construction it is before anything can draw it"
+    )
 
 # What each row was multiplied by. Exactly 1.0 everywhere except the patched
 # years of the patched variant, so the column is also the record of what the
@@ -5648,6 +5749,363 @@ PANDEMIC_PATCH_FACTOR_COL = "PANDEMIC_PATCH_FACTOR"
 # the panel. It carries both casualty datasets: the declared one and the
 # sensitivity.
 PANDEMIC_PATCH_FILENAME = f"{REFERENCE_PREFIX}__pandemic_patch_factors"
+
+
+# ---------------------------------------------------------------------------
+# The margins the fitting is given: D54 and D60
+# ---------------------------------------------------------------------------
+# Iterative proportional fitting needs, for a year with no survey, how many trips
+# each place generates and how many it attracts. D60 settles that those totals are
+# carried across the window **at unit level**, because the five surveys share no
+# zone system and thirty units are the only thing they are all expressible in.
+#
+# **They are the same quantity the exposure table already holds.** The
+# apportionment computes TRIPS_AT_ORIGIN and TRIPS_AT_DESTINATION per unit for
+# every survey — the whole of a trip counted in the unit its origin or destination
+# zone falls in — so nothing new is measured here. What is new is carrying them
+# across the twelve years no survey reached.
+#
+# **On the day-of-type basis and not the average-day one.** The margins below are
+# divided by DAY_TYPE_UNIVERSE_SHARE for the same reason D38 forces every
+# cross-year comparison onto that basis: 2023 pooled the three kinds of day into
+# one sample and its average-day figures are 23 % smaller than 2019's for that
+# reason alone. An interpolation is a cross-year comparison, so it runs on the
+# comparable column. The seeding survey's own share puts the margin back on the
+# scale of its matrix at the moment of fitting, where the survey is known, and
+# cancels exactly.
+MARGIN_AT_ORIGIN_COL = "TRIPS_PER_DAY_OF_TYPE_AT_ORIGIN"
+MARGIN_AT_DESTINATION_COL = "TRIPS_PER_DAY_OF_TYPE_AT_DESTINATION"
+MARGIN_AT_ORIGIN_RATE_COL = "TRIPS_AT_ORIGIN_PER_INHABITANT"
+MARGIN_AT_DESTINATION_RATE_COL = "TRIPS_AT_DESTINATION_PER_INHABITANT"
+
+# The two margins of one survey disagree about the grand total, by between 0.016 %
+# and 0.881 % measured over run_20260911_000911, and a matrix with both of them
+# does not exist. The disagreement is not an error in either: a trip whose origin
+# falls in a unit and whose destination falls in Soacha or in a boundary sliver
+# enters one margin and not the other, and the two lose different amounts that way.
+#
+# **Each margin is scaled to the mean of the two totals**, so neither is preferred
+# and neither moves by more than half the disagreement. What each row was
+# multiplied by is kept, exactly as PANDEMIC_PATCH_FACTOR is: a reader recovers the
+# interpolated margin by dividing, and the size of the correction is visible
+# without opening any code.
+#
+# **A survey year is not reconciled**, because a survey year is not fitted. Its
+# matrix goes through the apportionment as it always has, and D60's identity check
+# rests on that. Both factors are exactly 1.0 there, which is also how a reader
+# tells the measured years from the constructed ones in this table.
+MARGIN_AT_ORIGIN_RECONCILIATION_COL = "MARGIN_AT_ORIGIN_RECONCILIATION_FACTOR"
+MARGIN_AT_DESTINATION_RECONCILIATION_COL = "MARGIN_AT_DESTINATION_RECONCILIATION_FACTOR"
+
+# How large a reconciliation is worth a warning. Not a tolerance the run fails on:
+# the size of the correction is a property of interpolating per unit, so it grows
+# with how unevenly the units moved between two surveys and there is no value of it
+# that proves anything wrong. Measured over run_20260911_000911 the worst is 1.68 %
+# — the Saturday motorcycle of 2013, between the 2011 and 2015 surveys — and the
+# median group is 0.10 %. Two per cent therefore sits just above what the current
+# data produce, which is where a threshold is useful: it says nothing today and
+# speaks the day a new survey or a new unit makes the spread wider.
+#
+# **The limit guards the whole table and the fitting sees only part of it.** The 1.68 %
+# that sets it is a Saturday, and `RECONSTRUCTION_DAY_TYPES` leaves the Saturday out of
+# the reconstruction; the worst correction among the weekday rows, which are the only
+# ones the fitting is given, is 0.22 %. The limit stays where the table's own worst case
+# puts it rather than being tightened to the weekday's, because what it watches is the
+# table — a Saturday correction that grew to 5 % would still be telling us something
+# about how the interpolation behaves.
+MARGIN_RECONCILIATION_LIMIT = 0.02
+
+# Which surveys seed a year with none. **The two that frame it, weighted linearly in the
+# year**, and per kind of day because the Saturday has surveys at 2011, 2015 and 2023 and
+# the Sunday only at 2023, so "the surveys around this year" is not the same question for
+# the three. `reconstruction.seeding_blend` is where it is computed.
+#
+# **There is no constant here because the rule leaves nothing to declare, and that is the
+# point of D64.** The nearest survey alone had a tie at 2013, 2017 and 2021, and the tie
+# had to be settled by a declared `SEED_ON_TIE` whose two answers were not obviously
+# ranked: the later survey has the finer zoning — 945 ZAT in 2011 and 2015, 1,141 in 2019,
+# 1,215 in 2023 — and the earlier one has fewer cells that are zero only because the
+# sample missed them. A linear weight makes those three years half of each, which is not a
+# compromise between the two answers but the removal of the question: a year exactly
+# between two surveys is exactly between them.
+#
+# What the nearest-survey rule cost is measured in `tools/costura_de_la_semilla.py`: the
+# shape of the matrix changed in one step at 2014, 2018 and 2022, and because a unit's
+# exposure counts the travel crossing it as well as the travel beginning there, the panel
+# jumped 2.55 times its own year-to-year change at those three years.
+
+# What happens to the part of a survey's margin that falls outside the thirty units.
+# It is not a rounding: 92 of 2015's 945 zones reach no unit at all — the ring of
+# municipios the survey covers and the study does not — and they carry between 8.5 %
+# (the weekday car) and 27.7 % (the Saturday bicycle) of that survey's origin margin.
+#
+# **A trip from Soacha into Bogotá has no unit margin to be scaled by**, because the
+# study measures nothing about how Soacha's travel grew. The two answers are both
+# assumptions and neither is free:
+#
+#   HELD  keeps it at the seeding survey's level. It says the ring did not change,
+#         which also makes the ring a shrinking share of a growing matrix.
+#   CITY  scales it by the ratio of the thirty units' total margin to the seed's,
+#         so the ring grows exactly as Bogotá does.
+#
+# **Decided on 2026-10-07: CITY**, and the reasoning is worth keeping because the
+# obvious-looking answer is the wrong one. HELD reads as the neutral option — it adds no
+# growth anybody measured — and it is not neutral at all: between 2011 and 2015 Bogotá's
+# weekday cycling grew by a factor of 1.94 and its motorcycling by 2.64, and HELD asserts
+# that the ring's did not grow at all over the same four years. That is a claim already
+# known to be false, not the absence of a claim. CITY's claim, that a border region with
+# no measurement of its own moved with the city, is unverified and not implausible.
+#
+# A property settles it. **Under CITY the ring's share of the matrix is constant within a
+# segment, by construction**, because the inside is scaled by the units' factors and the
+# outside by their aggregate. Under HELD that share drifts by the full city factor — for
+# cycling in 2011-2015 the ring would fall from a quarter of the matrix to an eighth and
+# jump back when the next survey measures it again. HELD puts a trend into a quantity
+# nothing measured; CITY does not.
+#
+# What the choice costs is small where it is read: over the 52 cells the regressions take
+# — thirteen years by four modes of the weekday — the two rules differ by a median of
+# 0.31 % of the margin and by 6.82 % at worst, the 2013 bicycle, and by exactly nothing in
+# the three survey years inside the window.
+OUTSIDE_MARGIN_RULE = "CITY"
+OUTSIDE_MARGIN_RULES = ("HELD", "CITY")
+
+# Which kinds of day the reconstruction is built for. **Derived from the model's own
+# constant and not written out**, so that the day the models read and the day the fitting
+# builds cannot drift apart.
+#
+# The surveys distinguish up to three kinds of day and the pipeline measures all of them
+# on purpose: a measured Saturday is an observation, and dropping it while reading the
+# file would have lost what the file holds. Nothing downstream reads more than the
+# weekday, though — `MODEL_EXPOSURE_DAY_TYPE`, because it is the only kind every survey
+# measured — so building the other two through a stage this expensive would be work on
+# cells no model, figure or table will read, and worse, it would force decisions of method
+# on them. The outside-margin rule above is exactly that: its worst case over all three
+# day types is a Sunday, and the Sunday has one anchor for the whole window.
+#
+# **This scopes what is constructed and not what is measured.** The measured exposure
+# table and D40's panel keep all three kinds of day and nothing about them changes.
+#
+# The consequence has to be stated rather than discovered: **the fitted variant of the
+# panel carries the weekday alone while D40's carries three**, so the two are not
+# comparable on the Saturday or the Sunday. Nothing compares them there, and a ragged
+# table with no sentence explaining it is a defect anyway.
+RECONSTRUCTION_DAY_TYPES: tuple[str, ...] = (MODEL_EXPOSURE_DAY_TYPE,)
+
+# ---------------------------------------------------------------------------
+# The floor: what to do when no matrix has the margins a year asks for
+# ---------------------------------------------------------------------------
+# **Decided on 2026-10-07.** Twenty-five of the fifty-two blocks the reconstruction fits
+# have margins no matrix with the seed's support admits — proved by maximum flow, 1,966
+# trips a day of 899,651 in the worst of them — and the iteration does not fail on those,
+# it runs to its limit and returns a matrix that misses its margins. The aggregate error
+# per unit stays under 0.8 %, and one unit alone reaches 55.7 %, which is the error that
+# matters because a cross-section reads exactly the variation between units.
+#
+# **Where the infeasibility comes from.** The seeds are between 0.5 % and 1.4 % dense. At
+# that density a zero almost never says that nobody travels between two zones; it says
+# that a sample of a few thousand households saw no such trip on its reference day.
+# Keeping every zero is keeping sampling noise as though it were geography, and that is
+# what makes the margins unreachable.
+#
+# **The floor replaces each zero with this fraction of the block's mean occupied cell**,
+# which completes the support and makes any margin reachable. At 1e-6 that is about
+# three ten-thousandths of a trip a day, it invents 0.017 % of the travel, and it takes
+# the worst unit's error from 55.7 % to zero. The anteproyecto's own argument supports it
+# rather than resisting it: with a uniform seed iterative proportional fitting reduces to
+# the maximum-entropy trip distribution model, which is the reference it cites from
+# statistical mechanics, so a floored seed is the survey plus epsilon times uniform — a
+# mixture of the two things that document already names, overwhelmingly the survey.
+#
+# **What it costs, and the thesis has to say it.** It stops being true that the fitting
+# cannot invent travel the survey never saw. It invents 0.017 % of it.
+RECONSTRUCTION_SEED_FLOOR = 1e-6
+
+# **The floor is applied only to the blocks that need it**, which is not an optimisation.
+# A floored seed carries slightly more travel than the margins ask for, so fitting it
+# scales everything down a little and the result is no longer exactly the seed — and
+# D60's identity check, the one that decides whether any of this is right, is that a
+# survey year fitted against its own margins comes back as itself. Trying the seed as it
+# is first costs one cheap fitting on a sparse matrix and keeps that check exact, on the
+# survey years and on every constructed year whose margins happen to be reachable.
+RECONSTRUCTION_FLOOR_ONLY_WHEN_NEEDED = True
+
+# A floored seed has no zeros, so the fitted matrix is dense: 999 zones make 998,001
+# cells, and `apportion_survey` would build a desire line for every one of them. The
+# cells below this many trips a day are dropped and the matrix is fitted again on what
+# is left.
+#
+# **A hundredth of a trip a day is chosen because of what survives it**, measured rather
+# than picked: the pruned support comes out between 1.0 and 2.2 times the seed's own cell
+# count — thousands of cells, not hundreds of thousands — it keeps 99.96 % to 99.99 % of
+# the fitted travel, and it is feasible, so the second fitting reaches its tolerance
+# exactly. Dropping those cells costs between 0.0086 % and 0.043 % of the margins, which
+# is three orders of magnitude below the 55.7 % the floor was introduced to remove.
+RECONSTRUCTION_PRUNE_BELOW = 0.01
+
+# The first of the two fittings exists only to find out which cells matter, so it does
+# not need precision: 1e-3 reaches that in a few hundred passes where the real tolerance
+# would take tens of thousands, and the cells it identifies are the same either way —
+# measured, 9,637 against 9,637 and 5,277 against 5,279. The second fitting, on the
+# pruned support, is the one held to `fitting.DEFAULT_TOLERANCE`.
+RECONSTRUCTION_DISCOVERY_TOLERANCE = 1e-3
+
+# How many trips a cell the floor opened should be credited with as walking of fifteen
+# minutes or more. The cell was empty in both columns, so the survey says nothing about
+# it, and the block's own share of long walking is the only estimate available. Zero
+# would understate the pedestrian exposure of exactly the cells the reconstruction added,
+# and the pedestrian is the mode whose series is read on that column (D39). It changes
+# nothing for the three motorised modes, whose two columns are one number written twice.
+RECONSTRUCTION_SHORT_WALK_FROM_BLOCK = True
+
+# The two tables the reconstruction exports. The panel is `analysis` because it is what
+# the models and the dashboard join to; the block record is `reference` because nothing
+# joins to it and what it is for is to be read.
+FITTED_EXPOSURE_FILENAME = f"{ANALYSIS_PREFIX}__fitted_exposure_by_unit"
+INTERPOLATED_EXPOSURE_FILENAME = f"{ANALYSIS_PREFIX}__exposure_by_unit_interpolated"
+
+# Which table each variant of the exposure lives in. **Declared here so that
+# `MODEL_EXPOSURE_VARIANT` is enough to find the data**: without it the variant and the
+# filename are two things to keep in step, and the regressions had the filename written
+# into themselves as a literal. Two routes write two tables and each holds its own pair of
+# variants; nothing writes into the other's.
+EXPOSURE_TABLE_BY_VARIANT: dict[str, str] = {
+    INTERPOLATED_VARIANT: INTERPOLATED_EXPOSURE_FILENAME,
+    PANDEMIC_PATCHED_VARIANT: INTERPOLATED_EXPOSURE_FILENAME,
+    FITTED_VARIANT: FITTED_EXPOSURE_FILENAME,
+    FITTED_PANDEMIC_PATCHED_VARIANT: FITTED_EXPOSURE_FILENAME,
+}
+
+
+def model_exposure_table() -> str:
+    """The table the models read, derived from the variant they read rather than named.
+
+    One function instead of a constant in `regressions`, because the thing that decides is
+    `MODEL_EXPOSURE_VARIANT` and everything else follows from it. Changing which
+    construction the study reports is then one line in one place, which it has to be: the
+    answer moved on 2026-10-07 and will move again if the fitting's assumptions are judged
+    worse than D40's.
+    """
+    missing = sorted(set(EXPOSURE_VARIANTS) - set(EXPOSURE_TABLE_BY_VARIANT))
+    if missing:
+        raise ValueError(
+            f"{', '.join(missing)} is a declared exposure variant with no table declared "
+            "for it, so nothing can find its data. Every variant lives in exactly one "
+            "table and the mapping says which"
+        )
+    return EXPOSURE_TABLE_BY_VARIANT[MODEL_EXPOSURE_VARIANT]
+FITTED_BLOCKS_FILENAME = f"{REFERENCE_PREFIX}__fitted_blocks"
+
+# How far a measured year of the fitted panel may sit from the measured exposure table.
+# **This is D60's identity check and the number is a floating-point budget and not a
+# tolerance of method**: a year that is its own seed is not fitted and not disaggregated,
+# so the only thing between the two tables is arithmetic that should be exact. Measured,
+# the worst of the three survey years inside the window comes out at 9e-11 trips a day on
+# margins of millions, which is the round trip through a division and a multiplication.
+# A tenth of a trip a day leaves three orders of headroom and would still catch any
+# change of substance.
+FITTED_IDENTITY_TOLERANCE = 0.1
+
+# The most travel the floor may invent before the run calls it a failure rather than a
+# cost. Measured at `RECONSTRUCTION_SEED_FLOOR = 1e-6` it is 0.0109 % of the travel in
+# the fitted blocks, so a tenth of a per cent leaves an order of magnitude of headroom
+# and still refuses anything that would have to be argued for. Crossing it means the
+# seeds have grown sparser or the floor was raised, and both are decisions for a person.
+FITTED_INVENTED_LIMIT = 0.001
+
+# How much further from the margins a blended year may sit than the seeding survey that
+# was already furthest. **Not how far the blend sits from the margins**, which is a
+# property of the disaggregation and not of the blend: no reconstructed year reproduces
+# its margins exactly, because the margins are reconciled inside each connected piece of
+# the seed's support before the fitting runs.
+#
+# A convex combination cannot land outside the interval its components span, so this is a
+# floating-point budget and nothing else: |Σ wᵢ(xᵢ − m)| ≤ maxᵢ |xᵢ − m| exactly. It is
+# kept tight on purpose — the inequality is what would break if a unit reached by one
+# survey and not the other were aligned wrongly, and that is the failure this watches for.
+# D64.
+FITTED_BLEND_MARGIN_TOLERANCE = 1e-9
+
+
+UNIT_MARGINS_FILENAME = f"{REFERENCE_PREFIX}__unit_margins"
+
+UNIT_MARGIN_QUANTITIES: tuple[SurveyExposureQuantity, ...] = (
+    SurveyExposureQuantity(
+        name=MARGIN_AT_ORIGIN_COL,
+        unit="trips per day",
+        means="how many trips of this actor type and day type begin in this unit, on one day "
+              "of that kind: TRIPS_PER_AVERAGE_DAY_AT_ORIGIN of the measured table divided by "
+              "DAY_TYPE_UNIVERSE_SHARE where the year is a survey year, and carried across the "
+              "window on its own per-inhabitant rate everywhere else. This is a row margin for "
+              "the fitting and NOT an exposure: it owes nothing to the geometry between the "
+              "endpoints, so a unit that only has travel crossing it has a margin of zero and "
+              "an exposure that is not zero. See D60",
+    ),
+    SurveyExposureQuantity(
+        name=MARGIN_AT_DESTINATION_COL,
+        unit="trips per day",
+        means="the same for the trips that end in this unit, which is the column margin. "
+              "Carried on its own rate and never derived from the origin margin, because a "
+              "unit that generates travel and one that attracts it are different units — the "
+              "centre attracts on a weekday what the periphery generates. Per inhabitant like "
+              "the other, which is what the anteproyecto declares and is a cruder assumption "
+              "here than there: residents are what generates a trip, and what attracts one is "
+              "employment and services the panel does not carry. Stated rather than hidden",
+    ),
+    SurveyExposureQuantity(
+        name=MARGIN_AT_ORIGIN_RATE_COL,
+        unit="trips per day per inhabitant",
+        means="the origin margin over the resident population of the same unit and year. It is "
+              "what the interpolation actually runs on, for D40's reason: population is known "
+              "every year and travel per person four or five times, so interpolating the rate "
+              "uses each source for what it is good for",
+    ),
+    SurveyExposureQuantity(
+        name=MARGIN_AT_DESTINATION_RATE_COL,
+        unit="trips per day per inhabitant",
+        means="the same for the destination margin",
+    ),
+    SurveyExposureQuantity(
+        name=MARGIN_AT_ORIGIN_RECONCILIATION_COL,
+        unit="factor",
+        means="what the origin margin of this row was multiplied by so that the two margins of "
+              "its year, mode and day type agree about the grand total. Exactly 1.0 on every "
+              "survey year, because a survey year is not reconciled and not fitted",
+    ),
+    SurveyExposureQuantity(
+        name=MARGIN_AT_DESTINATION_RECONCILIATION_COL,
+        unit="factor",
+        means="the same for the destination margin. The two are reciprocal about the mean of "
+              "the totals, so one above 1.0 always sits beside one below it",
+    ),
+)
+
+
+def unit_margin_columns() -> tuple[str, ...]:
+    """The unit margins table's columns, in order.
+
+    The same identity as the interpolated exposure table, spelled and valued the
+    same way, because this table has to be readable beside it: the question a
+    reader brings here is whether a unit's margin moved the way its exposure did.
+
+    No `EXPOSURE_VARIANT`. The margins are an input to the construction of a
+    variant and not one of its outputs, so a row of this table is one answer and
+    never two. What a row says about itself is `EXPOSURE_PROVENANCE`, which is the
+    same three words it means in the interpolated panel.
+    """
+    return (
+        SCALE_COL,
+        AREA_CODE_COL,
+        AREA_NAME_COL,
+        YEAR_COL,
+        ACTOR_TYPE_COL,
+        DAY_TYPE_COL,
+        POPULATION_COL,
+        *(quantity.name for quantity in UNIT_MARGIN_QUANTITIES),
+        EXPOSURE_PROVENANCE_COL,
+        YEARS_TO_NEAREST_SURVEY_COL,
+        SAMPLE_SUPPORT_COL,
+    )
 
 
 def exposure_diagnostic_columns() -> tuple[str, ...]:
@@ -5756,6 +6214,23 @@ INTERPOLATION_FIGURE_GROUPS: dict[str, str] = {
     "volatility": "05_volatility",
 }
 
+# The reconstruction's own figures, beside the interpolation's rather than inside them:
+# they describe a different panel and a reader opening one folder should get one answer.
+# Numbered for the same reason the interpolation's are — the order is the order a reader
+# meets them in, and it runs from what changed, through where, to what it cost.
+RECONSTRUCTION_FIGURES_SUBDIR = "reconstruction"
+RECONSTRUCTION_FIGURE_GROUPS: dict[str, str] = {
+    "comparison": "00_comparacion",
+    "map": "01_mapa",
+    "fitting": "02_ajuste",
+}
+
+# Where `interpolation_figures` writes when it is pointed at the fitted panel. A folder of
+# its own and not the interpolation's, because the two sets are the same six groups of the
+# same six filenames describing two different constructions, and one folder would have
+# them overwrite each other silently.
+RECONSTRUCTION_PANEL_FIGURES_SUBDIR = "reconstruction_panel"
+
 # One colour per kind of cell, declared once so that the provenance means the
 # same thing in a series, in a strip and in a legend. Measured is nearly black
 # because it is the only thing in the panel that was observed; held is grey
@@ -5766,6 +6241,9 @@ EXPOSURE_PROVENANCE_COLORS: dict[str, str] = {
     INTERPOLATED_EXPOSURE: "#1b6ca8",
     HELD_EXPOSURE: "#9e9e9e",
     PATCHED_FROM_MOBILITY_EXPOSURE: "#d95f02",
+    # The second construction, and a second colour family: blue is the interpolated
+    # rate, so the fitted matrix gets a green that reads as "built, differently".
+    FITTED_EXPOSURE: "#2e7d4f",
 }
 
 # What each of them is called in a figure. The figures are read by my advisor and
@@ -5775,11 +6253,14 @@ EXPOSURE_PROVENANCE_LABELS_ES: dict[str, str] = {
     INTERPOLATED_EXPOSURE: "Interpolado",
     HELD_EXPOSURE: "Sostenido",
     PATCHED_FROM_MOBILITY_EXPOSURE: "Parcheado con movilidad externa",
+    FITTED_EXPOSURE: "Matriz ajustada",
 }
 
 EXPOSURE_VARIANT_LABELS_ES: dict[str, str] = {
     INTERPOLATED_VARIANT: "Sin parche (D40)",
     PANDEMIC_PATCHED_VARIANT: "Con parche de pandemia (D42)",
+    FITTED_VARIANT: "Matriz ajustada (D60)",
+    FITTED_PANDEMIC_PATCHED_VARIANT: "Matriz ajustada con parche (D63)",
 }
 
 # The diverging ramp for a figure whose centre is one: an index against a

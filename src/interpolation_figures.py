@@ -86,7 +86,7 @@ def _slug(value: str) -> str:
     return value.lower().replace(" ", "_")
 
 
-def _stamp(fig, log: RunLog) -> None:
+def stamp(fig, log: RunLog) -> None:
     """The run this figure was drawn from, on the figure itself.
 
     Every figure quoted in this project carries the run it came from. A figure
@@ -119,13 +119,14 @@ def review_variant(table: pd.DataFrame) -> str:
     The patched one where it exists, because it is the panel a model would be
     fitted on. A run with no casualty matrix to read has only the unpatched one,
     and then these figures describe that.
+
+    **Which pair is asked of `config` and not written here**, because since D62 this module
+    draws two panels: D40's interpolated one and D60's fitted one, each with its own
+    unpatched and patched halves.
     """
     variants = _variants(table)
-    return (
-        config.PANDEMIC_PATCHED_VARIANT
-        if config.PANDEMIC_PATCHED_VARIANT in variants
-        else config.INTERPOLATED_VARIANT
-    )
+    base, patched = config.variant_pair_of(set(variants))
+    return patched if patched in variants else base
 
 
 def base_year_of(provenance: pd.Series) -> int:
@@ -270,14 +271,15 @@ def _draw_series(
     rests on five surveys and the panel has rows for four.
     """
     variants = _variants(table)
-    provenance = _provenance_by_year(table, config.INTERPOLATED_VARIANT, actor, day_type)
+    unpatched_variant, patched_variant = config.variant_pair_of(set(variants))
+    provenance = _provenance_by_year(table, unpatched_variant, actor, day_type)
     _shade_held(axis, provenance)
 
-    base = _city_series(table, config.INTERPOLATED_VARIANT, actor, day_type, column) / scale
+    base = _city_series(table, unpatched_variant, actor, day_type, column) / scale
     patched = None
-    if config.PANDEMIC_PATCHED_VARIANT in variants:
+    if patched_variant in variants:
         patched = _city_series(
-            table, config.PANDEMIC_PATCHED_VARIANT, actor, day_type, column
+            table, patched_variant, actor, day_type, column
         ) / scale
         differs = [year for year in patched.index if not np.isclose(patched[year], base[year])]
         if differs:
@@ -286,14 +288,20 @@ def _draw_series(
                 span, patched.loc[span].to_numpy(),
                 color=config.EXPOSURE_PROVENANCE_COLORS[config.PATCHED_FROM_MOBILITY_EXPOSURE],
                 linewidth=2.6, zorder=2,
-                label=config.EXPOSURE_VARIANT_LABELS_ES[config.PANDEMIC_PATCHED_VARIANT],
+                label=config.EXPOSURE_VARIANT_LABELS_ES[patched_variant],
             )
 
+    # The colour follows the construction the line is of: the interpolated rate and the
+    # fitted matrix are two constructions and a reader who sees both panels should not have
+    # to check the legend to tell which one is in front of them.
     axis.plot(
         base.index, base.to_numpy(),
-        color=config.EXPOSURE_PROVENANCE_COLORS[config.INTERPOLATED_EXPOSURE],
+        color=config.EXPOSURE_PROVENANCE_COLORS[
+            config.FITTED_EXPOSURE if unpatched_variant == config.FITTED_VARIANT
+            else config.INTERPOLATED_EXPOSURE
+        ],
         linewidth=1.6, zorder=3,
-        label=config.EXPOSURE_VARIANT_LABELS_ES[config.INTERPOLATED_VARIANT],
+        label=config.EXPOSURE_VARIANT_LABELS_ES[unpatched_variant],
     )
 
     # The anchor the panel has no row for, and the segment the interpolation
@@ -477,7 +485,7 @@ def _summary_sheet(
         fontsize=11,
     )
     fig.tight_layout(rect=(0, 0.06, 1, 0.92))
-    _stamp(fig, log)
+    stamp(fig, log)
     fig.savefig(path, dpi=config.FIGURE_DPI)
     plt.close(fig)
 
@@ -534,7 +542,7 @@ def _provenance_sheet(table: pd.DataFrame, path: Path, log: RunLog) -> None:
         fontsize=11,
     )
     fig.tight_layout(rect=(0, 0.08, 1, 0.90))
-    _stamp(fig, log)
+    stamp(fig, log)
     fig.savefig(path, dpi=config.FIGURE_DPI)
     plt.close(fig)
 
@@ -579,13 +587,25 @@ def _city_figure(
 
     handles, labels = top.get_legend_handles_labels()
     top.legend(handles, labels, fontsize=8, frameon=False, loc="best")
+    # **What is interpolated is not the same thing in the two panels**, and the subtitle has
+    # to say which. D40 interpolates the exposure itself as a rate; D60 interpolates the
+    # margins of a matrix and fits the matrix to them, so the rate below is what came out of
+    # the apportionment rather than what was carried across the years. One sentence for both
+    # would have been true of one panel and quietly false of the other, and that is the cost
+    # a shared module has to be watched for.
+    unpatched_variant, _ = config.variant_pair_of(set(_variants(table)))
+    what = (
+        "abajo la tasa; lo que se interpola entre encuestas son los márgenes de la matriz"
+        if unpatched_variant == config.FITTED_VARIANT
+        else "abajo la tasa que es lo que en realidad se interpola"
+    )
     fig.suptitle(
         f"{config.ROAD_USER_LABELS_ES[actor]} — {config.DAY_TYPE_LABELS_ES[day_type]}, "
-        "30 UPL\narriba el nivel, abajo la tasa que es lo que en realidad se interpola",
+        f"30 UPL\narriba el nivel, {what}",
         fontsize=11,
     )
     fig.tight_layout(rect=(0, 0, 1, 0.90))
-    _stamp(fig, log)
+    stamp(fig, log)
     fig.savefig(path, dpi=config.FIGURE_DPI)
     plt.close(fig)
 
@@ -620,7 +640,8 @@ def _unit_series_sheet(
         .drop_duplicates()
         .sort_values(config.AREA_CODE_COL)
     )
-    provenance = _provenance_by_year(table, config.INTERPOLATED_VARIANT, actor, day_type)
+    unpatched_variant, patched_variant = config.variant_pair_of(set(_variants(table)))
+    provenance = _provenance_by_year(table, unpatched_variant, actor, day_type)
     base_year = base_year_of(provenance)
     anchors = [year for year, value in provenance.items() if value == config.MEASURED_EXPOSURE]
     outside = _outside_the_window(measured_table, provenance.index, actor, day_type)
@@ -643,13 +664,13 @@ def _unit_series_sheet(
                 SERIES_COLUMN
             ].sort_index()
             indexed[variant] = 100 * series / series[base_year]
-        base = indexed[config.INTERPOLATED_VARIANT]
+        base = indexed[unpatched_variant]
 
         # The patched line is drawn ONLY over the years it changes, plus one either
         # side so the segment joins the curve. Drawn over the whole window it would
         # sit under the blue for fifteen of the eighteen years and show as a halo,
         # and what this sheet is read for is the trajectory D40 builds.
-        after = indexed.get(config.PANDEMIC_PATCHED_VARIANT)
+        after = indexed.get(patched_variant)
         if after is not None:
             differs = [
                 year for year in after.index if not np.isclose(after[year], base[year])
@@ -676,7 +697,7 @@ def _unit_series_sheet(
                 color=config.EXPOSURE_PROVENANCE_COLORS[config.MEASURED_EXPOSURE], zorder=4,
             )
             for year in outside_years:
-                block = _block(table, config.INTERPOLATED_VARIANT, actor, day_type)
+                block = _block(table, unpatched_variant, actor, day_type)
                 anchor_value = measured_table[
                     (measured_table[config.AREA_CODE_COL] == code)
                     & (measured_table[config.ACTOR_TYPE_COL] == actor)
@@ -727,12 +748,15 @@ def _unit_series_sheet(
         fontsize=11,
     )
     fig.tight_layout(rect=(0, 0, 1, 0.92))
-    _stamp(fig, log)
+    stamp(fig, log)
     fig.savefig(path, dpi=config.FIGURE_DPI)
     plt.close(fig)
 
 
-def _draw_heatmap(
+# Public, with `stamp` and `unit_label`, because `reconstruction_figures` draws the
+# same kind of block for a different panel and a second implementation of a ramp is a
+# second place for two figures of the same study to stop meaning the same thing.
+def draw_heatmap(
     axis,
     matrix: pd.DataFrame,
     *,
@@ -811,7 +835,7 @@ def _draw_heatmap(
     return image, clipped
 
 
-def _unit_label(code: str, name: str) -> str:
+def unit_label(code: str, name: str) -> str:
     return f"{code} {name}"
 
 
@@ -872,10 +896,10 @@ def _unit_heatmap(
 
     indexed = wide.div(wide[base_year], axis=0)
     indexed = indexed.loc[wide[wide.columns[-1]].sort_values(ascending=False).index]
-    indexed.index = [_unit_label(code, name) for code, name in indexed.index]
+    indexed.index = [unit_label(code, name) for code, name in indexed.index]
 
     fig, axis = plt.subplots(figsize=(10, 8))
-    image, clipped = _draw_heatmap(axis, indexed, centre=1.0, mark_columns=tuple(anchors))
+    image, clipped = draw_heatmap(axis, indexed, centre=1.0, mark_columns=tuple(anchors))
     bar = fig.colorbar(image, ax=axis, fraction=0.03, pad=0.02, extend="both")
     bar.set_label(f"contra el {base_year} de la misma unidad", fontsize=8)
     bar.ax.tick_params(labelsize=7)
@@ -895,7 +919,7 @@ def _unit_heatmap(
         fontsize=11,
     )
     fig.tight_layout(rect=(0, 0, 1, 0.90))
-    _stamp(fig, log)
+    stamp(fig, log)
     fig.savefig(path, dpi=config.FIGURE_DPI)
     plt.close(fig)
 
@@ -1015,10 +1039,9 @@ def _pandemic_before_after(table: pd.DataFrame, path: Path, log: RunLog) -> None
     modes = _modes(table)
     styles = dict(zip(modes, ("-", "--", "-.", ":")))
 
+    unpatched_variant, patched_variant = config.variant_pair_of(set(_variants(table)))
     fig, (left, right) = plt.subplots(1, 2, figsize=(11, 4.6), sharey=True)
-    for axis, variant in zip(
-        (left, right), (config.INTERPOLATED_VARIANT, config.PANDEMIC_PATCHED_VARIANT)
-    ):
+    for axis, variant in zip((left, right), (unpatched_variant, patched_variant)):
         for actor in modes:
             series = _city_series(table, variant, actor, day_type)
             if not set(span) <= set(series.index):
@@ -1028,7 +1051,7 @@ def _pandemic_before_after(table: pd.DataFrame, path: Path, log: RunLog) -> None
                 span, indexed.to_numpy(), linestyle=styles[actor], linewidth=1.8,
                 color=(
                     config.EXPOSURE_PROVENANCE_COLORS[config.PATCHED_FROM_MOBILITY_EXPOSURE]
-                    if variant == config.PANDEMIC_PATCHED_VARIANT
+                    if variant == patched_variant
                     else config.EXPOSURE_PROVENANCE_COLORS[config.INTERPOLATED_EXPOSURE]
                 ),
                 label=config.ROAD_USER_LABELS_ES[actor],
@@ -1049,7 +1072,7 @@ def _pandemic_before_after(table: pd.DataFrame, path: Path, log: RunLog) -> None
         fontsize=11,
     )
     fig.tight_layout(rect=(0, 0, 1, 0.88))
-    _stamp(fig, log)
+    stamp(fig, log)
     fig.savefig(path, dpi=config.FIGURE_DPI)
     plt.close(fig)
 
@@ -1112,7 +1135,7 @@ def _pandemic_dispersion(diagnostic: pd.DataFrame, patch, path: Path, log: RunLo
         fontsize=11,
     )
     fig.tight_layout(rect=(0, 0, 1, 0.88))
-    _stamp(fig, log)
+    stamp(fig, log)
     fig.savefig(path, dpi=config.FIGURE_DPI)
     plt.close(fig)
 
@@ -1180,7 +1203,7 @@ def _diagnostic_city(diagnostic: pd.DataFrame, path: Path, log: RunLog) -> None:
         fontsize=11,
     )
     fig.tight_layout(rect=(0, 0, 1, 0.89))
-    _stamp(fig, log)
+    stamp(fig, log)
     fig.savefig(path, dpi=config.FIGURE_DPI)
     plt.close(fig)
 
@@ -1201,7 +1224,7 @@ def _diagnostic_heatmap(
         config.AFFECTED_PARTIES_COL
     ].sum().sort_values(ascending=False).index
     matrix = matrix.loc[order]
-    matrix.index = [_unit_label(code, name) for code, name in matrix.index]
+    matrix.index = [unit_label(code, name) for code, name in matrix.index]
     anchors = tuple(sorted(
         rows.loc[
             rows[config.EXPOSURE_PROVENANCE_COL] == config.MEASURED_EXPOSURE, config.YEAR_COL
@@ -1209,7 +1232,7 @@ def _diagnostic_heatmap(
     ))
 
     fig, axis = plt.subplots(figsize=(10, 8))
-    image, clipped = _draw_heatmap(axis, matrix, centre=1.0, mark_columns=anchors)
+    image, clipped = draw_heatmap(axis, matrix, centre=1.0, mark_columns=anchors)
     bar = fig.colorbar(image, ax=axis, fraction=0.03, pad=0.02, extend="both")
     bar.set_label("implicada por el riesgo ÷ la del panel", fontsize=8)
     bar.ax.tick_params(labelsize=7)
@@ -1221,7 +1244,7 @@ def _diagnostic_heatmap(
         fontsize=11,
     )
     fig.tight_layout(rect=(0, 0, 1, 0.93))
-    _stamp(fig, log)
+    stamp(fig, log)
     fig.savefig(path, dpi=config.FIGURE_DPI)
     plt.close(fig)
 
@@ -1242,7 +1265,7 @@ def _volatility_heatmap(steps: pd.DataFrame, path: Path, log: RunLog) -> None:
     """
     modes = [actor for actor in config.ROAD_USER_TYPES if actor in set(steps[config.ACTOR_TYPE_COL])]
     order = sorted({
-        _unit_label(code, name)
+        unit_label(code, name)
         for code, name in zip(steps[config.AREA_CODE_COL], steps[config.AREA_NAME_COL])
     })
 
@@ -1254,11 +1277,11 @@ def _volatility_heatmap(steps: pd.DataFrame, path: Path, log: RunLog) -> None:
     for position, (axis, actor) in enumerate(zip(np.atleast_1d(axes), modes)):
         rows = steps[steps[config.ACTOR_TYPE_COL] == actor].copy()
         rows["_LABEL"] = [
-            _unit_label(code, name)
+            unit_label(code, name)
             for code, name in zip(rows[config.AREA_CODE_COL], rows[config.AREA_NAME_COL])
         ]
         matrix = rows.pivot_table(index="_LABEL", columns="STEP", values="FACTOR").reindex(order)
-        image, _ = _draw_heatmap(
+        image, _ = draw_heatmap(
             axis, matrix, centre=None, annotate_above=config.EXPOSURE_STEP_FACTOR
         )
         axis.set_title(config.ROAD_USER_LABELS_ES[actor], fontsize=10)
@@ -1278,7 +1301,7 @@ def _volatility_heatmap(steps: pd.DataFrame, path: Path, log: RunLog) -> None:
         "es el precio de interpolar por unidad (D40)",
         fontsize=11,
     )
-    _stamp(fig, log)
+    stamp(fig, log)
     fig.savefig(path, dpi=config.FIGURE_DPI, bbox_inches="tight")
     plt.close(fig)
 
@@ -1334,7 +1357,7 @@ def _volatility_distribution(steps: pd.DataFrame, path: Path, log: RunLog) -> No
         fontsize=11,
     )
     fig.tight_layout(rect=(0, 0, 1, 0.88))
-    _stamp(fig, log)
+    stamp(fig, log)
     fig.savefig(path, dpi=config.FIGURE_DPI)
     plt.close(fig)
 
@@ -1351,8 +1374,15 @@ def draw(
     diagnostic: pd.DataFrame | None = None,
     steps: pd.DataFrame | None = None,
     measured_table: pd.DataFrame | None = None,
+    subdir: str = config.INTERPOLATION_FIGURES_SUBDIR,
 ) -> dict[str, Path]:
     """Every figure, in the six numbered groups.
+
+    **Which panel it is drawing it asks of the table**, through `config.variant_pair_of`:
+    since D62 the same six groups describe either D40's interpolated construction or D60's
+    fitted one, and `subdir` is what keeps the two sets of files apart. Nothing else about
+    the figures changes between them, which is the point — two constructions of one
+    quantity should be read in one visual language or they cannot be compared at all.
 
     The first three are drawn from the panel alone. The last three read a table
     this module does not build — the patch factors, the casualty diagnostic and
@@ -1360,7 +1390,7 @@ def draw(
     not produce what it needs, because a run with no casualty matrix to read is a
     legitimate run and not a failure.
     """
-    root = log.run_dir / config.FIGURES_SUBDIR / config.INTERPOLATION_FIGURES_SUBDIR
+    root = log.run_dir / config.FIGURES_SUBDIR / subdir
     suffix = config.INTERPOLATION_FIGURE_FORMAT
     day_type = config.PANDEMIC_PATCH_DAY_TYPE
     written: dict[str, Path] = {}
@@ -1455,7 +1485,7 @@ def draw(
         "wrote %d figure(s) under %s/%s/, in %d group(s)",
         len(written),
         config.FIGURES_SUBDIR,
-        config.INTERPOLATION_FIGURES_SUBDIR,
+        subdir,
         groups,
     )
     return written

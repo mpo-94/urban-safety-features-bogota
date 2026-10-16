@@ -279,7 +279,7 @@ def fill_series(rates: dict[int, float], window: range) -> dict[int, Filled]:
     return filled
 
 
-def _support_of(rests_on: tuple[int, ...], support_by_year: dict[int, str]) -> str:
+def support_of(rests_on: tuple[int, ...], support_by_year: dict[int, str]) -> str:
     """The sample support a constructed value inherits from the years it rests on.
 
     The weaker of the two wins. A year built by interpolating between 2011's
@@ -456,7 +456,7 @@ def build(
                         config.POPULATION_COL: residents,
                         config.EXPOSURE_PROVENANCE_COL: at.provenance,
                         config.YEARS_TO_NEAREST_SURVEY_COL: at.years_to_nearest_survey,
-                        config.SAMPLE_SUPPORT_COL: _support_of(
+                        config.SAMPLE_SUPPORT_COL: support_of(
                             at.rests_on,
                             {
                                 anchor: support_by_year[(area_code, actor, day_type, anchor)]
@@ -1962,10 +1962,21 @@ FACTOR_MEASURED = "MEASURED"
 FACTOR_EXTRAPOLATED = "EXTRAPOLATED"
 
 
-def _city_series(panel: pd.DataFrame, day_type: str) -> pd.DataFrame:
-    """The interpolated trend for the whole city, by year and mode."""
+def _city_series(
+    panel: pd.DataFrame,
+    day_type: str,
+    variant: str = config.INTERPOLATED_VARIANT,
+) -> pd.DataFrame:
+    """The trend of one variant of the panel for the whole city, by year and mode.
+
+    **The variant is an argument and not a constant here**, because since D62 there are two
+    panels this can be asked of and the factor below divides by whichever one is being
+    patched. Hard-coding `INTERPOLATED` meant handing it the fitted panel returned an empty
+    frame, and `pandemic_factors` then declined to patch at all — silently, which is the
+    failure its own docstring calls worse than no patch.
+    """
     rows = panel[
-        (panel[config.EXPOSURE_VARIANT_COL] == config.INTERPOLATED_VARIANT)
+        (panel[config.EXPOSURE_VARIANT_COL] == variant)
         & (panel[config.DAY_TYPE_COL] == day_type)
     ]
     return rows.groupby([config.YEAR_COL, config.ACTOR_TYPE_COL])[
@@ -1977,6 +1988,7 @@ def pandemic_factors(
     panel: pd.DataFrame,
     shock: "mobility_reports.MobilityShock",
     log: RunLog,
+    variant: str = config.INTERPOLATED_VARIANT,
 ) -> PandemicPatch | None:
     """How much each mode moved in 2020 and 2021, against what the trend expected.
 
@@ -2005,7 +2017,7 @@ def pandemic_factors(
     silently did nothing for one mode would be worse than no patch at all.
     """
     day_type = config.PANDEMIC_PATCH_DAY_TYPE
-    trend = _city_series(panel, day_type)
+    trend = _city_series(panel, day_type, variant)
 
     needed = set(config.PANDEMIC_PATCH_YEARS) | {
         config.GOOGLE_REFERENCE_YEAR, config.BICYCLE_MEASURED_YEAR - 1
@@ -2092,7 +2104,11 @@ def pandemic_factors(
 
 
 def apply_pandemic_patch(
-    panel: pd.DataFrame, patch: PandemicPatch | None, log: RunLog
+    panel: pd.DataFrame,
+    patch: PandemicPatch | None,
+    log: RunLog,
+    patched_variant: str = config.PANDEMIC_PATCHED_VARIANT,
+    columns: tuple[str, ...] | None = None,
 ) -> pd.DataFrame:
     """The panel as built, and the panel with the pandemic years rebuilt, as two variants.
 
@@ -2107,7 +2123,7 @@ def apply_pandemic_patch(
     so. The panel is complete without the patch; what is not acceptable is a table
     that quietly holds one variant where a reader expects two.
     """
-    ordered = list(config.interpolated_exposure_columns())
+    ordered = list(columns or config.interpolated_exposure_columns())
     if patch is None:
         log.warn(
             "the panel carries only the %s variant: the pandemic patch needs a casualty matrix "
@@ -2118,7 +2134,7 @@ def apply_pandemic_patch(
         return panel[ordered].reset_index(drop=True)
 
     patched = panel.copy()
-    patched[config.EXPOSURE_VARIANT_COL] = config.PANDEMIC_PATCHED_VARIANT
+    patched[config.EXPOSURE_VARIANT_COL] = patched_variant
     in_patch = (
         (patched[config.DAY_TYPE_COL] == config.PANDEMIC_PATCH_DAY_TYPE)
         & patched[config.YEAR_COL].isin(list(config.PANDEMIC_PATCH_YEARS))

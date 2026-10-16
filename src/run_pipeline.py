@@ -49,8 +49,11 @@ from src import (
     parties,
     population,
     predictors,
+    reconstruction,
+    reconstruction_figures,
     regressions,
     rho,
+    surveys,
 )
 from src.provenance import RunLog
 
@@ -129,6 +132,91 @@ def run_completeness(log: RunLog) -> None:
     completeness.export(table, log)
     log.table("record funnel:", log.funnel())
     completeness.report(table, log)
+
+
+def run_reconstruction(log: RunLog) -> None:
+    """The exposure of each year rebuilt from a fitted origin-destination matrix.
+
+    A route of its own, after `exposure` and beside `interpolation` rather than inside it.
+    The two build the same panel under different assumptions — D40 interpolates the
+    exposure as a rate, D60 interpolates the margins of a matrix and fits the matrix to
+    them — and what chooses between them downstream is a filter on
+    `EXPOSURE_VARIANT`, never a re-run. **A study that cannot show both cannot be argued
+    with**, which is the rule D31 set for the casualty sets and D42 for the pandemic
+    patch.
+
+    It reads the exposure table another run exported, the population panel and the five
+    surveys. It is the only route after `exposure` that reads a survey, and it has to:
+    the matrix it scales is the survey's own, and nothing else in the pipeline keeps it.
+
+    **The comparison against D40 is the point and not an appendix.** It is printed at the
+    end because whether the fitting moves the exposure enough to move a coefficient is the
+    empirical question the method was adopted to answer, and the run that produces the
+    answer is where the answer belongs.
+
+    **Since D63 this route produces the exposure the regressions read**, which means
+    `regressions` has to run after it rather than after `interpolation`. The route fails
+    rather than writing a panel without the patched variant, because a regression route
+    that found the variant missing would fail far from the cause.
+    """
+    units = loading.load_territorial_units(log)
+    projected = predictors.prepare_units(units)
+    panel, _, _ = population.build(projected, log)
+    measured = interpolation.read_measured(log)
+
+    # Every survey, because `seeding_blend` chooses per year and per kind of day and the
+    # five of them between them seed the window. Reading them all up front rather than on
+    # demand keeps each one read once, which matters more since D64: a year now rests on
+    # two surveys, so 2015 takes part in seven of the thirteen years instead of four.
+    surveys_by_year = {survey.year: surveys.read(survey, log) for survey in config.MOBILITY_SURVEYS}
+
+    built, fits = reconstruction.build(measured, panel, projected, surveys_by_year, log)
+
+    # D63: the patched variant is what the models read, so the panel is not finished until
+    # it is in there. The shock comes from Google's community mobility reports, which have
+    # no connection to crash records — the whole reason D49 replaced D42 — so this needs no
+    # casualty matrix and runs the same on a route that has none.
+    daily_mobility = mobility_reports.read(log)
+    shock = mobility_reports.build(daily_mobility, log)
+    if not mobility_reports.verify(shock, daily_mobility, log):
+        raise RouteFailed("the community mobility reports do not support a pandemic patch")
+    built, patch = reconstruction.patch_for_the_pandemic(built, shock, log)
+    if patch is None:
+        raise RouteFailed(
+            "the fitted panel has no pandemic patch, so it does not carry the variant "
+            "config.MODEL_EXPOSURE_VARIANT asks the regressions to read"
+        )
+
+    paths = reconstruction.export(built, fits, log)
+
+    log.table("record funnel:", log.funnel())
+    if not reconstruction.verify(built, fits, measured, projected, log):
+        raise RouteFailed("the fitted exposure panel does not agree with what it was built from")
+
+    # D40's panel, built here rather than read, so the comparison is between two things
+    # this run produced and cannot be between two runs of different vintages. Unpatched
+    # against unpatched: comparing the patched fitted panel with D40's unpatched one would
+    # read the patch as a difference the fitting made.
+    d40 = interpolation.build(measured, panel, projected, log)
+    reconstruction.compare_with_interpolated(
+        built[built[config.EXPOSURE_VARIANT_COL] == config.FITTED_VARIANT], d40, log)
+
+    # Two sets of figures and neither duplicates the other. The first four answer what is
+    # new — what the fitting changed, where it landed, and what the floor cost — and the
+    # second set is `interpolation_figures`' own six groups pointed at this panel, so that
+    # the construction the models read has the series and the provenance sheet D40's panel
+    # has. **Nothing about the second set differs but the data**: the same module draws
+    # both, so the two panels can be laid side by side without a reader learning two
+    # visual languages. Verified by regenerating D40's twenty-two figures before and after
+    # the module was parameterised; they came out byte for byte identical.
+    figures = reconstruction_figures.draw(built, fits, d40, projected, log)
+    figures.update(interpolation_figures.draw(
+        built, log, patch=patch, measured_table=measured.table,
+        subdir=config.RECONSTRUCTION_PANEL_FIGURES_SUBDIR,
+    ))
+
+    log.info("wrote %s", ", ".join(sorted(paths)))
+    log.info("drew %d figure(s)", len(figures))
 
 
 def run_interpolation(log: RunLog) -> None:
@@ -633,6 +721,12 @@ ROUTES: tuple[Route, ...] = (
         "interpolation",
         "the exposure carried across the fourteen years no survey covers, as a rate",
         run_interpolation,
+    ),
+    Route(
+        "reconstruction",
+        "the exposure of every year from a fitted origin-destination matrix (D60), "
+        "beside D40's interpolated panel rather than in place of it",
+        run_reconstruction,
     ),
     Route("rho", "rho(t): share of two-party crashes where both parties were hurt", run_rho),
     Route("map", "the reference map of the territorial units, with and without a scale bar", run_map),

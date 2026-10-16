@@ -1033,7 +1033,11 @@ def report(
 _PAIR_ID_COL = "_PAIR"
 _PAIR_KM_COL = "_PAIR_TOTAL_KM"
 _ZONE_AREA_COL = "_ZONE_TOTAL_AREA"
-_ZONE_SHARE_COL = "_ZONE_AREA_SHARE"
+# The one working column of this module that is not private, because
+# `zone_area_shares` is the bridge between a survey's zones and the study's units and
+# `reconstruction` reads what it returns. Still prefixed in its value, because it is a
+# working column and never appears in a table anybody exports.
+ZONE_SHARE_COL = "_ZONE_AREA_SHARE"
 _LINE_SHARE_COL = "_LINE_LENGTH_SHARE"
 _COVERED_SHARE_COL = "_SHARE_INSIDE_THE_STUDY"
 _ALLOCATED_COL = "_ALLOCATED"
@@ -1131,7 +1135,7 @@ def zone_area_shares(
         keep_geom_type=True,
     )
     fragments[_FRAGMENT_AREA_COL] = fragments.geometry.area
-    fragments[_ZONE_SHARE_COL] = fragments[_FRAGMENT_AREA_COL] / fragments[_ZONE_AREA_COL]
+    fragments[ZONE_SHARE_COL] = fragments[_FRAGMENT_AREA_COL] / fragments[_ZONE_AREA_COL]
 
     if config.ZONE_UNIT_RENORMALISE:
         raise NotImplementedError(
@@ -1148,13 +1152,13 @@ def zone_area_shares(
         [surveys.ZONE_CODE_COL, config.AREA_CODE_COL], as_index=False
     ).agg(
         **{
-            _ZONE_SHARE_COL: (_ZONE_SHARE_COL, "sum"),
+            ZONE_SHARE_COL: (ZONE_SHARE_COL, "sum"),
             _FRAGMENT_AREA_COL: (_FRAGMENT_AREA_COL, "sum"),
         }
     )
-    slivers = shares[_ZONE_SHARE_COL] <= config.ZONE_UNIT_MIN_AREA_SHARE
+    slivers = shares[ZONE_SHARE_COL] <= config.ZONE_UNIT_MIN_AREA_SHARE
     discarded_area = float(shares.loc[slivers, _FRAGMENT_AREA_COL].sum())
-    shares = shares.loc[~slivers, [surveys.ZONE_CODE_COL, config.AREA_CODE_COL, _ZONE_SHARE_COL]]
+    shares = shares.loc[~slivers, [surveys.ZONE_CODE_COL, config.AREA_CODE_COL, ZONE_SHARE_COL]]
 
     reached = shares[surveys.ZONE_CODE_COL].nunique()
     split = int((shares.groupby(surveys.ZONE_CODE_COL)[config.AREA_CODE_COL].nunique() > 1).sum())
@@ -1385,7 +1389,7 @@ def apportion_survey(
     within = pairs[intra_zonal].copy()
     within_shares = zone_shares.rename(columns={surveys.ZONE_CODE_COL: surveys.ZONE_ORIGIN_COL})
     in_zone, outside_within = _spread(
-        within, within_shares, [surveys.ZONE_ORIGIN_COL], _ZONE_SHARE_COL, _APPORTIONED_QUANTITIES
+        within, within_shares, [surveys.ZONE_ORIGIN_COL], ZONE_SHARE_COL, _APPORTIONED_QUANTITIES
     )
 
     # -- the two endpoint allocations --------------------------------------
@@ -1397,14 +1401,14 @@ def apportion_survey(
         pairs,
         zone_shares.rename(columns={surveys.ZONE_CODE_COL: surveys.ZONE_ORIGIN_COL}),
         [surveys.ZONE_ORIGIN_COL],
-        _ZONE_SHARE_COL,
+        ZONE_SHARE_COL,
         {surveys.TRIPS_COL: config.TRIPS_AT_ORIGIN_COL},
     )
     at_destination, _ = _spread(
         pairs,
         zone_shares.rename(columns={surveys.ZONE_CODE_COL: surveys.ZONE_DESTINATION_COL}),
         [surveys.ZONE_DESTINATION_COL],
-        _ZONE_SHARE_COL,
+        ZONE_SHARE_COL,
         {surveys.TRIPS_COL: config.TRIPS_AT_DESTINATION_COL},
     )
 
@@ -1467,7 +1471,7 @@ def apportion_survey(
 
     outside = outside_between.add(outside_within, fill_value=0.0)
     covered_per_pair = length_shares.groupby(_PAIR_ID_COL)[_LINE_SHARE_COL].sum()
-    covered_per_zone = zone_shares.groupby(surveys.ZONE_CODE_COL)[_ZONE_SHARE_COL].sum()
+    covered_per_zone = zone_shares.groupby(surveys.ZONE_CODE_COL)[ZONE_SHARE_COL].sum()
     largest = float(max(covered_per_pair.max(), covered_per_zone.max()))
 
     log.record(

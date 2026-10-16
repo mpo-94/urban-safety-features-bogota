@@ -7267,3 +7267,481 @@ D56 moves every one of them.
 
 Neither is wrong; both are a change of method to fix a reporting problem, and the reporting
 problem has a reporting fix.
+
+## D60 — IPF is fitted at zone level, with the margins brought down from the unit
+
+**Status on 2026-10-07: decided by Mateo; the fitting core and the unit margins are built,
+the disaggregation and the panel variant are not.** It settles the one
+choice D54 left open, which is not whether to fit but *what the fitted matrix is a matrix
+of*. `docs/implementing-ipf.md` is the inspection pass that preceded it and holds the
+three options measured; this records which one was taken and why.
+
+### The problem the decision solves
+
+The five surveys do not share a zone system — 110 UPZ in 2005, 945 ZAT in 2011 and 2015,
+1,141 in 2019, 1,215 in 2023 — so a margin for an intermediate year cannot be interpolated
+between two surveys directly: the vectors are not of the same thing. The anteproyecto
+settles it by bringing everything to the unit of analysis before interpolating, and that
+is where the choice appears.
+
+### Decision — the margins travel through the unit, the fitting stays on the zones
+
+For a year without a survey: the origin and destination totals are interpolated **at UPL
+level** between the surveys that bracket it, scaled by the annual population, then
+**disaggregated back onto the zones of the nearest survey** in proportion to that survey's
+own zone margins. IPF then fits that survey's zone-level matrix to those margins, and the
+fitted matrix goes through `exposure.apportion_survey` unchanged.
+
+### Why not fit between units, which is the literal reading
+
+A unit-by-unit matrix has an origin and a destination and nothing in between. **The
+current apportionment spreads a trip along the line between its endpoints**, so a trip
+crossing the city contributes to every unit its line passes through, which is how an
+arterial corridor gets exposure from traffic that neither starts nor ends there. Collapsing
+to thirty by thirty removes that, and removes it unevenly: walking is short and local, car
+travel is long and crosses.
+
+**That is a larger change than IPF itself and in the opposite direction from the study's
+question.** A method adopted to reconstruct the years between surveys would have silently
+redefined the exposure of every year including the surveyed ones.
+
+### What this decision costs, stated because it goes in the thesis
+
+**The shape of travel within a unit is held constant between surveys; only its level
+moves.** That is what the disaggregation assumes when it spreads a unit's interpolated
+margin over the nearest survey's zones in that survey's own proportions.
+
+**And the entropy argument does not cover it.** The anteproyecto argues IPF from
+statistical mechanics: the fitting finds the matrix that minimises relative entropy with
+respect to the seed subject to the new margins, which is the matrix that satisfies them
+without adding structure the survey did not contain. **That argument applies to the
+fitting and not to the disaggregation**, which does add an assumption. The methodology
+chapter has to say so rather than let the entropy argument cover the whole stage.
+
+### What it buys, and it is the reason it was chosen
+
+**The change stays where it belongs.** The exposure of the five survey years comes out
+identical to today's, because for those years nothing is fitted and nothing is
+disaggregated: the survey's own matrix goes through the apportionment as it always has.
+Only the years between surveys change, which is the whole point of the method.
+
+That is also the check that says the implementation is correct, and it is cheap to make.
+
+### What has to hold, and the run has to say so
+
+- **A survey year fitted against its own margins returns itself.** The identity test. A
+  fitting that fails it is wrong whatever else it does.
+- **The fitted matrix reproduces its margins** to the tolerance the iteration stops at,
+  and the run reports iterations per year and any year that did not converge.
+- **The five survey years keep the exposure they have today**, cell by cell.
+- **No cell negative, no margin zero where the survey had travel.** A zero margin makes
+  the fitting undefined, and this pipeline already refuses a zero denominator elsewhere
+  for the same reason.
+- **The comparison against D40 is reported, not replaced.** Whether the fitting moves the
+  exposure enough to move a coefficient is the empirical question the implementation
+  answers, and the answer belongs in the run that produces it.
+
+### Three things the margins settled, on 2026-10-07
+
+Building them raised three questions D60 had not asked. They are recorded here because
+each is a choice and not a measurement; `docs/implementing-ipf.md` holds the numbers and
+`tools/margenes_para_el_ajuste.py` the eleven checks.
+
+**The margins are carried on the day-of-type basis.** They are read from the average-day
+columns of the exposure table and divided by `DAY_TYPE_UNIVERSE_SHARE`, because D38 allows
+only that basis for a comparison between years and an interpolation is one. 2023 pooled
+the three kinds of day into one sample, so its average-day figures are 23 % below 2019's
+for that reason alone. The seeding survey's own share puts the margin back on the scale of
+its matrix at the moment of fitting and cancels exactly.
+
+**2005's pedestrian margin does not anchor either series.** The endpoint allocations are
+built from the same trips as `TRIPS_PER_DAY_OF_TYPE`, so they carry the same defect in the
+same mode: 2005 counted only walking of fifteen minutes or more, 0.163 trips per
+inhabitant against 0.737 in 2011. Unlike the exposure there is no narrower twin column to
+anchor on instead, so the pedestrian margin starts at 2011 and 2006-2010 are held from it.
+One anchor lost in one mode, and the right loss — an anchor that measures a different
+category is worse than none.
+
+**The two margins of a constructed year are reconciled to the mean of their totals.** They
+disagree, by up to 1.242 % at a survey year and 3.4 % at a constructed one, and no matrix
+has both. At a survey year the cause is the study boundary: a trip from a unit to Soacha
+enters one margin and not the other. At a constructed year it is that a sum of thirty
+log-linear curves is not the curve of their sum, which makes it **a known cost of D40's
+per-unit interpolation rather than a defect** — every unit's intermediate rate lies between
+its two anchors, and the contributions cancel in both directions. Scaling to the mean
+privileges neither margin and moves each by at most half the disagreement; the factor stays
+in the table, as the pandemic factor does, so dividing recovers the interpolated margin. A
+year whose own kind of day a survey measured is left alone, which is why the anchors are
+read per day type: 2019 is a survey year and no survey measured a Saturday in 2019.
+
+### What it supersedes
+
+**D40 stops being how the years between surveys are built**, and becomes the baseline the
+new method is compared against. Its rate interpolation stays in the code until the
+comparison is made and reported; it is not deleted on the day the fitting lands.
+
+**What it does not supersede is D40's machinery.** The margins are carried by
+`interpolation.fill_series` unchanged, and deliberately: the two panels are going to be
+compared, and had each interpolated its inputs by a different scheme the comparison would
+measure the difference between the schemes as readily as the difference the fitting makes.
+
+## D61 — The seed gets a floor where its own support cannot reach the margins
+
+**Decided by Mateo on 2026-10-07, implemented and verified the same day.** It settles the
+obstacle D60's implementation ran into, which D60 could not have anticipated: the method it
+chose produces margins that, for a quarter of the blocks it fits, no matrix with the
+survey's own support admits.
+
+### The problem, measured rather than argued
+
+Twenty-five of the fifty-two blocks the reconstruction fits — thirteen years by four modes
+of the weekday — had margins no matrix could satisfy. Proved by maximum flow, not inferred
+from a failure to converge: in the worst of them, the 2017 cycling block, **1,966 trips a
+day of 899,651 could not be placed, 0.219 %**. Two thousand and fifty thousand iterations
+leave exactly the same error, 0.6706, so it is existence and not patience.
+
+**What makes it matter is the scale at which it fails.** The aggregate margin error per
+unit stayed under 0.8 % and one unit alone reached **55.74 %**. The second is the number
+that counts, because a cross-section reads the variation between units and an error that
+averages to nothing over the thirty is precisely the one that does not average away inside
+a year.
+
+### Where it comes from, and why it is not a defect
+
+The seeds are between 0.5 % and 1.4 % dense: 2,364 occupied cells of 643 by 643 for the
+2015 cycling matrix. **At that density a zero almost never says that nobody travels between
+two zones. It says a sample of a few thousand households saw no such trip on its reference
+day.** Keeping every zero is keeping sampling noise as though it were geography, and that is
+what makes the margins unreachable.
+
+So the virtue D60 claims for the method — that it cannot invent travel the survey never saw
+— turns out at this density to be a far stronger constraint than it looked when it was
+declared. D60 is not wrong about the virtue; it was wrong about its price.
+
+### Decision — a floor of 1e-6, applied only where it is needed
+
+Each zero of the seed is replaced by `config.RECONSTRUCTION_SEED_FLOOR` times the block's
+mean occupied cell, which completes the support and makes any margin reachable. At 1e-6
+that is about three ten-thousandths of a trip a day.
+
+**And only in the blocks whose own support cannot reach their margins**, which is not an
+optimisation. A floored seed carries slightly more travel than the margins ask for, so
+fitting it scales everything down and a survey year would no longer come back as itself —
+and that identity is the check D60 rests on. Trying the seed as it is first costs one cheap
+fitting on a sparse matrix. Measured: **fourteen of fifty-two blocks needed the floor, no
+survey year among them, and the identity comes back at 9e-11 trips a day.**
+
+**The floor's only job is to find out which cells the margins need.** A floored seed has no
+zeros, so the fitted matrix would be dense — 998,001 cells for 999 zones, and the
+apportionment would build a desire line for each. So the first fitting runs at a loose
+tolerance, the cells below `RECONSTRUCTION_PRUNE_BELOW` are dropped, and the matrix is
+fitted again on what is left: between one and twenty times the seed's cell count, feasible,
+and reaching the tolerance exactly.
+
+### What it costs, and the thesis has to say it
+
+**It stops being true that the fitting cannot invent travel the survey never saw.** It
+invents **11,965 trips a day of 109,911,870, or 0.0109 %**, on cells no survey saw travel
+in; the worst single block is 0.67 %. In exchange the worst unit's margin error falls from
+55.74 % to **0.0097 %**.
+
+**The anteproyecto's own argument supports it rather than resisting it.** With a uniform
+seed, iterative proportional fitting reduces to the maximum-entropy trip distribution
+model, which is the reference that document cites from statistical mechanics. A floored
+seed is the survey plus epsilon times uniform — a mixture of the two things the
+anteproyecto already names, overwhelmingly the survey.
+
+### Three numbers that are declared and were measured, not chosen
+
+- **`RECONSTRUCTION_SEED_FLOOR = 1e-6`.** At 1e-4 the fitting converges in a fifth of the
+  passes and invents 1.74 %; at 1e-6 it invents 0.017 % on the block it was measured on.
+  The slower convergence is the price of the smaller number.
+- **`RECONSTRUCTION_PRUNE_BELOW = 0.01` trips a day.** What survives it was measured: the
+  pruned support keeps 99.96 % to 99.99 % of the fitted travel and costs the margins
+  between 0.0086 % and 0.043 %, three orders of magnitude below the 55.7 % the floor
+  removed.
+- **`fitting.DEFAULT_TOLERANCE = 1e-4`.** Set at the noise floor of the step that follows
+  it, which is that pruning. Tighter measures below the error of the next operation and
+  costs tens of thousands of passes.
+
+### What else the implementation had to fix, because the check was wrong
+
+**The condition for a fitting to be possible is not that the grand total agrees, and it is
+not that the connected pieces of the support agree either.** It is a transportation
+feasibility condition — for every set of origins, what is asked of them cannot exceed what
+is asked of the destinations they can reach. Component consistency is the special case
+where the set is a whole piece, so it catches some infeasible problems and gave a clean
+bill of health to the 2017 cycling block. `fitting.inconsistent_components` now checks the
+component condition and `fit` refuses on it; `fitting.infeasible_by` answers the exact
+question by maximum flow, as a diagnosis and not a guard, because it costs far more than an
+iteration and on a floored seed the answer is always zero.
+
+**And the zone-level reconciliation is per connected piece**, replacing the global one:
+making every piece balance implies the total balances. In the weekday it moves 0.0841 % of
+the trips, and it is judged by trips moved and never by the worst factor, because the
+pieces needing a large correction are the ones holding two or three zones.
+
+### What has to hold, and the run says so
+
+Nine checks in `reconstruction.verify`, and `tools/piso_de_la_semilla.py` is the measurement
+behind the three numbers. The two that would end the method if they failed:
+`FITTED_IDENTITY_TOLERANCE` on D60's identity, and `FITTED_INVENTED_LIMIT = 0.001` on what
+the floor adds — crossing the second means the seeds have grown sparser or the floor was
+raised, and both are decisions for a person.
+
+## D62 — The fitted panel is a third variant, and the comparison against D40 is its point
+
+**Implemented and verified on 2026-10-07**, in the `reconstruction` route. It is the rule
+D31 set for the two casualty sets and D42 for the pandemic patch, applied to a third pair:
+what chooses between two constructions downstream is a filter on a key column, never a
+re-run, and a study that cannot show both cannot be argued with.
+
+### What is in the table
+
+`analysis__fitted_exposure_by_unit`, 1,560 rows: thirteen years by thirty units by four
+modes by one kind of day, with `EXPOSURE_VARIANT = FITTED` beside D40's `INTERPOLATED` and
+`PANDEMIC_PATCHED`. **Exactly D40's columns in D40's order**, so the two concatenate and
+the dashboard joins them, plus one of its own — `SEED_SURVEY_YEAR`, because a panel of
+thirteen years resting on four matrices is unreadable without saying which row rests on
+which, and the years seeded on 2011 and on 2023 are answers of different quality.
+
+`reference__fitted_blocks` beside it, one row per year and block: iterations of both
+passes, convergence, the margin error left, and what the floor opened and the pruning
+dropped. **It is a different grain from the panel and so a different table**; folding it in
+would repeat thirty identical rows thirty times and invite somebody to sum them.
+
+**The weekday alone**, where the other two variants carry three kinds of day, because
+`RECONSTRUCTION_DAY_TYPES` scopes the reconstruction to the day the models read. The
+deliverable has to say so: a table ragged in one variant and not the others is a defect
+even when nothing reads the ragged part.
+
+### The comparison, which is the result
+
+| Mode | median | quartiles | range |
+|---|---:|---:|---:|
+| Bicycle | 0.9997 | 0.967–1.026 | **0.493–2.348** |
+| Car | 0.9994 | 0.977–1.019 | 0.725–1.357 |
+| Motorcycle | 0.9982 | 0.971–1.021 | 0.807–1.380 |
+| Pedestrian | 0.9992 | 0.938–1.035 | 0.605–1.442 |
+
+Fitted exposure over D40's, over the 1,200 constructed cells. The 360 measured cells agree
+to 4.4e-16, because neither variant constructs anything in a survey year.
+
+**The two agree on the aggregate almost exactly and disagree about individual units by a
+great deal.** Cycling in one unit and year gets half of what D40 gives it; in another it
+gets more than twice. That is the case for reconstructing the matrix, and it is a
+measurement rather than an argument: **a rate interpolated per unit gives every unit its own
+curve and knows nothing about where the travel goes**, and the fitting is what puts that
+back.
+
+Had the two agreed everywhere, the honest conclusion would have been that the extra
+assumption buys nothing. That conclusion was reachable and this is the table that would
+have said so, which is why the comparison is printed by the route and not left to a
+document.
+
+### What it supersedes, and what it does not
+
+**Nothing yet.** The regressions still read `INTERPOLATED`, because which variant the study
+reports is a decision and not a consequence: the fitted panel carries the floor's 0.0109 %
+of invented travel and D60's assumption that the shape of travel within a unit holds
+between surveys, and whether that is a better trade than D40's is Mateo's call with both
+panels in hand. **The day it moves, every cross-sectional result moves with it**, which
+D54 already records.
+
+## D63 — The fitted panel carries the pandemic patch, and that is what the models read
+
+**Decided by Mateo on 2026-10-07, implemented and verified the same day.** It closes a gap
+D62 left and that I had closed the wrong way: `reconstruction.build` stamped
+`PANDEMIC_PATCH_FACTOR = 1.0` on every row with a comment saying D49's patch did not apply
+to this variant. It does apply, and the patched fitted panel is the exposure the study
+estimates on.
+
+### What changed
+
+The fitted panel now carries two variants, `FITTED` and `FITTED_PANDEMIC_PATCHED`, exactly
+as D40's carries two. **The unpatched one stays beside the patched one** for the reason D42
+gives about its own pair: a study that cannot show the unpatched construction cannot be
+argued with, and what chooses between them downstream is a filter on a key column rather
+than a re-run.
+
+`config.MODEL_EXPOSURE_VARIANT` is the one place that says which construction the study
+reports, and `config.model_exposure_table()` derives the table from it.
+**`regressions` had the filename written into itself as a literal and the variant filter
+hard-coded a second time**, so the two were in step only by coincidence; they are now both
+read from the one constant. The practical consequence is that **`regressions` runs after
+`reconstruction` and no longer after `interpolation`**, and it says so rather than failing
+on a generic missing file.
+
+### Why the patch applies exactly, and why that matters
+
+**Its factor is one number per mode and year, the same for every unit, and the
+apportionment is linear in the trips.** So multiplying a unit's exposure by the factor is
+the same arithmetic as multiplying every cell of the fitted matrix by it and apportioning
+again. **No second fitting is needed, and this is not an approximation.** The run checks
+the equality rather than asserting it — the patched level against the unpatched level times
+its own factor, which comes out at exactly zero — because if a factor ever became
+unit-specific the shortcut would silently stop being exact.
+
+### Why the factors are recomputed and never borrowed from D40
+
+A factor is the Google shock divided by the height of the panel's own city curve at the
+patched year, which is what turns "2020 against 2022" into "2020 against what 2020 should
+have been". **The two panels expect different things of 2020**, so each earns its own
+factors. Measured, borrowing D40's would have been wrong where it matters most:
+
+| | D40 | fitted |
+|---|---:|---:|
+| bicycle 2020 | 0.739 | 0.739 |
+| bicycle 2021 | 1.067 | 1.066 |
+| car 2020 | 0.466 | 0.464 |
+| car 2021 | 0.690 | 0.687 |
+| motorcycle 2020 | 0.545 | 0.543 |
+| motorcycle 2021 | 0.746 | 0.743 |
+| **pedestrian 2020** | **0.534** | **0.567** |
+| **pedestrian 2021** | **0.741** | **0.810** |
+
+Three modes agree to a few thousandths and **the pedestrian differs by 6 % and 9 %**. That
+is not rounding: it is the fitted panel expecting a different 2021 of walking than D40
+does, and nine per cent of the pedestrian exposure is the kind of error that reaches a
+coefficient.
+
+### The obstacle it ran into, which was a silent one
+
+`interpolation._city_series` filtered on `EXPOSURE_VARIANT == INTERPOLATED` as a constant.
+Handed the fitted panel it returned an empty frame, and `pandemic_factors` then declined to
+patch at all with a warning about a panel that "does not reach 2019" — **the exact failure
+its own docstring calls worse than no patch**. The variant is a parameter of all three
+functions now: `_city_series`, `pandemic_factors` and `apply_pandemic_patch`.
+
+**Nothing in `interpolation` was duplicated.** `apply_pandemic_patch` is what keeps D39's
+two invariants alive through the patch — both levels and both rates multiplied by the same
+factor, so the fifteen-minute column stays a part of the full one and the two stay equal on
+the three modes with a single definition — and a second implementation would be a second
+place to lose them.
+
+### What it supersedes
+
+**Every cross-sectional result.** Sections 24 to 27 of the verification report and the runs
+`run_20260928_112330` and `run_20260928_114216` were fitted on D40's interpolated exposure;
+the regressions now read a different offset for every one of the thirteen years. Nothing is
+wrong with those runs as a record of what that exposure implied, and no figure quoted from
+them should be cited as current. **The rerun is the next thing the study needs**, and
+nothing about the selection or the specifications changes with it — only the data.
+
+
+## D64 — A year rests on the two surveys that frame it, blended at the unit level
+
+**Decided 2026-10-09.** The nearest survey alone seeded a year's matrix, and the shape of
+that matrix therefore changed in one step at 2014, 2018 and 2022. Because a unit's
+exposure counts the travel that crosses it as well as the travel that begins or ends
+there, that step landed in the exposure itself: `tools/costura_de_la_semilla.py` measured
+the fitted panel's mean absolute year-on-year change at **0.198 in logs at those three
+years against 0.077 away from them, a factor of 2.55**, where D40's own ratio is 1.18 and
+essentially flat.
+
+**It does not bias a cross-section and it does bias the panel**, which is the thesis's
+declared methodology and reads exactly the within-unit variation over time. A twenty per
+cent artificial jump every four years is what that model would read as real change.
+
+A year now rests on the two surveys that frame it, weighted linearly in the year: 2017 is
+three quarters of 2015 and one quarter of 2019. A year at an anchor rests on that anchor
+alone with weight one, so a surveyed year is still an observation and D60's identity is
+untouched. Beyond the last anchor the nearest survey is held rather than extrapolated, so
+2024 is 2023's matrix.
+
+### Where the blending happens, and why it cannot happen earlier
+
+**The four weekday surveys are keyed on three zonings.** 2011 and 2015 share
+`ZATs_2012_MAG` and its 945 zones — literally the same shapefile, not a similar one —
+while 2019 has its own 1,141 and 2023 its own 1,215. A cell of 2015 and a cell of 2019 are
+not the same object, so the two seeds cannot be averaged before the fitting.
+
+So the year is fitted twice, once against each framing survey and **both against the same
+margins**, and the two results are combined after the apportionment has put them both on
+the thirty units. That is the first place where they are comparable.
+
+**Fitting both against the same margins is what makes the blend safe.** A convex
+combination of two matrices with identical margins has those margins, so the mixing adds
+nothing for the margins to lose; `FITTED_BLEND_MARGIN_TOLERANCE` is the fitting's own
+tolerance rather than a looser one, because the blend is supposed to add nothing at all.
+
+### What is checked, because the design rests on it
+
+`exposure._spread` multiplies each pair's trips by a share that comes from geometry alone,
+so the apportionment is linear in the trips and
+
+    w · apportion(F1) + (1-w) · apportion(F2)  ==  apportion(w · F1 + (1-w) · F2)
+
+for the two **fitted** matrices. The blended panel is therefore the exposure of one
+well-defined matrix — the mixture of the two — and not an average of two exposures. The
+identity needs the two matrices added cell by cell, so it can only be checked where the
+seeds share a zoning: 2011 with 2015, framing 2012, 2013 and 2014.
+`tools/mezcla_de_semillas.py` checks it there, and because it is a property of `_spread`
+rather than of those years, checking it there settles it for the other pairs.
+
+Measured over 2012, 2013 and 2014: **the two roads agree to 3.2e-16 relative, 5.8e-11
+trips a day.** The blended panel is the exposure of a matrix.
+
+**Blending the two seeds and fitting the result is a different method and was not
+chosen**, because iterative proportional fitting is not linear: `IPF(w·S1 + (1-w)·S2)` is
+not `w·IPF(S1) + (1-w)·IPF(S2)`. It is also only available for one of the three pairs, for
+the same zoning reason. The same tool measures how far apart the two methods land, so the
+size of what was not chosen is on the record: **median ratio 0.999, 95th percentile 1.07
+to 1.10, and a worst unit off by a factor of two.** The two methods agree on the city and
+disagree about units, which is the same shape of answer D62 found between the fitted panel
+and D40 — and the reason for choosing is availability, not accuracy.
+
+### What it measured, after
+
+**The seam is gone.** `tools/costura_de_la_semilla.py`: the panel's mean absolute
+year-on-year change at 2014, 2018 and 2022 is now **1.17 times what it is away from them,
+against D40's own 1.18** and against 2.55 before. The ratio to D40 year by year runs
+between 0.98 and 1.04 across the window, where it was 1.82, 2.00 and 2.10 at the three
+seams.
+
+**And the bending dropped with it.** Mean second difference of the log over mean absolute
+change: **0.493, against 1.146 before.** The worst single series' curvature fell from 1.90
+to 0.67.
+
+Three years — 2016, 2020 and 2024 — still show more curvature than their neighbours, and
+they are **inherited and not introduced**: each is the year after one of D40's own anchors,
+and measured against D40 their ratio is 1.00, 1.02 and 1.01. The rate interpolation changes
+slope at an anchor and the margins carry that through. Nothing the reconstruction does can
+remove it, and nothing it does adds to it.
+
+### A second thing the blend bought, which was not the reason for it
+
+**It lands closer to the margins than either survey alone.** No reconstructed year
+reproduces its unit margins exactly — the disaggregation reconciles them inside each
+connected piece of the seed's support before the fitting runs — and a single seeding survey
+sits as far as **23 % off** on its worst unit. The blend of two sits at most **6 %** off,
+and in most years 2 to 3 %. Convexity guarantees it cannot be worse than the worse of the
+two; that it is consistently better than both means the two surveys' reconciliation
+distortions are partly independent and partly cancel.
+
+The run checks the guarantee rather than the benefit: the blended error exceeds the worse
+component's by **exactly zero** across the window.
+
+### What it removed
+
+**`SEED_ON_TIE` is gone.** 2013, 2017 and 2021 sat exactly between two surveys, and the
+nearest-survey rule had to pick one — a declared constant whose two answers were not
+obviously ranked, the later survey having the finer zoning and the earlier one fewer cells
+that are zero only because the sample missed them. A linear weight makes those years half
+of each. That is not a compromise between the two answers; it is the removal of the
+question, and a declared constant that no longer has to be defended is the cleanest kind
+of simplification.
+
+### What it costs, and the two columns it changes
+
+Twenty-two fittings over the window instead of thirteen. `SEED_SURVEY_YEAR` is now the
+earlier of the two surveys and is joined by `SEED_SURVEY_YEAR_SECOND` and
+`SEED_SURVEY_WEIGHT` — **three numeric columns rather than one string**, because a table
+the dashboard joins has to be read without parsing a separator.
+
+The sample support of a blended row follows `interpolation.support_of`, the rule the study
+already took for a value resting on two years: the weaker of the two wins. The universe
+share is derived back from the two bases, because each component converted to the
+day-of-type basis with its own survey's share and a blended row has no single survey's;
+the ratio of its two bases is the share that makes the row self-consistent and it lies
+between the two.
