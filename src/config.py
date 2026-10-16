@@ -2206,6 +2206,294 @@ REGRESSION_URBAN_CANDIDATES: tuple[str, ...] = tuple(
     if name not in {exclusion.predictor for exclusion in REGRESSION_EXCLUSIONS}
 )
 
+
+# What the literature expects of each candidate, before any model is fitted.
+#
+# Five ways a sign can be expected and they are not interchangeable, which is the
+# whole reason this is a declaration and not a sentence in a document. The one that
+# matters most is the difference between the last two: a source that looked and
+# found nothing is evidence, and no source at all is not.
+EXPECTS_FEWER = "EXPECTS_FEWER"  # the source reports the feature associated with fewer casualties
+EXPECTS_MORE = "EXPECTS_MORE"  # associated with more
+EXPECTS_NOTHING = "EXPECTS_NOTHING"  # the source looked and found no association
+# Two sources disagree, or one source splits by severity and the two halves move in
+# opposite directions. Either way no sign is predicted, and the disagreement is the
+# part worth reporting rather than something to average away.
+EXPECTS_DISPUTED = "EXPECTS_DISPUTED"
+NO_EXPECTATION = "NO_EXPECTATION"  # nothing in the corpus speaks to this variable
+
+# And three grounds on which an expectation can rest. A rate ratio from a study of
+# the same city is not the same evidence as a mechanism named in a review, and a
+# table that shows them in the same column invites the reader to treat them alike.
+QUANTIFIED_BASIS = "QUANTIFIED"  # the source reports an estimate with an interval
+MECHANISM_BASIS = "MECHANISM"  # the source names a mechanism but estimates nothing for this feature
+NO_BASIS = "NONE"
+
+
+@dataclass(frozen=True)
+class LiteratureExpectation:
+    """The prior on one candidate's coefficient, with the source that supports it.
+
+    This exists because the advisor's question — are the variables the literature
+    says matter the ones that come out significant? — cannot be answered unless the
+    expected sign is written down somewhere before the answer is read off the
+    models. Written in a document it would drift from the twelve the search walks;
+    written here, the table in the thesis and the measurement that fills it read the
+    same declaration.
+
+    Nothing in the pipeline consumes this. It is read by `tools/`, by the table the
+    final report prints and by the slide that summarises it.
+    """
+
+    predictor: str
+    direction: str
+    basis: str
+    # The bibliography keys the expectation comes from. A tuple because two
+    # sources can speak to the same feature and disagree, which is the case of the
+    # pedestrian bridge and of the cycleway, and collapsing them to one key would
+    # hide the disagreement that is the interesting part.
+    source_citation: tuple[str, ...]
+    # The estimate as the source states it, close enough to the original that it can
+    # be checked against the paper. Empty where the basis is not quantified.
+    reported: str
+    # How far the source's setting is from ours. The comparison is only legitimate
+    # where this says so, and saying it here keeps the caveat attached to the number
+    # instead of to a paragraph someone may not read.
+    comparability: str
+
+
+LITERATURE_EXPECTATIONS: tuple[LiteratureExpectation, ...] = (
+    LiteratureExpectation(
+        predictor="SIDEWALK_AREA_SHARE",
+        direction=EXPECTS_FEWER,
+        basis=MECHANISM_BASIS,
+        source_citation=("stokerPedestrianSafetyBuilt2015",),
+        reported="",
+        comparability=(
+            "the review places the sidewalk in the family of works that separate the "
+            "pedestrian from traffic, and estimates nothing for sidewalk area"
+        ),
+    ),
+    LiteratureExpectation(
+        predictor="ARTERIAL_ROAD_AREA_SHARE",
+        direction=EXPECTS_MORE,
+        basis=QUANTIFIED_BASIS,
+        source_citation=("zewdieRoadTrafficInjuries2024",),
+        reported="rate ratio 1.30 for pedestrian injuries and 1.24 for deaths, large road density",
+        comparability=(
+            "same city, pedestrian casualties with pedestrian trips as the offset, "
+            "transport analysis zones rather than planning units"
+        ),
+    ),
+    LiteratureExpectation(
+        predictor="URBAN_PARK_AREA_SHARE",
+        direction=NO_EXPECTATION,
+        basis=NO_BASIS,
+        source_citation=(),
+        reported="",
+        comparability=(
+            "the green variable the evidence supports is the street tree, not the park; "
+            "the park entered because the anteproyecto declared it"
+        ),
+    ),
+    LiteratureExpectation(
+        predictor="BRIDGE_AREA_SHARE",
+        direction=EXPECTS_DISPUTED,
+        basis=QUANTIFIED_BASIS,
+        source_citation=(
+            "zewdieRoadTrafficInjuries2024",
+            "vergel-tovarExaminingRelationshipRoad2020",
+        ),
+        reported=(
+            "no association with pedestrian injuries or deaths; the other Bogota study "
+            "reports the pedestrian bridge associated with greater severity"
+        ),
+        comparability=(
+            "both in Bogota; the two disagree, and the reading that reconciles them is "
+            "that a bridge is built where the road is already fast and wide"
+        ),
+    ),
+    LiteratureExpectation(
+        predictor="SITP_BUS_STOP_DENSITY",
+        # Changed 2026-10-13. The Bogota estimate points one way and the transit-corridor
+        # one the other, and they are not measuring the same thing: one counts stops, the
+        # other counts the people using them.
+        direction=EXPECTS_DISPUTED,
+        basis=QUANTIFIED_BASIS,
+        source_citation=(
+            "zewdieRoadTrafficInjuries2024",
+            "hessPedestrianSafetyTransit2004",
+        ),
+        reported=(
+            "rate ratio 0.89 for pedestrian deaths in Bogota, with no detectable effect on "
+            "injuries; but on American arterials ten more people boarding and alighting "
+            "within 250 feet raised the odds that a site is a pedestrian accident location "
+            "by 1.17, and such sites carried six times the stop usage of the matched ones"
+        ),
+        comparability=(
+            "the Bogota estimate is the equivalent variable, stop density over a zone. The "
+            "other measures stop usage at a site rather than stop density, and attributes "
+            "the association to pedestrian exposure, which this study's offset already "
+            "carries in part: what the offset does not carry is that the walking "
+            "concentrates at the stop"
+        ),
+    ),
+    LiteratureExpectation(
+        predictor="SIGNALISED_INTERSECTION_DENSITY",
+        direction=EXPECTS_FEWER,
+        basis=QUANTIFIED_BASIS,
+        source_citation=("zewdieRoadTrafficInjuries2024",),
+        reported="rate ratio 0.90 for pedestrian deaths, no detectable effect on injuries",
+        comparability=(
+            "same city; the source measures signals per intersection and this study "
+            "measures signals per unit area, so the denominator differs"
+        ),
+    ),
+    LiteratureExpectation(
+        predictor="PEDESTRIAN_CROSSING_DENSITY",
+        # Changed 2026-10-13. The review puts the marked crossing among the works that
+        # separate, but the study that measured it finds the separation only holds on
+        # some roads and reverses on others, which is a disagreement and not a sign.
+        direction=EXPECTS_DISPUTED,
+        basis=QUANTIFIED_BASIS,
+        source_citation=(
+            "zegeerSafetyEffectsMarked2005",
+            "stokerPedestrianSafetyBuilt2015",
+        ),
+        reported=(
+            "on two-lane roads a marked crosswalk made no difference to the pedestrian "
+            "crash rate against a matched unmarked site; on multilane roads above about "
+            "12,000 vehicles a day a marked crosswalk alone, without other substantial "
+            "improvements, was associated with a higher rate after controlling for the "
+            "other site factors"
+        ),
+        comparability=(
+            "1,000 marked crossings against 1,000 matched unmarked ones in 30 US cities, "
+            "so the estimate is a site-level comparison while this study measures crossing "
+            "density over a unit, mixing both road types into one number; the direction it "
+            "predicts therefore depends on which roads a unit's crossings sit on"
+        ),
+    ),
+    LiteratureExpectation(
+        predictor="SPEED_CAMERA_DENSITY",
+        direction=EXPECTS_DISPUTED,
+        basis=QUANTIFIED_BASIS,
+        source_citation=("lopezEffectsReducingEnforcing2021",),
+        reported=(
+            "lowering and enforcing the speed limit on five Bogota arterials cut deaths "
+            "by 16.6 % and raised injury crashes by 10.5 %"
+        ),
+        comparability=(
+            "same city and the same enforcement mechanism, but the source evaluates a "
+            "limit change on five corridors rather than camera density over a unit, and "
+            "its two severities move in opposite directions, so it predicts no sign for a "
+            "count that merges them"
+        ),
+    ),
+    LiteratureExpectation(
+        predictor="TRANSMILENIO_STATION_DENSITY",
+        # Changed 2026-10-12, from EXPECTS_FEWER on a mechanism. The BRT road-safety
+        # literature turns out to estimate the corridor and the station separately, and
+        # they point opposite ways; this study's variable is the station.
+        direction=EXPECTS_DISPUTED,
+        basis=QUANTIFIED_BASIS,
+        source_citation=(
+            "vecino-ortizRoadSafetyEffects2015",
+            "dudutaUnderstandingRoadSafety2012",
+            "stokerPedestrianSafetyBuilt2015",
+        ),
+        reported=(
+            "along the Bogota corridor, annual fatalities fell from 61 to 16 and 60 % is "
+            "attributed to the system once the citywide downward trend is accounted for; "
+            "but 54 % of the fatalities recorded across nine systems were pedestrians, and "
+            "the dangerous crossings concentrate next to the stations"
+        ),
+        comparability=(
+            "same city for the corridor estimate, and the review's own verdict on the "
+            "literature is that the results are mixed and no one-fits-all formula applies. "
+            "The estimates are corridor-level before-and-after and this study measures "
+            "station density over a unit, which is the half of the evidence that points the "
+            "other way: the corridor comes out safer and the station is where people are run "
+            "over crossing to reach it"
+        ),
+    ),
+    LiteratureExpectation(
+        predictor="TREE_DENSITY",
+        direction=EXPECTS_FEWER,
+        basis=QUANTIFIED_BASIS,
+        source_citation=("zewdieRoadTrafficInjuries2024",),
+        reported="rate ratio 0.83 for pedestrian injuries and 0.89 for deaths",
+        comparability=(
+            "same city, and the strongest association the source reports; its mechanism "
+            "is the visual narrowing a tree beside the carriageway produces"
+        ),
+    ),
+    LiteratureExpectation(
+        predictor="CYCLEWAY_LENGTH_DENSITY",
+        # The nearest comparable estimate is the Bogota null, so that is the
+        # expectation; the protective estimate belongs to a different variable, a
+        # different actor and twenty-four other cities, and is carried here as the
+        # counterpoint rather than as the prior.
+        direction=EXPECTS_NOTHING,
+        basis=QUANTIFIED_BASIS,
+        source_citation=(
+            "klanjcicIdentifyingUrbanFeatures2022",
+            "zewdieRoadTrafficInjuries2024",
+        ),
+        reported=(
+            "protected cycleway area share associated with fewer pedestrians killed or "
+            "seriously injured; the Bogota study finds no association for cycleway length"
+        ),
+        comparability=(
+            "the European study is across twenty-four cities and the association it finds "
+            "is on pedestrians rather than cyclists; the Bogota null is explained there by "
+            "the layer not separating segregated path from painted lane, which is the same "
+            "aggregation this study's layer carries"
+        ),
+    ),
+    LiteratureExpectation(
+        predictor="VERTICAL_SIGNAGE_DENSITY",
+        direction=NO_EXPECTATION,
+        basis=NO_BASIS,
+        source_citation=(),
+        reported="",
+        comparability="nothing in the corpus estimates or argues a sign for signage density",
+    ),
+)
+
+LITERATURE_EXPECTATIONS_BY_PREDICTOR: dict[str, LiteratureExpectation] = {
+    expectation.predictor: expectation for expectation in LITERATURE_EXPECTATIONS
+}
+
+# The declaration has to cover the candidates exactly. One missing would make the
+# table in the thesis quietly shorter than the set the search walks, and one extra
+# would be an expectation about a variable no model can select.
+if len(LITERATURE_EXPECTATIONS_BY_PREDICTOR) != len(LITERATURE_EXPECTATIONS):
+    raise ValueError("two literature expectations name the same predictor")
+if set(LITERATURE_EXPECTATIONS_BY_PREDICTOR) != set(REGRESSION_URBAN_CANDIDATES):
+    _missing = sorted(set(REGRESSION_URBAN_CANDIDATES) - set(LITERATURE_EXPECTATIONS_BY_PREDICTOR))
+    _extra = sorted(set(LITERATURE_EXPECTATIONS_BY_PREDICTOR) - set(REGRESSION_URBAN_CANDIDATES))
+    raise ValueError(
+        "the literature expectations must cover the regression candidates exactly; "
+        f"missing {_missing}, declared but not a candidate {_extra}"
+    )
+for _expectation in LITERATURE_EXPECTATIONS:
+    # A quantified expectation with nothing reported is the failure this guards: it
+    # would print an empty cell in the column the reader checks the claim against.
+    if _expectation.basis == QUANTIFIED_BASIS and not _expectation.reported:
+        raise ValueError(
+            f"{_expectation.predictor} declares a quantified expectation and reports no estimate"
+        )
+    if _expectation.direction == NO_EXPECTATION and _expectation.source_citation:
+        raise ValueError(
+            f"{_expectation.predictor} expects nothing and still names a source"
+        )
+    if _expectation.direction != NO_EXPECTATION and not _expectation.source_citation:
+        raise ValueError(
+            f"{_expectation.predictor} expects a sign and names no source for it"
+        )
+
+
 # El tercer conjunto de figuras: las doce que compiten en las regresiones.
 #
 # **No es ninguno de los dos anteriores y por eso hace falta.** `complete` son
@@ -2458,6 +2746,35 @@ OVERDISPERSION_THRESHOLD = 1.25
 # limit with twenty-four cities and resolved it the same way.
 REGRESSION_SUBSET_SIZES: tuple[int, ...] = (2, 3)
 
+# **The two ways a model gets chosen, run side by side rather than one replacing
+# the other.** The exhaustive search over the declared subset sizes is what the
+# study reports; backward elimination is what the panel adviser asked for on
+# 2026-10-07, and it is here so the question can be answered with the same 1,872
+# cells instead of with an argument. Which one the study finally reports is not
+# decided by this constant: both run, both export, and the comparison is drawn.
+BEST_SUBSET_SELECTION = "BEST_SUBSET_AIC"
+BACKWARD_ELIMINATION_SELECTION = "BACKWARD_ELIMINATION"
+SELECTION_METHODS: tuple[str, ...] = (BEST_SUBSET_SELECTION, BACKWARD_ELIMINATION_SELECTION)
+
+SELECTION_METHOD_LABELS_ES: dict[str, str] = {
+    BEST_SUBSET_SELECTION: "Mejor subconjunto por AIC",
+    BACKWARD_ELIMINATION_SELECTION: "Eliminación hacia atrás",
+}
+# The suffix a figure of that method carries. The reported method has none, so its
+# file keeps the name it has always had and the two land adjacent in one folder.
+SELECTION_METHOD_SUFFIXES: dict[str, str] = {
+    BEST_SUBSET_SELECTION: "",
+    BACKWARD_ELIMINATION_SELECTION: "__eliminacion",
+}
+
+# Where backward elimination stops. **It is the value the adviser's own function
+# used and it is more aggressive than the AIC**, not equivalent to it: dropping a
+# term improves the AIC whenever its |z| is below sqrt(2), which is p > 0.157, so
+# 0.05 removes terms the AIC would have kept. The exported table says so under
+# itself, because "it keeps the global significance" is the one claim about this
+# method that is not true.
+BACKWARD_ELIMINATION_ALPHA = 0.05
+
 # The interval every coefficient is reported with, and the level below which it is
 # marked significant. Both declared in the anteproyecto.
 # Columns that identify a model. A model is a dataset, an offset, a pair, a year
@@ -2676,6 +2993,9 @@ def predictor_unit_es(name: str) -> str:
 
 OFFSET_COL = "OFFSET"
 FAMILY_COL = "FAMILY"
+# The sixth column of a model's identity, added 2026-10-09. A table that holds two
+# selection methods without it holds two rows that look like one row written twice.
+SELECTION_METHOD_COL = "SELECTION_METHOD"
 
 REGRESSION_CONFIDENCE = 0.95
 REGRESSION_SIGNIFICANCE = 0.05

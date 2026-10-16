@@ -44,6 +44,9 @@ recomputed against the run it came from rather than against the newest one.
 | `vigencia.py` | What date is each static layer actually from, read off its own columns rather than its file name? | `regression-inventory.md` §4 |
 | `redigitalizacion_ciclorruta.py` | How much of the cycleway's year-to-year change is network, and how much is the same segments re-drawn? | `verification-report.md` §23 |
 | `comparar_candidatas.py` | Does the ranking of the urban variables survive when the offset leftovers do not compete against them? | `verification-report.md` §25, D50 |
+| `seleccion_por_aic.py` | Does minimising a negative AIC select the model the fit figure then shows as the best one? | **D59** |
+| `exclusion_de_una_unidad.py` | What would break if one unit left the regressions, before the pipeline is touched? | **D56** |
+| `efecto_de_la_exclusion.py` | What actually moved once it did? | **D56**, `verification-report.md` §27 |
 | `ajuste_proporcional.py` | Does the fitting return the matrix it should on cases whose answer is known in advance? | **D54**, **D60**, **D61** |
 | `margenes_para_el_ajuste.py` | Do the margins the fitting is given hold every property it takes for granted? | **D60** |
 | `desagregacion_a_zonas.py` | Does bringing a year's margins back onto the seeding survey's zones give the survey back when it is handed the survey? | **D60** |
@@ -52,6 +55,11 @@ recomputed against the run it came from rather than against the newest one.
 | `panel_ajustado.py` | Can the fitted panel be read beside D40's, and does it differ from it? | **D62** |
 | `costura_de_la_semilla.py` | Does the fitted panel jump where the seeding survey changes? It found the seam and now certifies it is gone | **D64**, `implementing-ipf.md` |
 | `mezcla_de_semillas.py` | Is the blended panel the exposure of a blended matrix, or an average of two exposures? | **D64** |
+| `eliminacion_hacia_atras.py` | How many variables does the advisor's backward elimination leave standing, and in which families can it run at all? | `regression-inventory.md` §17 |
+| `compra_cada_variable.py` | Do the extra variables backward elimination keeps actually buy anything, in AIC or BIC? | `regression-inventory.md` section 17.3 |
+| `estandarizar_arregla.py` | How much does `_standardise` buy, which until now the code asserted without measuring? | `regression-inventory.md` section 17.12 |
+| `variables_y_la_literatura.py` | How many variables survive at 5 % and at 10 %, and do the ones the literature names come out with the sign it predicts? | `regression-inventory.md` section 18, **D66** |
+| `que_decide_el_panel.py` | Which pieces of the panel specification can the cross-sections settle, with what figure, and which one can they not settle at all? | `regression-inventory.md` section 19 |
 
 `flujos_vs_stock.py` measures the three line layers that carry an annual series
 together, with the cycleway among them **as a control**. That is deliberate: the

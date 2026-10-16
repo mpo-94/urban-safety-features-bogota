@@ -2506,3 +2506,1256 @@ Lo que hay que mirar está en 15.4, y se repite aquí lo que no se puede omitir:
   entregable.
 - **Anotar el número de la corrida** en el informe de verificación, en una sección nueva,
   y decir qué sustituye.
+
+## 17. La eliminación hacia atrás que pidió la asesora, medida antes de implementarla
+
+> **AVISO DEL 2026-10-09, leer antes que nada de esta sección.** Las mediciones sobre la
+> binomial negativa de 17 a 17.11 se hicieron sobre un **diseño sin estandarizar**, que el
+> *pipeline* nunca ajusta: `search` llama a `_standardise` antes de `_fit_one`. Con el
+> diseño correcto la binomial negativa ajusta **529 de 624 celdas y no 17**, y el problema
+> que esas secciones investigan no existe. **La corrección, con las cifras buenas y la lista
+> de qué queda en pie, está en 17.12.** Lo demás se conserva como registro de lo que se
+> midió y de cómo se encontró el error.
+
+**Pedida el 2026-10-07 por Teams, en `descarte-variables/conversacion-asesora.txt`.
+Discutida y medida el 2026-10-08; nada implementado todavía.** El orden acordado con
+Mateo es: planear esto, correr las regresiones sobre la exposición ajustada por IPF,
+implementar esto, y sólo después la mezcla de semillas de la reconstrucción.
+
+### Lo que pidió, en dos peticiones que no son la misma
+
+**Una.** Reemplazar o acompañar la búsqueda actual con **eliminación hacia atrás**: se
+arranca con todas las candidatas dentro del modelo y se bota la de mayor valor p hasta
+que todas las que quedan estén por debajo de α = 0,05. Mandó la función escrita, en
+`sm.OLS`.
+
+**Dos, suelta al final.** Que se estudie **cómo se interpreta un parámetro** en cada
+familia. Es otra cosa y está al final de esta sección.
+
+**Y lo que hay detrás de la primera es el tope de tres.** Su frase es «consigues tener
+los parámetros que sí explican la variable endógena (en vez de 3 parámetros)», y es la
+misma inquietud que ya había expresado el 2026-10-01 preguntando por qué unos años salen
+con tres variables y otros con dos (§14). Hoy `config.REGRESSION_SUBSET_SIZES` vale
+`(2, 3)` con una razón escrita al lado: veintinueve observaciones no sostienen más de
+tres predictores por la regla de diez observaciones por predictor, y el estudio europeo
+resolvió igual con veinticuatro ciudades. **No está señalando un descuido, está en
+desacuerdo con una decisión declarada** —probablemente sin saber que tiene razón escrita—
+y eso cambia cómo se le responde.
+
+### Tres cosas que hay que decirle, y la primera es una corrección
+
+**1. «manteniendo la significancia global (AIC, R²)» no es correcto.** La eliminación por
+valor p y la selección por AIC son criterios distintos y discrepan por construcción. Para
+una variable, botarla mejora el AIC exactamente cuando su |z| < √2, o sea cuando
+**p > 0,157**. Un umbral de 0,05 es por tanto **más agresivo que el AIC**: bota todas las
+variables cuyo p cae entre 0,05 y 0,157, que el AIC conservaría. No se pueden mantener los
+dos a la vez, y la tesis tiene que decir con cuál seleccionó.
+
+**2. Su función es sólo mínimos cuadrados**, y aquí mínimos cuadrados es la especificación
+secundaria: no admite offset y se ajusta sobre la tasa (D51, la trampa que ya mordió una
+vez). Aplicada tal cual seleccionaría variables para la familia que el estudio no
+encabeza. Generalizarla a `sm.GLM` con su familia y su offset es directo y es lo que se
+midió abajo.
+
+**3. No esquiva el problema de los valores p deshonestos.** §14.4 y D59 ya declaran que
+los valores p de la selección no son honestos porque son los del ganador de una búsqueda
+entre 286 especificaciones, y la tabla exportada lo dice debajo de sí misma. En la
+eliminación hacia atrás los valores p finales están condicionados al camino recorrido, que
+es el mismo problema reubicado — y encima vuelve el resultado dependiente del orden,
+mientras que la búsqueda actual es exhaustiva y no tiene camino.
+
+### La medición: cuántas variables deja en pie, sobre las celdas reales
+
+La pregunta de Mateo fue si el método puede terminar eligiendo **más** de las dos o tres
+que elige el actual. Se corrió la eliminación hacia atrás sobre las 1 872 celdas del
+conjunto urbano —dos conjuntos de siniestralidad, tres offsets, ocho parejas, trece años,
+tres familias— arrancando de las doce candidatas.
+
+**Sí puede, y lo hace en el 48,1 % de las celdas que se pudieron ajustar.** Pero el reparto
+por familia es la verdadera noticia:
+
+| Familia | celdas ajustadas | mediana | máximo | pasan de tres |
+|---|---:|---:|---:|---:|
+| Mínimos cuadrados | 624 | **2** | 7 | 13,9 % |
+| Poisson | 624 | **6** | 11 | **83,0 %** |
+| Binomial negativa | **17** | 3 | 5 | 23,5 % |
+
+Y el reparto completo, sobre las 1 265 celdas ajustables: ninguna variable en el 5,8 %,
+una en el 16,4 %, dos en el 18,5 %, tres en el 11,1 %, y el resto repartido hasta once.
+
+**Tres lecturas, y las tres importan.**
+
+**La intuición de la asesora es correcta en mínimos cuadrados**, que es donde se formó:
+mediana de dos, y sólo el 13,9 % pasa de tres. Sobre la familia que ella tenía en mente,
+la eliminación hacia atrás da *menos* variables de las que el tope permite, no más. Eso
+contesta su pregunta directamente.
+
+**El resultado de Poisson no dice que seis variables expliquen los datos.** Dice que los
+conteos están sobredispersos, que es exactamente por lo que el pipeline cambia a binomial
+negativa por encima de `OVERDISPERSION_THRESHOLD = 1.25`. Poisson subestima sus errores
+estándar cuando hay sobredispersión, los valores p salen demasiado pequeños y casi nada se
+elimina. **Es un diagnóstico de sobredispersión disfrazado de selección**, y cualquier
+figura que lo muestre tiene que decirlo o será leída al revés.
+
+**Y la binomial negativa no se pudo ajustar en 607 de sus 624 celdas.** Es la familia que
+el estudio encabeza en las parejas sobredispersas, estima la dispersión junto con los
+coeficientes, y con doce predictores sobre veintinueve observaciones no converge en las
+200 iteraciones que `_fit_one` permite. **Se subió el tope y se volvió a medir el 2026-10-08: no es cuestión de
+iteraciones.** 200, 2 000 y 20 000 dan las mismas 6 de 40, y los 34 fallos son del
+optimizador rindiéndose y no de una matriz singular. El detalle está en 17.1, con el número
+que faltaba: **la binomial negativa resuelve con hasta seis predictores y se rompe a partir
+de siete**.
+
+### Lo que la medición obliga a decidir, y es de Mateo
+
+**Si la binomial negativa sigue sin converger desde doce candidatas**, hay tres salidas y
+ninguna es obvia:
+
+1. **Reportar el fallo.** La eliminación hacia atrás se corre donde se puede y la tabla
+   dice dónde no. Honesto y deja a la familia principal sin el método que pidió la asesora.
+2. **Arrancar de una bolsa menor.** Por ejemplo de la unión de lo que la búsqueda actual
+   alguna vez seleccionó. Converge, y deja de ser «arrancar con todas», que es lo que la
+   asesora pidió.
+3. **Cambiar el estimador de la binomial negativa** por el GLM con alpha fijo, que
+   converge mucho mejor. Cuesta que su AIC deja de ser comparable con el de Poisson, que
+   es precisamente por lo que `_fit_one` usa el modelo discreto (el comentario está ahí).
+
+### El plan, decidido antes de implementar
+
+**Los dos métodos corren y se comparan.** Ninguno reemplaza al otro mientras no haya una
+decisión, y la comparación es lo que contesta la pregunta de la asesora con una medición
+en vez de con un argumento.
+
+**Configuración.** `REGRESSION_SELECTION_METHODS = (BEST_SUBSET_AIC, BACKWARD_ELIMINATION)`
+y `BACKWARD_ELIMINATION_ALPHA = 0.05`, declarada con la relación contra el AIC escrita al
+lado para que nadie la lea como equivalente.
+
+**Las tablas.** La tabla de modelos y la de coeficientes ganan una columna
+`SELECTION_METHOD`, que es **parte de la clave y no una descripción**, por la misma razón
+que `EXPOSURE_VARIANT` lo es (D42): dos filas que difieren sólo en ella son dos respuestas
+a la misma pregunta y sumarlas es siempre un error. Una tabla nueva,
+`reference__seleccion_comparada`, con una fila por celda y método: cuántas variables
+sobrevivieron, cuáles, en cuántos pasos, y si el estimador pudo.
+
+**Las figuras**, en `figures/regressions/seleccion/`, que es un grupo nuevo al lado de
+`coeficientes/` y `principal/` — comprobada la ruta contra una corrida, no supuesta:
+
+| | Figura | La pregunta que contesta |
+|---|---|---|
+| 1 | `seleccion__cuantas_variables` | **La pregunta de la asesora**: cuántas variables deja cada método, por familia, con el tope de 2–3 dibujado como referencia |
+| 2 | `seleccion__acuerdo` | Con qué frecuencia los dos métodos eligen el mismo conjunto, y cuánto se solapan cuando no |
+| 3 | ~~`seleccion__frecuencia`~~ | **Retirada el 2026-10-09**: agrupaba los conjuntos y los offsets, que es lo que D53 prohíbe. La sustituye `frecuencia_seleccion__eliminacion.png` dentro de cada especificación; ver 17.13 |
+| 4 | `seleccion__convergencia` | Dónde la eliminación hacia atrás no se pudo correr, que con el diseño estandarizado son 95 de 1 872 celdas (17.12; la cifra de 607 de 624 que aquí decía se midió sobre un diseño que el *pipeline* no ajusta) |
+
+La cuarta no es un diagnóstico interno: es la que impide que la comparación se lea como si
+los dos métodos hubieran corrido sobre lo mismo.
+
+**Lo que no cambia.** El tope de `REGRESSION_SUBSET_SIZES` se queda donde está mientras la
+comparación no diga otra cosa, y la corrida que el estudio reporta sigue siendo la de la
+búsqueda por AIC. Cambiar eso es una decisión posterior y con la comparación en la mano.
+
+### La segunda petición: cómo se interpreta un parámetro
+
+Es la más fácil y hoy no está escrita en ningún entregable, aunque el estudio reporta tres
+familias.
+
+- **Mínimos cuadrados sobre la tasa.** β es el cambio *aditivo* en la tasa por unidad del
+  predictor, en las unidades de la tasa. No admite offset, así que la tasa es el conteo
+  sobre el mismo producto que el GLM pone en el suyo.
+- **Poisson y binomial negativa, enlace logarítmico y offset.** exp(β) es el factor
+  *multiplicativo* sobre la tasa por unidad del predictor, y (exp(β) − 1) × 100 el cambio
+  porcentual. Con las betas completamente estandarizadas de D51, por desviación estándar.
+- **Y lo que une a las dos:** los coeficientes de las dos familias **no son comparables en
+  magnitud, sólo en signo y en significancia**. Está dicho en `config` al lado de
+  `OLS_FAMILY` y no lo ha escrito ningún entregable.
+- **Las candidatas en logaritmos son el caso aparte.** `config.LOG_SCALED_CANDIDATES` las
+  declara, y para ellas β en un modelo de enlace logarítmico es una **elasticidad**:
+  comparable con el exponente que reporta la literatura de seguridad en números y con el
+  uno que el offset le fija a esa misma cantidad.
+
+### Los dos PDFs, que son del panel y no de esto
+
+**Bell, Fairbrother y Jones (2018), *Fixed and random effects models: making an informed
+choice*.** No es acompañamiento: **discute el marco que declara el anteproyecto**. Allí
+Hausman decide entre efectos fijos y aleatorios; ellos sostienen que el modelo
+*within-between* —el híbrido, o Mundlak— es el más general de los tres, tiene las virtudes
+de los otros dos, y debería ser el punto de partida de todo análisis multinivel. También
+que omitir pendientes aleatorias da errores estándar anticonservadores.
+
+**Es una divergencia con el anteproyecto aprobado y se reporta, no se resuelve aquí.** Si
+la asesora quiere el within-between, el capítulo de metodología tiene que explicar por qué
+cambió respecto de lo aprobado, que es material para el documento y no un ajuste silencioso.
+
+**Papke (2004), *The effects of spending on test pass rates: evidence from Michigan*.** Un
+panel aplicado de escuelas sobre 1992-1998, la misma forma que UPL por año. Se lee como
+ejemplo de panel bien hecho más que como método.
+
+### 17.1 La binomial negativa, medida el 2026-10-08: no es cuestión de iteraciones
+
+La sección de arriba dejó abierto si los 607 fallos eran «no se puede» o «faltaron pasos».
+Se midió y la respuesta es limpia.
+
+**Subir el tope no cambia nada.** Sobre una muestra de cuarenta celdas, con las doce
+candidatas dentro:
+
+| Tope | Optimizador | Convergen |
+|---|---|---:|
+| 200 | bfgs | 6 de 40 |
+| 2 000 | bfgs | **6 de 40** |
+| 20 000 | bfgs | **6 de 40** |
+| 2 000 | newton | 3 de 40 |
+| 2 000 | lbfgs | 1 de 40 |
+| 2 000 | nm | 0 de 40 |
+
+Idénticas en los tres topes, y los otros optimizadores son peores. Las cuarenta celdas
+tardan 0,3 s, o sea que los ajustes **paran temprano y no se quedan moliendo**.
+
+**Y lo que falla es la convergencia, no la identificación.** De los 34 fallos, los 34 son
+«el optimizador se rinde»; ninguno es «converge y la matriz de covarianzas sale singular».
+Son dos diagnósticos con remedios opuestos, y éste es el que no tiene remedio por el lado
+del cómputo.
+
+**La pregunta útil era otra: cuántos predictores aguanta.**
+
+| k predictores | resuelve |
+|---:|---:|
+| 1 a 6 | **95 % a 97,5 %** |
+| 7 | 70,0 % |
+| 8 | 67,5 % |
+| 9 | 77,5 % |
+| 10 a 12 | 11 % a 15 % |
+
+~~**La binomial negativa resuelve con hasta seis predictores y se rompe a partir de
+siete.**~~ **Corregido el 2026-10-09 en 17.6: esto está mal.** La tabla de arriba toma
+las k primeras candidatas en orden de declaración, así que el seis describe ese orden
+y no la familia. En todos los tamaños hay combinaciones que convergen siempre y
+combinaciones que no convergen nunca: **el techo depende de cuáles variables, no de
+cuántas.** Lo que sí se sostiene de esta tabla es el extremo: con las doce no converge.
+
+**Lo que esto cierra, y conviene decirlo primero:** el tope actual de tres está cómodamente
+dentro de lo estimable. La búsqueda que corre hoy no está pegada a ningún límite numérico,
+y en los subconjuntos de dos y tres **fallan 2 de 3 234 especificaciones, el 0,06 %**.
+Subir el tope de iteraciones no puede mover ningún resultado existente, así que el cambio
+no se hace: no compra nada.
+
+### 17.2 Las salidas, con el número en la mano
+
+**Aparece una tercera salida que no estaba en la sección 17.** Si la inquietud de la
+asesora es que tres es poco, se puede **subir el tope de la búsqueda actual** en vez de
+cambiar de método.
+
+**Nota del 2026-10-09:** lo que sigue decía que la binomial negativa «aguanta seis» y 17.6
+corrige que el techo no es un número. La salida sigue en pie —la búsqueda exhaustiva
+descarta sola los subconjuntos que no ajustan, que es lo que ya hace hoy con 2 de 3 234— y
+lo que cambia es que el tope no se puede justificar diciendo «seis caben». Habría que
+medir, para cada tamaño, qué fracción de los subconjuntos ajusta.
+
+| Tamaños | Modelos por celda |
+|---|---:|
+| 2 a 3 | 286 (hoy) |
+| 2 a 4 | 781 |
+| 2 a 5 | 1 573 |
+| 2 a 6 | 2 497 |
+
+Nueve veces el trabajo actual en el caso extremo, que es asumible. **Contesta «¿por qué
+sólo tres?» relajando el tope en vez de cambiando el criterio**, y deja intactas las dos
+propiedades que la búsqueda exhaustiva tiene y la eliminación hacia atrás no: no depende
+del orden y no tiene camino.
+
+**Y la salida de «arrancar de una bolsa menor» tiene ahora su número, y su costo.** Seis es
+el máximo que la binomial negativa estima, así que la eliminación hacia atrás podría correr
+desde seis en esa familia y desde doce en las otras dos. Dos cosas lo afean y las dos hay
+que decirlas:
+
+- **Cuáles seis es otra selección.** Pre-escoger la bolsa es seleccionar antes de
+  seleccionar, y el «que los datos decidan» que la asesora quiere queda a medias. Los
+  valores p salen aún menos honestos que los de D59, porque pasan a estar condicionados a
+  dos etapas y no a una.
+- **Las familias dejan de ser comparables.** Mínimos cuadrados y Poisson corriendo desde
+  doce y la binomial negativa desde seis no es la misma comparación, y la cuarta figura del
+  plan —la de convergencia— pasa de ser un diagnóstico a ser una advertencia obligatoria.
+
+**Lo que no cambia con esta medición:** los dos métodos se corren y se comparan, que es lo
+acordado. Lo que cambia es que ahora hay una tercera opción sobre la mesa, y que la
+decisión sobre la binomial negativa dejó de ser entre tres cosas vagas para ser entre tres
+cosas con precio.
+
+### 17.3 ¿Más variables es mejor? Medido el 2026-10-08
+
+Mateo preguntó lo que hay que preguntar: si el método deja tres en vez de una, ¿es porque
+con tres funciona mejor? **La regla de parada no dice eso.** Dice que cada coeficiente que
+queda es distinguible de cero *dado que los otros están dentro*, que es una afirmación
+sobre cada variable por separado y no sobre el conjunto comparado contra conjuntos menores.
+Dos cosas lo separan del «es mejor»: la eliminación **nunca vuelve atrás**, así que lo que
+queda es donde se detuvo un camino y no el ganador de una comparación; y **significancia y
+parsimonia son criterios distintos**.
+
+Así que se midió. Para cada celda se corre la eliminación, se toma el conjunto que deja, y
+se ajustan **todos** los subconjuntos de la misma bolsa de tamaño 1 hasta |S|. Muestra de
+treinta celdas por familia, limitada a los casos con entre una y cuatro sobrevivientes
+porque enumerar por encima de cuatro no cabe.
+
+| | Mínimos cuadrados | Poisson |
+|---|---:|---:|
+| Celdas con más de una variable | 15 de 23 | 10 de 12 |
+| El conjunto elegido es el mejor **de su propio tamaño** | **61 %** | 92 % |
+| Un conjunto **más chico** gana en AIC | 13 % | 0 % |
+| Un conjunto **más chico** gana en BIC | 20 % | 0 % |
+| Lo que las variables de más compran en AIC (mediana) | **+2,95** | +4,97 |
+
+**La respuesta honesta es «casi siempre sí, y no por la razón que da la regla de parada».**
+En el 87 % de las celdas de mínimos cuadrados con más de una variable, las de más sí
+compran AIC. En el 13 % no, y bajo BIC sube al 20 %.
+
+**Pero el dato que importa es otro: en el 39 % de las celdas de mínimos cuadrados, la
+eliminación no encontró ni siquiera el mejor conjunto de su propio tamaño.** Otro conjunto
+con la misma cantidad de variables tiene mejor AIC. Eso es la dependencia del camino
+medida: el resultado no es óptimo ni concediéndole su elección de tamaño.
+
+**Y lo que esto implica para el plan es concreto: el número de variables no demuestra
+nada por sí solo.** La demostración exige ajustar los subconjuntos menores y comparar, que
+es exactamente lo que la búsqueda exhaustiva ya hace. Por eso los dos métodos conviven bien:
+**la eliminación propone y la búsqueda exhaustiva verifica**, y esa es la quinta figura.
+
+**Advertencia sobre estas cifras.** Son 23 y 12 celdas, con k ≤ 4, sobre el conjunto
+observado. Son indicativas y la implementación las medirá sobre todas. Lo que no va a
+cambiar con más muestra es el mecanismo: una regla que para cuando cada coeficiente pasa un
+umbral individual no está comparando conjuntos.
+
+### 17.4 La quinta figura, y por qué R² no puede contestar
+
+A las cuatro figuras de la sección 17 se añade una:
+
+| | Figura | La pregunta que contesta |
+|---|---|---|
+| 5 | `seleccion__compra_cada_variable` | **¿Las variables de más compran algo?** Por celda, el AIC y el BIC del conjunto que la eliminación dejó contra el mejor conjunto de cada tamaño menor |
+
+**Ampliado en 17.13:** estas cinco comparan los métodos y ninguna muestra qué eligió el
+método en un modelo concreto, ni permite evaluarlo en los términos de D57. El plan
+completo de figuras —640 nuevas y no 5— está en 17.13.
+
+**Los seis prototipos se dibujaron el 2026-10-09** y están aprobados; el tercero se retiró
+después por lo que dice 17.13. Cinco cosas que salieron de dibujarlos y que la
+implementación tiene que conservar.
+
+**Un panel cuyas barras descansan en menos de la cuarta parte de las celdas lleva un aviso
+dentro**, porque las de la binomial negativa serían porcentajes de muy pocas celdas y se
+verían igual de sólidas que las de 620. **El orden de las filas de un panel múltiple es el
+mismo en todos sus paneles**, o no se pueden comparar; lo fija la frecuencia del método
+actual en mínimos cuadrados donde hay una frecuencia, y el orden declarado en
+`STATIC_PREDICTORS` donde no. Y **el sello de procedencia va arriba a la izquierda**, porque
+abajo a la derecha pisa el eje del último panel.
+
+Las dos que salieron de `betas__eliminacion`: **un año que no converge se dibuja con raya y
+queda fuera del conteo**, porque dejarlo en blanco se lee como «sobrevivió», que es lo
+contrario; y **el orden de las filas necesita un desempate declarado**, porque ordenar sólo
+por frecuencia deja los empates a merced del orden de iteración de un `set` y dos corridas
+de la misma figura salen distintas. Lo que comprueba esto último es regenerar la figura y
+exigirla idéntica byte a byte.
+
+Dibujarlos además destapó un defecto que ninguna lectura del código habría encontrado: la tabla de modelos junta los nombres de las variables con **coma y espacio** y la medición de la eliminación con **punto y coma**. Partir por uno solo ponía a los dos métodos en filas distintas de la misma figura. Es la regla de no tomar el nombre de una columna —ni el formato de un campo— como evidencia de lo que contiene.
+
+**R² no entra en esa figura y hay que decir por qué**, porque la asesora lo nombró junto al
+AIC: R² nunca baja al agregar una variable, así que contestaría «más siempre es mejor» por
+construcción. AIC y BIC sí penalizan parámetros, y difieren entre sí —el BIC castiga más
+duro, y aquí discrepa del AIC en una de cada cinco celdas— de modo que reportar los dos es
+más informativo que elegir uno.
+
+### 17.5 Que se puede implementar en las tres familias, y cómo
+
+La función de la asesora es `sm.OLS`. **La generalización está hecha y medida** en
+`tools/eliminacion_hacia_atras.py`: delega en `regressions._fit_one`, que es el mismo
+ajuste que usa la búsqueda actual, de modo que la comparación sea entre métodos de
+selección y no entre dos maneras de ajustar. Mínimos cuadrados ajusta la tasa sin offset;
+Poisson y binomial negativa ajustan el conteo con el offset. Los valores p se leen igual en
+las tres.
+
+**Dos trampas que cuestan una corrida cada una si no se saben.**
+
+La binomial negativa de statsmodels estima `alpha` como un parámetro más, así que sus
+`pvalues` traen **una entrada de sobra al final** que no es de ninguna variable. Cortar con
+`[1:]` como hace la función original mete el valor p de la dispersión entre los de las
+variables.
+
+Y **un valor p en NaN no es un valor p grande: es un coeficiente que el diseño no
+identifica.** Tratarlo como grande y botarlo es defendible, pero hay que contarlo y decirlo,
+no dejarlo pasar como si fuera una eliminación normal.
+
+**El límite real no es si se puede implementar sino dónde corre.** En la binomial negativa
+sólo desde seis candidatas o menos (17.1), y eso es lo que la sección 17.2 deja abierto.
+
+### 17.6 Corrección del 2026-10-09: el techo no es un número de variables
+
+**La sección 17.1 decía que la binomial negativa «resuelve con hasta seis predictores y se
+rompe a partir de siete». Eso está mal y se corrige aquí.** La medición tomaba **las k
+primeras candidatas en orden de declaración**, de modo que el seis describía ese orden y no
+la familia. Lo delató la forma de la curva: la convergencia caía de 78 % con nueve a 12 %
+con diez, y un problema de grados de libertad se degrada suave y no en un escalón.
+
+Se probó con subconjuntos del mismo tamaño elegidos al azar:
+
+| k | Las k primeras | Subconjuntos al azar | Mejor subconjunto | Peor subconjunto |
+|---:|---:|---:|---:|---:|
+| 6 | 92 % | 44 % | **100 %** | **0 %** |
+| 8 | 64 % | 30 % | **100 %** | **0 %** |
+| 10 | 4 % | 16 % | **100 %** | **0 %** |
+| 12 | 0 % | 0 % | 0 % | 0 % |
+
+**En todos los tamaños hay combinaciones que convergen siempre y combinaciones que no
+convergen nunca.** El techo depende de *cuáles* variables y no de *cuántas*. Con las doce
+no hay variación posible —hay un solo subconjunto— y ése no converge en ninguna celda.
+
+### 17.7 Qué queda descartado, y qué no se sabe
+
+Se pusieron a prueba cuatro explicaciones y **tres quedaron refutadas por medición**. Se
+escriben aquí porque una explicación descartada ahorra el trabajo de volver a intentarla, y
+porque la que quede en pie acabará en el capítulo de metodología.
+
+**Descartado: la paciencia del optimizador.** 200, 2 000 y 20 000 iteraciones dan el mismo
+resultado, y newton, lbfgs y nm son peores que bfgs. Los ajustes paran rápido.
+
+**Descartado: que `alpha` se vaya al borde.** La hipótesis era que con muchos predictores
+el modelo absorbe la sobredispersión, `alpha` tiende a cero —que es el borde del espacio de
+parámetros, donde la verosimilitud se aplana— y el optimizador se queda sin gradiente. La
+media de `alpha` baja de 0,35 a cerca de 0,15 al pasar de uno a doce predictores, pero sólo
+el 33 % de los ajustes queda bajo 0,05 con doce, contra el 29 % con nueve. Entre nueve y
+diez la convergencia se desploma de 78 % a 12 % y `alpha` apenas se mueve: no es eso.
+
+**Descartado: que la sobredispersión desaparezca.** Sería la versión sustantiva de lo
+anterior —si doce predictores absorben la sobredispersión, la binomial negativa deja de ser
+la familia que toca y el fallo sería información y no un defecto—. **No ocurre.** La
+dispersión de Pearson mediana baja de 5,5 con uno a seis predictores a 3,9 con diez a doce,
+y sigue por encima del umbral de 1,25 en el **98 % a 100 %** de los ajustes en todos los
+valores de k. Los conteos siguen firmemente sobredispersos y la familia sigue siendo la
+correcta.
+
+**Descartado: el condicionamiento del diseño.** Era el sospechoso natural una vez que el
+techo resultó ser de *cuáles* variables. Los diseños que convergen y los que no tienen
+números de condición indistinguibles —mediana 8,8 contra 8,7, cuartiles superpuestos— y la
+tasa de convergencia es plana entre tramos: 38 % por debajo de 10 y 33 % entre 10 y 20. La
+colinealidad lineal del diseño no lo explica.
+
+**Lo que faltaba se encontró el 2026-10-09 y está en 17.9: es la escala del diseño.** El
+arbolado toma valores entre 901 y 7 937 mientras once de las doce viven entre 0,00005 y
+356, y `_scale_candidates` no estandariza; en una verosimilitud de enlace logarítmico eso
+deja al optimizador buscando un coeficiente de orden 10⁻⁴ en una coordenada y de orden 1 en
+las demás. Con el diseño estandarizado la convergencia pasa del 8,3 % al 86,7 % **con las
+doce candidatas dentro**, y la verosimilitud no se mueve: es el mismo modelo.
+
+### 17.8 Lo que sí se puede afirmar, y qué significa para lo que pidió la asesora
+
+**Corregido otra vez el 2026-10-09 en 17.9: tampoco es imposible desde las doce.** Lo era
+con el diseño crudo, y la causa es numérica y se arregla estandarizando. Lo que sigue se
+conserva porque describe bien el problema tal como se veía, y la pieza dos del esquema de
+17.10 sigue haciendo falta para el 13 % de celdas que no ajustan ni estandarizadas.
+
+~~**La eliminación hacia atrás no es imposible en la binomial negativa. Es imposible desde
+las doce candidatas.**~~ La distinción importa porque su método se define por el punto de
+partida: «arrancar con todas» *es* el método, y su primer paso es ajustar el modelo
+completo. Con las doce ese primer paso no converge en ninguna celda, así que el método tal
+como está especificado no puede correr en esa familia.
+
+Desde una bolsa menor sí corre. Pero **la recomendación de la sección 17.2 de «arrancar de
+seis» queda sin fundamento**: seis no es el techo, y una bolsa de seis elegida mal falla
+igual que una de diez elegida mal. Lo que haría falta es una bolsa **bien escogida**, y no
+hay todavía una regla verificada para escogerla.
+
+**Esto no cambia el plan de correr los dos métodos y comparar.** La cuarta figura —la de
+convergencia— pasa a ser más importante de lo que era: deja de ser un diagnóstico técnico
+y pasa a ser la figura que sostiene una afirmación de la tesis, que es que el método
+propuesto no se puede aplicar a la familia que el estudio encabeza en las parejas
+sobredispersas, y por qué.
+
+### 17.9 La causa, encontrada el 2026-10-09: es la escala del diseño
+
+Las cuatro explicaciones de 17.7 estaban descartadas y faltaba el mecanismo. Se buscó por
+donde correspondía —qué variables aparecen en los subconjuntos que fallan— y resultó ser
+**una sola**.
+
+| Variable | Converge con ella dentro | Sin ella | Diferencia |
+|---|---:|---:|---:|
+| **Arbolado** | **7 %** | **84 %** | **−77 %** |
+| Vía arterial | 28 % | 26 % | +2 % |
+| *(las otras diez)* | 27 % a 29 % | 20 % a 28 % | −1 % a +10 % |
+
+En una regresión logística de «convergió» sobre la presencia de cada variable —que separa a
+una variable de las que suelen acompañarla— el arbolado tiene coeficiente **−4,55**, razón
+de momios **0,01**, p < 0,001. Lo siguiente, la vía arterial, tiene momios de 0,48. No es
+una tendencia: es una variable.
+
+**Y lo que la distingue no es su distribución sino su escala.** Su forma no tiene nada de
+particular —razón máximo sobre mediana de 2,3 y asimetría 0,59, donde TransMilenio llega a
+5,6 y 1,43—. Lo que la distingue es que **toma valores entre 901 y 7 937 mientras once de
+las doce viven entre 0,00005 y 356**. `_scale_candidates` toma logaritmos sólo de las tres
+cantidades del offset y **no estandariza nada**, así que el diseño llega al optimizador con
+ocho órdenes de magnitud de diferencia entre columnas. En una verosimilitud de enlace
+logarítmico eso obliga a buscar un coeficiente de orden 10⁻⁴ en una coordenada y de orden 1
+en las demás, que es un paisaje pésimo para un cuasi-Newton.
+
+**Comprobado:**
+
+| Diseño | Convergen, con las doce candidatas |
+|---|---:|
+| Crudo, como hoy | **5 de 60 (8,3 %)** |
+| Estandarizado | **52 de 60 (86,7 %)** |
+
+Y donde los dos ajustan, **la verosimilitud difiere a lo sumo en 1,6·10⁻⁸**: es el mismo
+modelo. Reescalar linealmente un predictor sólo reescala su coeficiente, y la verosimilitud,
+el AIC y los valores p no se mueven.
+
+**Así que la respuesta a «¿es imposible en la binomial negativa?» es no, y por una razón
+mejor que la anterior: no era la familia, ni el tamaño, ni las variables. Era la escala del
+diseño, y se arregla.**
+
+### 17.10 El esquema de arranque, en dos piezas
+
+Mateo pidió un método que garantice convergencia al implementar lo de la asesora. Son dos
+piezas y la primera hace casi todo el trabajo.
+
+**Pieza uno: estandarizar el diseño antes de ajustar.** Lleva la convergencia del 8,3 % al
+86,7 % con las doce candidatas dentro, y no cambia nada de lo que el estudio reporta.
+**Tiene una condición y es la parte delicada:** el coeficiente que sale está en unidades de
+desviación estándar, así que para seguir exportando `COEFFICIENT` en las unidades de la
+variable hay que dividirlo por la desviación de su columna al recoger el resultado. Si eso
+se olvida, los coeficientes crudos cambian de significado sin avisar. `COEFFICIENT_STANDARDISED`,
+que es lo que D51 reporta, sale directo y sin transformar.
+
+**Pieza dos: un paso previo para el 13 % que sigue sin ajustar.** Arrancar con todas y,
+mientras el modelo completo no converja, sacar una variable y reintentar, en un orden de
+salida declarado que empieza por el arbolado y sigue por la vía arterial —el orden que la
+logística midió— y después por el coeficiente de cada una. Se para cuando converge.
+
+**Garantiza la convergencia porque la comprueba en vez de predecirla**, que es la única
+forma de garantizarla. Medido sobre 45 celdas con el diseño crudo, que es el caso peor:
+
+- Encuentra una bolsa que ajusta en **45 de 45 celdas**.
+- Tamaño de la bolsa: mediana **11 de 12**, rango 4 a 12. Veintiocho de las 45 sólo
+  necesitan soltar el arbolado y seis no sueltan nada.
+- Cuesta **2 ajustes de mediana y 8 como máximo**, y los que fallan paran rápido.
+
+Con el diseño estandarizado la pieza dos se activará mucho menos, pero se queda: una celda
+donde el modelo completo no ajusta tiene que poder correr igual, y la alternativa es
+dejarla fuera.
+
+**Lo que hay que declarar y no esconder.** Con la pieza dos, la eliminación hacia atrás ya
+no arranca «con todas» en las celdas donde se activa. Eso cambia el método que la asesora
+pidió y la tabla exportada tiene que decir, por celda, con cuántas variables arrancó. La
+cuarta figura del plan —la de convergencia— pasa a mostrar eso en vez de mostrar fallos.
+
+### 17.11 Lo que esto obliga a revisar fuera de aquí
+
+**El hallazgo es más ancho que la eliminación hacia atrás.** La búsqueda actual ajusta
+diseños crudos igual que ésta; converge porque dos o tres predictores son fáciles —falla en
+2 de 3 234 especificaciones— pero está resolviendo un problema peor condicionado de lo
+necesario sin ninguna razón. **Estandarizar antes de ajustar es correcto para las tres
+familias y para los dos métodos de selección**, y conviene hacerlo de una vez y no sólo
+donde duele.
+
+Eso sí: es un cambio dentro de `_fit_one`, que es función verificada, y toca el
+back-transform de los coeficientes. **No se hace junto con otra cosa.** Lo que lo verifica
+es barato y es obligatorio: con el diseño crudo y con el estandarizado, los modelos que hoy
+ajustan tienen que dar la misma verosimilitud, el mismo AIC y los mismos valores p, y los
+coeficientes crudos tienen que volver a coincidir tras el back-transform.
+
+---
+
+## 17.12 Corrección del 2026-10-09: el pipeline ya estandariza, y buena parte de 17 estaba midiendo otra cosa
+
+**Todo lo que las secciones 17 a 17.11 dicen sobre la binomial negativa que no converge se
+midió sobre un diseño que el *pipeline* nunca ajusta.** `search` llama a
+`regressions._standardise` antes de ajustar —lo ha hecho desde que existe, y el docstring
+de esa función ya decía que estandarizar arregla la convergencia de la binomial negativa—
+y las mediciones de esta sección construían el diseño con `_scale_candidates` y lo
+ajustaban crudo, saltándose ese paso.
+
+**Lo que se propuso implementar ya estaba implementado.** No hay cambio que hacer en
+`_fit_one`.
+
+### Las cifras correctas
+
+Rehecha la medición como el pipeline la haría, sobre las mismas 1 872 celdas:
+
+| | Crudo *(lo que se midió)* | Estandarizado *(lo real)* |
+|---|---:|---:|
+| Binomial negativa, celdas ajustadas | 17 de 624 | **529 de 624 (85 %)** |
+| Binomial negativa, mediana de variables | 3 | **3** |
+| Binomial negativa, pasa de tres | 23,5 % | **29,5 %** |
+| Celdas sin ajustar, total | 607 | **95 de 1 872 (5 %)** |
+| Mínimos cuadrados | 624, mediana 2 | **idéntico** |
+| Poisson | 624, mediana 6 | **idéntico** |
+
+Mínimos cuadrados y Poisson no se mueven, y tiene sentido: mínimos cuadrados es
+equivariante a la escala y el GLM de Poisson se resuelve por mínimos cuadrados reponderados
+iterativos, que es robusto al condicionamiento. **La binomial negativa es la única que lo
+notaba, por la misma razón que `_standardise` ya documentaba: estima la dispersión junto
+con los coeficientes, maximizando por cuasi-Newton.**
+
+### Qué queda en pie y qué no
+
+**En pie, porque no dependía del diseño:**
+
+- Lo que la eliminación hacia atrás selecciona: de 0 a 11 variables, mediana 2 en mínimos
+  cuadrados, 6 en Poisson, 3 en binomial negativa. **Pasa de tres en el 42,8 % de las
+  celdas.**
+- Que el resultado de Poisson es sobredispersión y no selección.
+- Que «mantiene la significancia global (AIC, R²)» no es correcto: botar una variable
+  mejora el AIC cuando p > 0,157, así que α = 0,05 es más agresivo que el AIC.
+- Que el método no esquiva los valores p deshonestos de D59, los reubica, y encima vuelve
+  el resultado dependiente del orden.
+- Que el número de variables no demuestra por sí solo que más sea mejor (17.3), aunque esa
+  medición se rehace estandarizada por coherencia.
+
+**Caído, y es la mitad de 17.1 en adelante:**
+
+- ~~«La binomial negativa no ajustó en 607 de sus 624 celdas»~~ → 95 de 1 872 en total.
+- ~~«Resuelve con hasta seis predictores»~~ → ya estaba corregido en 17.6 por otra razón, y
+  ahora cae del todo.
+- ~~«El techo depende de cuáles variables»~~ → era la escala del arbolado contra un diseño
+  crudo.
+- ~~Las cuatro explicaciones descartadas de 17.7~~ → descartaban causas de un problema que
+  el pipeline no tiene.
+- ~~«El arbolado rompe la binomial negativa»~~ → la rompía sin estandarizar. Con el diseño
+  que el pipeline ajusta, no.
+- ~~El esquema de arranque en dos piezas de 17.10~~ → la pieza uno ya existe y la pieza dos
+  no hace falta para el 85 % que ajusta.
+- ~~«La búsqueda actual también ajusta diseños crudos» de 17.11~~ → **es falso**. No los
+  ajusta.
+
+### Lo que sí sale de esto y vale la pena conservar
+
+**`_standardise` tenía su justificación escrita y sin medir.** Su docstring afirma que
+estandarizar arregla la convergencia de la binomial negativa; ahora hay cifras:
+**con las doce candidatas dentro, el diseño crudo converge en 5 de 60 celdas y el
+estandarizado en 52 de 60, y donde ambos ajustan la verosimilitud difiere en 1,6·10⁻⁸.**
+Eso lo mide `tools/estandarizar_arregla.py` y es la evidencia de una decisión de diseño que
+hasta hoy sólo estaba afirmada.
+
+### Lo que esto cambia del plan
+
+**Poco, y eso es lo afortunado.** El plan de correr los dos métodos y compararlos no
+dependía de nada de lo caído. Lo que cambia:
+
+- **La eliminación hacia atrás se puede implementar en las tres familias**, sin paso previo
+  ni bolsa reducida. La pregunta abierta de 17.2 sobre qué hacer con la binomial negativa
+  **deja de existir**.
+- **La cuarta figura, la de convergencia, vuelve a ser un diagnóstico** y no la figura que
+  sostiene una afirmación de la tesis. Sigue haciendo falta —95 celdas no ajustan— pero ya
+  no dice que un método no se pueda aplicar a una familia.
+- Las tres herramientas que medían el problema inexistente se borraron, porque dejarlas
+  invita a citar sus cifras: `binomial_negativa_cuantos_caben.py`,
+  `que_variables_fallan.py` y `regla_de_arranque.py`.
+
+### Cómo se produjo el error, porque el patrón se repite
+
+Construí el diseño a mano con `_scale_candidates` en lugar de llamar a la misma ruta que el
+*pipeline* usa, y `_scale_candidates` no estandariza: lo hace `search`, una capa más
+arriba. La herramienta se parecía lo suficiente al pipeline como para dar números creíbles
+y no lo suficiente como para dar los suyos.
+
+**Una medición que reimplementa el camino en vez de llamarlo mide su propia
+reimplementación.** Es exactamente la razón por la que `reconstruction.apportion` pasa el
+resultado por `exposure.apportion_survey` en vez de repartir por su cuenta, y la razón por
+la que `tools/eliminacion_hacia_atras.py` delega en `_fit_one`: delegaba en lo profundo y
+reimplementaba lo de encima, que es donde estaba el paso que importaba.
+
+### 17.13 Las figuras del método de la asesora, decididas el 2026-10-09
+
+La sección 17 planeaba cinco figuras de comparación y eso resultó insuficiente. Mateo señaló
+dos huecos en dos pasos, los dos reales, y al ir a escribir las rutas aparecieron otros dos
+en el reparto que corregía los suyos.
+
+**El primero: las cinco dicen cuánto difieren los métodos y ninguna dice qué eligió el
+método en un modelo concreto.** El método actual sí lo muestra, y por eso la pregunta tenía
+respuesta corta: `betas.png`, una por pareja, con qué variable entró en cada uno de los
+trece años.
+
+**El segundo, y es el que corrige el reparto entero: si el método produce modelos
+distintos, hay que poder evaluarlo en los mismos términos que al actual.** D57 puso R² y
+AIC en todos los paneles de ajuste precisamente para poder juzgar un modelo; sin esos
+paneles para el método nuevo se puede decir cuántas variables elige y con qué frecuencia
+coincide, pero no si lo que elige **ajusta mejor o peor**. Esa es la pregunta que el
+estudio tendrá que contestar.
+
+**El tercero apareció leyendo `_render_figures` para escribir las rutas, y es el que más
+pesa de los cuatro: faltaba `frecuencia_seleccion.png`.** Dieciocho figuras, una por
+especificación, que el reparto no contaba porque la primera lista se armó recorriendo las
+familias por pareja y por año y ésa resume la especificación entera. Depende por completo de
+la selección, y **es la figura de la pregunta de la asesora**: lo que el estudio afirma no es
+qué ganó en una celda sino con qué frecuencia entra cada variable. Tener esa cuenta bajo un
+método y no bajo el otro deja la comparación central a medias.
+
+**El cuarto es un defecto y no un hueco, y está en la tercera de las cinco de comparación.**
+`3_frecuencia.png` calculaba la frecuencia agrupando los dos conjuntos de siniestralidad y
+los tres offsets dentro de cada familia. **Eso es justo lo que D53 prohíbe**, y no por
+pulcritud: el orden de las doce se mueve hasta siete puestos de doce entre offsets, así que
+agruparlos promedia el eje donde los resultados más se contradicen. La figura llamaba
+evidencia a ese promedio.
+
+### Lo que se añade, y lo que deliberadamente no
+
+Hoy una corrida produce 2 550 figuras. De ellas **2 494 dependen del modelo seleccionado** y
+sólo las 56 de `principal/entradas/` no, porque los predictores y las respuestas entran
+igual se seleccione como se seleccione.
+
+| Familia de figuras | Hoy | Se duplica | Por qué |
+|---|---:|---:|---|
+| `coeficientes__<año>.png` | 78 | **+78** | Los coeficientes de un modelo distinto son otros coeficientes |
+| `ajuste__<año>.png` | 234 | **+234** | **Es la que permite evaluarlo**: R² y AIC del modelo que el método eligió |
+| `modelos.png` | 144 | **+144** | El resumen por pareja de los trece modelos |
+| `betas.png` | 144 | **+144** | Qué variable entró en cada año: la evidencia por modelo |
+| `frecuencia_seleccion.png` | 18 | **+18** | Con qué frecuencia entra cada variable: lo que el estudio afirma |
+| `variables__<año>.png` | 1 872 | **no** | No tiene análogo; ver abajo |
+| `principal/entradas/` | 56 | no | No dependen del método |
+| `ajuste_comparacion.png` | — | **+18** | El cara a cara de AIC y R², una por especificación |
+| `seleccion/` (comparación) | — | **+4** | Las cinco de la sección 17, menos la de frecuencia |
+
+**De 2 550 a 3 190: 640 figuras más**, de las cuales 618 son gemelas y 22 son nuevas de
+verdad. Duplicar todo lo que depende de la selección habría sido 2 494 más, y la diferencia
+está casi entera en `variables__<año>.png`.
+
+**La del cara a cara se añade por una razón que el reparto anterior dejaba sin resolver.**
+Los 234 paneles de ajuste duplicados existen para poder juzgar el método en los mismos
+términos, pero obligan a abrir 234 pares de archivos para contestar si la eliminación
+escoge modelos que ajustan peor. Una nube de 104 puntos por especificación —un punto por
+pareja y año, el AIC de un método contra el del otro— lo contesta de una vez. **Va por
+especificación y no agregada, por la misma razón que la frecuencia:** el AIC de un conjunto
+de siniestralidad no es comparable con el del otro, porque no es la misma respuesta.
+
+**Y la de frecuencia sale de `seleccion/`.** La comparación que un lector hace queda mejor
+servida por los dos archivos adyacentes en la carpeta de la especificación —que es el
+argumento con el que se eligió el sufijo en vez de un árbol paralelo— y de paso el reparto
+cumple D53 por construcción en vez de por cuidado: una figura que vive dentro de la carpeta
+de una especificación no puede agrupar varias. `seleccion/` se queda con cuatro.
+
+**Por qué esas 1 872 no se duplican, que es la decisión con más contenido.** Esa figura
+muestra, para una pareja y un año, cada candidata con **el mejor modelo que la contiene**:
+tiene sentido porque la búsqueda exhaustiva ajusta 286 modelos y de cada variable hay 55 o
+66 que la llevan. **La eliminación hacia atrás no ajusta 286 modelos: ajusta un camino.**
+No existe «el mejor modelo que contiene a la vía arterial» porque sólo hay una secuencia.
+
+Lo que sí existe, y es información que el método actual no puede dar, es **el orden de
+eliminación**: en qué paso salió cada variable y con qué valor p. Eso es el razonamiento del
+método hecho visible, y va como **segundo panel de `betas__eliminacion.png`** en vez de
+como 1 872 figuras nuevas. Trece caminos por figura, 144 figuras, los 1 872 modelos
+cubiertos.
+
+### Dónde quedan
+
+**En las mismas carpetas, con el método en el nombre.** No en un árbol paralelo.
+
+```
+figures/regressions/
+├── coeficientes/<familia>/<dataset>/
+│   ├── coeficientes__2012.png
+│   └── coeficientes__2012__eliminacion.png        ← NUEVO
+├── principal/
+│   ├── entradas/                                   sin cambios
+│   ├── comparacion/                                sin cambios
+│   ├── <familia>/<dataset>/<offset>/
+│   │   ├── ajustes/
+│   │   │   ├── ajuste__2012.png
+│   │   │   └── ajuste__2012__eliminacion.png       ← NUEVO
+│   │   ├── frecuencia_seleccion.png
+│   │   ├── frecuencia_seleccion__eliminacion.png   ← NUEVO
+│   │   ├── ajuste_comparacion.png                  ← NUEVO, cruza los dos métodos
+│   │   └── parejas/<pareja>/
+│   │       ├── betas.png
+│   │       ├── betas__eliminacion.png              ← NUEVO, con dos paneles
+│   │       ├── modelos.png
+│   │       ├── modelos__eliminacion.png            ← NUEVO
+│   │       └── por_anio/                           sin cambios
+└── seleccion/                                      ← NUEVO
+    ├── 00_comparacion/   cuantas_variables, acuerdo, compra_cada_variable
+    └── 01_convergencia/  convergencia
+```
+
+**`ajuste_comparacion.png` es la única nueva que no lleva sufijo**, y es deliberado: el
+sufijo dice «esta figura es de un método», y ésta no lo es. Vive al lado de `ajustes/` y de
+`parejas/` por lo mismo que `frecuencia_seleccion.png`, que son cortes distintos de los
+mismos 104 modelos de la especificación.
+
+**Un árbol paralelo se descartó por una razón concreta:** la comparación que un lector hace
+es entre el ajuste de 2014 de una pareja bajo los dos métodos, y con el sufijo en el nombre
+los dos archivos quedan adyacentes en la misma carpeta y ordenados juntos. En un árbol
+paralelo habría que navegar seis niveles dos veces para poner dos figuras una al lado de la
+otra.
+
+**Y las tablas llevan `SELECTION_METHOD` en la clave**, no como columna descriptiva:
+`analysis__regression_models` pasa de 1 868 a unas 3 700 filas y
+`analysis__regression_coefficients` de 7 070 a unas 15 000. Ahí está, por modelo y en forma
+legible por máquina, qué variables eligió cada método — que es la evidencia completa de la
+que las figuras son la lectura.
+
+Las dos reglas que salieron de dibujar `betas__eliminacion` —la raya del año que no
+converge y el desempate declarado del orden de filas— están con las otras tres al final de
+la sección 17, que es donde vive la lista de lo que la implementación conserva. La celda del
+prototipo, por si hace falta volver a ella: binomial negativa, conjunto observado, offset
+del modo afectado, peatones contra automóvil, **sin convergencia en 2018 ni en 2020** y
+entre una y seis variables supervivientes en los once años restantes.
+
+### Lo que esto no decide
+
+**Cuál método reporta el estudio.** Las figuras de los dos existen para poder comparar; la
+decisión de cuál encabeza el documento es de Mateo y con la comparación en la mano. Mientras
+no se tome, el método actual es el que el texto cita y el nuevo es la evidencia de que la
+pregunta de la asesora se midió en vez de responderse con un argumento.
+
+### 17.14 Lo que se implementó, el 2026-10-09, y en qué difiere del plan
+
+Corrida `run_20261009_084114`. **Las veintisiete comprobaciones pasan y no hay ninguna
+fallida.** La exposición que entró es la del panel ajustado por IPF con el parche de
+pandemia, `run_20261009_043126`, leído del registro y no supuesto.
+
+**Los dos métodos corrieron en las tres familias.** La búsqueda produjo modelo en 1 868 de
+las 1 872 celdas y la eliminación en 1 766; los dos sobre el mismo diseño estandarizado, el
+mismo offset y la misma bolsa de candidatas. La eliminación recorrió 1 868 caminos, de los
+cuales 102 se detuvieron antes del final porque algún paso no ajustó.
+
+**639 figuras nuevas y no 640**, de 2 550 a 3 189. La diferencia es la quinta de
+comparación, la de qué compra cada variable: esa pregunta necesita el mejor subconjunto del
+tamaño que la eliminación escoge, y la búsqueda sólo recorre los tamaños declarados.
+Medirla dentro de la corrida obligaría a ajustar subconjuntos que el estudio no declara, así
+que se queda en `tools/compra_cada_variable.py`, que es donde ya estaba.
+
+| Familia | Antes | Después |
+|---|---:|---:|
+| `ajuste__<año>` | 234 | 468 |
+| `coeficientes__<año>` | 78 | 156 |
+| `betas` | 144 | 288 |
+| `modelos` | 144 | 288 |
+| `frecuencia_seleccion` | 18 | 36 |
+| `ajuste_comparacion` | — | 18 |
+| `seleccion/` | — | 3 |
+| `variables__<año>` | 1 872 | 1 872 |
+
+**Y una quinta tabla exportada**, `analysis__regression_elimination_path`: 21 842 filas, una
+por celda y candidata, con el paso en que salió, el coeficiente y el valor p que tenía en el
+último modelo que la contuvo. Es lo que alimenta el segundo panel de `betas__eliminacion` y
+es lo único que la eliminación sabe y la búsqueda no.
+
+#### Tres defectos que la implementación encontró y que el plan no preveía
+
+**La eliminación deja cero variables en algunas celdas**, y el diseño de cero columnas no
+tenía forma. `_scale_candidates` construía la matriz con `column_stack` de una lista vacía,
+que no tiene filas. El modelo que queda ahí —intercepto y offset— es el modelo nulo, y es un
+resultado: dice que ninguna característica urbana resultó significativa en esa celda. Se
+guarda marcado, con `BEATS_NULL` en falso por construcción. Pasa en el 11,5 % de las celdas
+de mínimos cuadrados y en el 2,3 % de las de binomial negativa.
+
+**Un camino que no converge guarda la bolsa entera igual.** La primera versión guardaba sólo
+las variables que alcanzaba a botar, y entonces un camino que falla en su primer paso no
+dejaba ninguna fila: el año desaparecía de la tabla y la figura lo dibujaba con el aspa de
+«no tiene capa ese año», que afirma algo falso sobre la capa. Ahora las que seguían dentro
+se guardan sin paso y sin estimación, y `SURVIVED` significa «no salió de un camino que
+llegó al final».
+
+**La figura de bloques del ajuste y la de acuerdo tenían defectos de lectura** que sólo se
+ven con datos: `aggfunc="first"` descartaba la mitad de los bloques de un año en el reparto
+por métodos, y las etiquetas de la figura de acuerdo caían sobre la barra oscura. Los dos
+salieron de la corrida de humo y de mirar la figura, no de leer el código.
+
+#### Lo que la corrida dice sobre la pregunta que originó todo esto
+
+La eliminación deja mediana **2** en mínimos cuadrados, **6** en Poisson y **3** en binomial
+negativa, contra 3 por construcción en la búsqueda. Pasa de tres en el 13,3 %, el 82,9 % y
+el 31,5 % de las celdas respectivamente.
+
+**Lo de Poisson no es selección, es sobredispersión**, y ahora está medido: el estadístico
+de dispersión tiene mediana 3,94 y supera el umbral declarado en el 97,4 % de los modelos.
+Poisson declara significativo casi todo, así que casi no elimina.
+
+En AIC la eliminación gana en el 17,1 % de las celdas de mínimos cuadrados, el 81,1 % de las
+de Poisson y el 29,7 % de las de binomial negativa, con mediana de la diferencia de +0,71,
+−9,65 y +0,00. Parte de esa diferencia mide el tope de la búsqueda y no el método, y la
+figura del cara a cara lo dice bajo sí misma.
+
+**Cuál de los dos reporta el estudio sigue sin decidirse**, y ahora la decisión tiene con
+qué tomarse.
+
+## 18. El análisis de variables exógenas que pidió la asesora el 2026-10-12
+
+La petición está en `analisis-variables/analisis-asesora.txt` y tiene dos mitades que
+necesitan aritmética distinta: cuántas variables significativas quedan con alfa del 5 % y
+del 10 %, y cuáles son relevantes según la teoría y la literatura y si ésas aparecen con
+alfa del 5 %. Ambas están medidas sobre `run_20261009_084114` y la medición es
+`tools/variables_y_la_literatura.py`.
+
+**Una aclaración que va en la primera línea de la respuesta, porque si no la respuesta
+parece medir algo que no mide.** La asesora escribe «la variable endógena que es
+vulnerabilidad». La variable endógena de este estudio no es vulnerabilidad: son partes
+afectadas por pareja de tipos de actor, con la exposición en el offset. Lo que sí es cierto
+es que el estudio mira a los usuarios vulnerables de la vía. La respuesta se da en los
+términos exactos del modelo.
+
+### 18.1 Cuántas variables quedan, y por qué la pregunta se parte en dos
+
+Los dos métodos de selección usan el valor p de maneras opuestas, así que la misma pregunta
+tiene dos respuestas y las dos son correctas.
+
+En la **eliminación hacia atrás** el alfa *es* la regla de parada. Todo lo que sobrevive es
+significativo por construcción, de modo que la columna «significativa» vale 100 % y no
+informa de nada; lo que cambia al aflojar el alfa es cuántas variables sobreviven.
+
+| α | Celdas sin ninguna variable | Mediana de variables |
+|---|---:|---:|
+| 0,05 | 84 de 1 766 (4,8 %) | 3 |
+| 0,10 | 8 de 1 766 (0,5 %) | 4 |
+
+**El contrafactual es exacto y no hay que reajustar nada.** La regla de salida es la misma
+para cualquier alfa y lo único que cambia es dónde se detiene el recorrido, así que un alfa
+más flojo es un prefijo del recorrido más estricto y se lee del registro de caminos: se para
+en el primer paso cuyo valor p guardado no supere el alfa. Se valida reconstruyendo
+α = 0,05, que reproduce 1 766 de 1 766 recorridos tal como la corrida los guardó.
+**Sólo sirve para aflojar**: un alfa más estricto exigiría pasos que nunca ocurrieron.
+
+De las 84 celdas vacías con 0,05, **76 dejan de estarlo con 0,10** y las 8 que siguen vacías
+son todas de mínimos cuadrados. El desglose por familia es lo que de verdad contesta:
+
+| Familia | celdas | mediana al 5 % | vacías al 5 % | mediana al 10 % | vacías al 10 % |
+|---|---:|---:|---:|---:|---:|
+| Mínimos cuadrados | 624 | 2 | 72 | 2 | 8 |
+| Poisson | 624 | 6 | 0 | 6 | 0 |
+| Binomial negativa | 518 | 3 | 12 | 4 | 0 |
+
+**Poisson no tiene ni una celda vacía con ninguno de los dos alfas, y eso no es capacidad
+explicativa, es sobredispersión.** Sus errores estándar salen demasiado pequeños cuando los
+conteos están sobredispersos, de modo que declara significativo casi todo y casi no elimina.
+La dispersión mediana es 3,94. Es el mismo hallazgo de la sección 17 y conviene repetirlo
+donde se lea esta tabla, porque un lector que vea el 6 de Poisson al lado del 2 de mínimos
+cuadrados concluirá lo contrario de lo que pasa.
+
+En la **búsqueda por AIC** el valor p no interviene en la selección, así que la significancia
+se puede contar después sobre lo que el AIC eligió: de los 5 187 coeficientes seleccionados,
+**el 82,2 % es significativo al 5 % y el 92,0 % al 10 %**, con 52 modelos (2,8 %) sin
+ninguno al 5 % y 18 (1,0 %) al 10 %.
+
+### 18.2 Las variables que la literatura señala, y si aparecen
+
+La expectativa de cada candidata está declarada en `config.LITERATURE_EXPECTATIONS` y el
+razonamiento de por qué está ahí y no en prosa es **D66**. El cruce se toma sólo sobre las
+parejas cuya parte afectada es el peatón, porque toda expectativa cuantificada del corpus es
+una tasa de siniestralidad peatonal con viajes peatonales en el denominador y leerla contra
+un coeficiente de ciclista o de motociclista sería comparar dos cantidades distintas.
+
+**La primera respuesta a la pregunta es que la literatura dice menos de lo que la pregunta
+supone.** De las doce candidatas, cuatro traen una estimación cuantificada con signo
+definido, una sólo un mecanismo sin estimación, cinco están en disputa, una es un nulo
+reportado y dos no tienen nada en el corpus. **Ese reparto cambió dos veces**, el 2026-10-12
+al leer la literatura del BRT y el 2026-10-13 con la segunda ronda; qué se movió y por qué
+está en 18.4 y en 18.5, y la tabla de 18.5 lleva las tres versiones.
+
+| Variable | Qué espera la literatura | Sobre qué base | Significativas al 5 % | Veredicto |
+|---|---|---|---:|---|
+| Vía arterial | más siniestralidad | RR 1,30 lesiones / 1,24 muertes | 346 | coincide, 80 % |
+| Arbolado | menos | RR 0,83 / 0,89 | 156 | coincide, 71 % |
+| Paraderos SITP | en disputa | 0,89 muertes contra momios de 1,17 por uso | 136 | no predice signo |
+| Semáforos | menos | RR 0,90 muertes | 276 | contradice, 7 % |
+| Andén | menos | mecanismo, sin estimación | 306 | coincide, 60 % |
+| Cruces peatonales | en disputa | nulo en dos carriles contra peor en multicarril | 242 | no predice signo |
+| TransMilenio | en disputa | corredor protector contra estación peligrosa | 248 | no predice signo |
+| Puente | en disputa | nulo contra mayor gravedad | 256 | no predice signo |
+| Cámaras | en disputa | −16,6 % muertes, +10,5 % lesiones | 368 | no predice signo |
+| Ciclorruta | nulo reportado | nulo en Bogotá | 168 | no predice signo |
+| Parque urbano | sin expectativa | — | 118 | no predice signo |
+| Señalización vertical | sin expectativa | — | 134 | no predice signo |
+
+**Todas aparecen significativas, y una con el signo que la literatura no predice.** Las tres
+con signo cuantificado se parten dos y una: la vía arterial y el arbolado salen como se
+espera y el semáforo sale al revés en el 93 % de sus coeficientes significativos. El andén,
+el único que descansa en un mecanismo, coincide en el 60 %. **Es una sola reversión, y eran
+cuatro antes de completar la revisión de literatura; ver 18.5.**
+
+**La lectura no es que los modelos fallen ni que la literatura se equivoque, y ésta es la
+parte argumentativa de la respuesta.** Un semáforo se instala donde el tráfico ya está, así
+que una sección transversal no puede separar lo que hace la obra de la razón por la que se
+puso ahí. La nota que la base de conocimiento guarda
+sobre el propio hallazgo del puente peatonal en Zewdie dice exactamente eso: el puente no
+causa el daño, se construye donde la vía ya es rápida y ancha. Es el argumento sustantivo de
+por qué sigue el panel, donde la misma unidad se observa antes y después de que llegue la
+infraestructura.
+
+### 18.2 bis La explicación, puesta a prueba
+
+Una explicación que acomoda cualquier resultado no explica ninguno, así que la de la
+colocación hay que someterla a prueba antes de escribirla en un documento. **Si es la
+colocación lo que invierte el signo, las variables invertidas tendrían que ser las más
+atadas a la red de vía arterial**, que es lo más cercano a un mapa del tráfico rápido y
+pesado que este trabajo mide. Se mide con la correlación de rangos entre cada candidata y
+la superficie de vía arterial, sobre las veintinueve unidades, en 2023 para que la
+ciclorruta y la señalización entren en su máxima extensión.
+
+| Variable | Correlación con la arterial | Veredicto del cruce |
+|---|---:|---|
+| Señalización vertical | 0,92 | sin expectativa |
+| Puente | 0,90 | sin expectativa |
+| Semáforos | 0,89 | contradice |
+| TransMilenio | 0,87 | contradice |
+| Andén | 0,67 | coincide |
+| Ciclorruta | 0,59 | sin expectativa |
+| Cámaras | 0,57 | sin expectativa |
+| Paraderos SITP | 0,27 | contradice |
+| Arbolado | 0,12 | coincide |
+| Parque urbano | −0,04 | sin expectativa |
+| Cruces peatonales | −0,25 | contradice |
+
+**Sostiene la única reversión que queda, y el límite se conserva igual.** El semáforo está
+casi exactamente donde está la arteria, a 0,89, más que cualquier otra candidata salvo la
+arterial consigo misma, y para él la colocación queda tan a la vista como una sección
+transversal lo permite. Pero la prueba corta también en la dirección contraria: la
+señalización vertical y el puente son las dos variables más atadas de todas, a 0,92 y 0,90, y
+las dos salen negativas, así que estar sobre la arteria no basta para forzar un coeficiente
+positivo y la correlación es consistente con la explicación sin demostrarla.
+
+**Las tres que dejaron de contradecir siguen diciendo algo, y cada una distinto.**
+TransMilenio correlaciona 0,87 y sale positiva el 91 % de las veces, que es lo que predice la
+mitad de su evidencia referida a la estación: mecanismo, colocación y coeficiente coinciden.
+El paradero sale positivo el 93 % pero correlaciona sólo 0,27, así que su signo no viene de
+la arteria sino, si su fuente acierta, de que la caminata se concentra donde se espera el
+bus. Y el cruce demarcado sale positivo el 75 % con correlación **−0,25**, lo que encaja mal
+con la colocación y bien con la otra lectura, la de que la demarcación no protege por sí sola
+en vías anchas y rápidas. Ninguna de las tres espera signo desde 18.4 y 18.5.
+
+**Esto reemplaza lo que esta sección decía antes.** La primera versión daba como indicio a
+favor que las cinco variables sin expectativa salen negativas entre el 59 % y el 95 % de las
+veces mientras que de las seis con efecto protector esperado sólo dos lo son. Las cifras son
+correctas, pero no sostienen la explicación: ordenadas por veredicto, la correlación media
+con la arterial es 0,45 para las que contradicen y 0,59 para las que no tienen expectativa,
+es decir, al revés de lo que el argumento necesitaba. Lo que queda es una lectura consistente
+con la única reversión que sobrevivió a la revisión de literatura, que es hasta donde llega
+una sección transversal, y ése es el reenvío al panel.
+
+### 18.3 Dónde queda plasmado
+
+Dos sitios, y lo pidió Mateo así el 2026-10-12: resumido en
+`deliverables/presentacion-asesora-bondad/` y desarrollado en el informe final.
+
+**En el informe final se reparte en tres sitios, y el reparto no es mío: el capítulo 2 ya
+lo decidió.** Su sección 2.2 cierra diciendo que lo que el trabajo se lleva de la
+literatura es la lista de qué medir y con qué signo esperarlo, «que es contra lo que se
+contrastan sus coeficientes en el capítulo~\ref{cap:discusion}». Escribir el cruce en
+metodología contradiría una promesa ya impresa, así que va donde el documento lo anunció.
+
+- **Capítulo 2, sección 2.2.** Ahí ya están declaradas las expectativas cuantificadas del
+  antecedente peatonal, con sus intervalos. No hace falta tocarla.
+- **Capítulo 4, subsección 4.5.2.** El tamaño del hueco, que es descriptivo y no
+  argumentativo: de las doce candidatas, cuatro traen estimación con signo, tres sólo
+  mecanismo, dos están en disputa, una es un nulo reportado y dos no tienen nada.
+  Declararlo donde se declaran las variables evita que el capítulo 6 parezca estar
+  contrastando doce expectativas que nunca existieron.
+- **Capítulo 4, subsección 4.7.3.** El recuento por alfa, junto a la declaración de los dos
+  métodos de selección: es una propiedad del procedimiento y no de las variables.
+- **Capítulo 6, `\section{Comparación con la evidencia previa}`.** El cruce, la prueba de la
+  colocación y el reenvío al panel. Es la parte argumentativa y es la que el capítulo 2
+  anunció.
+
+**Las tres están redactadas desde el 2026-10-12**, y al escribirlas se rehízo el esqueleto
+del capítulo 4, que llevaba meses y se había decidido antes de que existieran la etapa de
+exposición y los modelos. Le faltaban tres secciones que el propio documento ya prometía:
+la exposición, que es el objetivo específico 2 del anteproyecto aprobado y que la sección
+1.3 anunciaba sin que existiera; el universo de estimación, al que el capítulo 3 manda la
+justificación de las veintinueve unidades; y la declaración de que las transversales son un
+primer paso, que D48 fija y que la sección 6.2 referencia. El detalle está en el bloque 0l
+de `deliverables/plan.md`.
+
+Que la expectativa quede declarada en el capítulo 2 y el cruce en el 6 resuelve de paso lo
+que habría que cuidar si fuera al revés: una tabla de expectativas puesta entre los
+resultados se lee como escrita después de verlos. Aquí la expectativa está impresa setenta
+páginas antes.
+
+**En la presentación van dos diapositivas al principio**, antes de las veintiséis de bondad
+de ajuste: una con la tabla de alfas por familia y otra con el cruce. Las veintiséis
+existentes no se tocan.
+
+### 18.4 Lo que cambió el 2026-10-12 al leer la literatura del BRT
+
+El recorrido de citas contra OpenAlex —`deliverables/diseno/vecindario_de_citas.py`, y la
+razón de hacerlo ahí y no en Litmaps está en el bloque 0l de `plan.md`— trajo tres fuentes
+que entraron al BIB maestro ese mismo día. Una de ellas obligó a rehacer parte de esta
+sección, y conviene dejar escrito qué se movió.
+
+**La estación de TransMilenio dejó de esperar un signo.** Estaba declarada `EXPECTS_FEWER`
+sobre un mecanismo: las rutas de transporte masivo pertenecen a la familia de obras que
+reducen la exposición. Al leer de verdad la literatura de seguridad vial del BRT resulta que
+esa literatura mide dos cosas distintas y las encuentra opuestas.
+
+Sobre el **corredor**, las muertes anuales de la avenida Caracas bajaron de 61 a 16 y,
+descontada la tendencia a la baja que la ciudad ya traía, se atribuye al sistema el 60 % de
+esa reducción. Sobre la **estación**, de las casi trescientas muertes registradas en nueve
+sistemas el 54 % fueron peatones, y los cruces peligrosos se concentran junto a las
+estaciones, de gente que entra o sale por fuera de los pasos habilitados. Este trabajo mide
+densidad de estaciones, así que la mitad que le corresponde es la segunda. La revisión
+sistemática concluye además que los resultados son mixtos y que no hay fórmula única, y dice
+explícitamente que tratándose de estudios antes-después con confusores concurrentes no puede
+concluirse que TransMilenio haya causado la mejora que se le asocia.
+
+| | Antes | Después |
+|---|---|---|
+| Dirección | `EXPECTS_FEWER` | `EXPECTS_DISPUTED` |
+| Base | mecanismo | estimación |
+| Reparto de las doce | 4 / 3 / 2 / 1 / 2 | 4 / **2** / **3** / 1 / 2 |
+| Reversiones | cuatro | **tres**: semáforos, paraderos, cruces peatonales |
+
+**La prueba de la colocación se debilita y mejora a la vez.** Sostenía dos de cuatro
+reversiones y ahora sostiene una de tres, porque TransMilenio salió del grupo y era el
+segundo caso que la respaldaba. A cambio, TransMilenio pasa a ser el contraejemplo útil:
+mecanismo, colocación y coeficiente coinciden —la estación predice más atropellos,
+correlaciona 0,87 con la arterial y sale positiva el 91 % de las veces—, que es la única
+celda del contraste donde una sección transversal cierra algo. Enseña qué les falta a las
+otras tres en vez de excusarlas.
+
+**Y la revisión respalda el argumento metodológico con sus propias palabras.** El primero de
+los cuatro problemas que enumera es que se presta poca atención a la heterogeneidad del
+entorno urbano alrededor de la infraestructura, aunque ese entorno puede explicar buena parte
+de la variabilidad del efecto. Es el hueco que este trabajo llena, dicho por una fuente
+revisada por pares. Hasta ahora el argumento de la sección 6.2 descansaba sólo en la lectura
+que el capítulo 2 hace del puente peatonal.
+
+**Las tres fuentes y lo que aporta cada una.** `vecino-ortizRoadSafetyEffects2015` es la
+revisión sistemática, de acceso abierto; `dudutaUnderstandingRoadSafety2012` es de donde
+salen las cifras del corredor y de la estación, y además mide el diseño —el carril central
+sale más seguro que el adosado y el contraflujo es la peor configuración—;
+`joshiBusRapidTransit2024` mide el BRT como pacificación de un corredor arterial, con 46
+sitios intervenidos y 36 de control, y es la que responde qué le hace un BRT a una arteria,
+que es lo que la correlación de 0,87 deja abierto. Los PDF están en
+`deliverables/literatura/Salazar/`.
+
+**Una candidata se descartó tras leerla**: `10.1080/07352166.2022.2049447` se propuso para el
+paradero y estudia el entorno alrededor del paradero tomando el paradero como unidad, no la
+densidad de paraderos como predictora. **El paradero se queda sin fuente nueva** y su única
+expectativa sigue siendo la razón de tasa de 0,89 del antecedente peatonal.
+
+### 18.5 La segunda ronda de literatura, del 2026-10-13, y lo que deshizo
+
+Tres fuentes más, decididas tras una búsqueda dirigida a las tres reversiones que quedaban
+después de 18.4. **El resultado es que dos de esas tres dejaron de serlo**, y conviene
+registrar por qué, porque el recuento de reversiones de esta sección ha cambiado dos veces
+en dos días y la tercera versión es la buena por una razón distinta de las anteriores.
+
+| Clave | Qué aporta |
+|---|---|
+| `zegeerSafetyEffectsMarked2005` | Mil cruces demarcados contra mil sitios equivalentes sin demarcar, treinta ciudades, cinco años, Poisson y binomial negativa. En vías de dos carriles la demarcación no cambia la tasa; en multicarril con más de unos doce mil vehículos diarios, el cruce demarcado **solo**, sin otras mejoras, se asocia con una tasa **mayor** |
+| `hessPedestrianSafetyTransit2004` | Corredores de transporte sobre vías arteriales: diez usuarios más de paradero dentro de 250 pies elevan en 1,17 los momios de que el punto sea lugar de atropello, y esos lugares tienen seis veces el uso de paradero de los puntos de comparación. El mecanismo que declara es exposición peatonal |
+| `mitraSignificanceOmittedVariables2012` | En modelos de siniestralidad de intersecciones, omitir variables espaciales exagera el efecto de las que sí entran: hasta 40 % para el tránsito de la vía menor y 14 % para el de la mayor |
+
+Las tres están en `deliverables/literatura/Salazar/`, la primera descargada del informe
+público de la FHWA, que es la versión completa de 2005 del artículo de 2001.
+
+**Qué cambió en la declaración.** El cruce peatonal pasó de `EXPECTS_FEWER` con mecanismo a
+`EXPECTS_DISPUTED` con estimación, porque la estimación que existe hace depender el efecto
+del tipo de vía y la variable que aquí se mide mezcla los dos tipos en un número. El paradero
+pasó de `EXPECTS_FEWER` con estimación a `EXPECTS_DISPUTED` con estimación, porque las dos
+fuentes apuntan en direcciones contrarias y además no miden lo mismo: una cuenta paraderos y
+la otra cuenta a quienes los usan.
+
+| | Antes de 18.4 | Después de 18.4 | Después de 18.5 |
+|---|---|---|---|
+| Con signo definido | 4 | 4 | **3** |
+| Sólo mecanismo | 3 | 2 | **1** |
+| En disputa | 2 | 3 | **5** |
+| Nulo reportado | 1 | 1 | 1 |
+| Sin fuente | 2 | 2 | 2 |
+| Reversiones | cuatro | tres | **una** |
+
+**La reversión que queda es el semáforo**, y es precisamente aquella para la que la prueba de
+colocación funciona: correlaciona 0,89 con la superficie de vía arterial, más que cualquier
+otra candidata salvo la arterial consigo misma. El límite de la prueba se conserva igual: la
+señalización vertical y el puente, a 0,92 y 0,90, son las dos más atadas de todas y salen
+negativas, así que la correlación es consistente con la explicación y no la demuestra.
+
+**La lección que vale para el resto del trabajo, y es incómoda.** Tres de las cuatro
+contradicciones iniciales no eran un hallazgo de los modelos sino un defecto de la revisión
+de literatura: las tres variables estaban declaradas con un signo protector que sus fuentes,
+leídas completas, no sostienen. La declaración de expectativas hizo aquí exactamente lo que
+tenía que hacer —obligó a escribir el signo antes de mirar y a nombrar la fuente de la que
+sale, de modo que la revisión incompleta se volvió visible— pero sólo porque alguien fue a
+leer las fuentes. Declarar una expectativa sin leer el trabajo que la sostiene produce
+contrastes que halagan.
+
+**Y una advertencia nueva que alcanza a todos los coeficientes del capítulo.** Omitir
+variables espaciales en un modelo de intersecciones exagera el efecto de las que quedan.
+Estos modelos seleccionan entre dos y seis candidatas de doce y reportan las seleccionadas,
+así que esa advertencia los alcanza por construcción y no como posibilidad remota. Queda
+escrita al cierre de la sección 6.2.
+
+## 19. Qué de la especificación del panel deciden ya las transversales
+
+Decidido con Mateo el 2026-10-13, después de medir. La medición es
+`tools/que_decide_el_panel.py` y las cuatro diapositivas de cierre de
+`presentacion-asesora-bondad/` son lo que se expone.
+
+**El principio que ordena todo esto: de las transversales se toma la forma, no la
+respuesta.** Qué familia, qué denominador y qué conjunto son decisiones sobre la estructura
+del error y sobre la escala, no sobre qué variables importan. Elegir las variables con una
+transversal sería usar la herramienta cuyo límite motiva el panel para contestar la pregunta
+que el panel existe para contestar.
+
+**Y no todas las comparaciones de AIC valen**, lo que hay que enunciar antes de cualquier
+cifra. Dentro de una familia de conteo el offset es un término y la respuesta no cambia, así
+que comparar offsets es legítimo. Entre mínimos cuadrados y los GLM no, porque uno ajusta la
+tasa y los otros el conteo. Y entre el conjunto observado y el corregido tampoco, porque son
+valores distintos de la respuesta.
+
+| Pieza | Recomendación | Con qué cifra | Qué lo decide |
+|---|---|---|---|
+| Familia | Binomial negativa | gana a Poisson en el 90,9 % de las celdas donde ambas ajustan, por 23 puntos de AIC medianos; dispersión mediana 3,94, sobre el umbral en el 97,4 % | la corrida |
+| Offset | Exposición del modo afectado | menor AIC en el 67,6 % de las celdas de binomial negativa, contra 30,4 % de la población y 2,0 % de ambos modos | la corrida y el anteproyecto |
+| Conjunto | Corregido con ρ | ninguna: el AIC no compara entre conjuntos | el argumento de la propuesta del panel |
+| Selección | Ninguna | con 377 filas se ajustan las doce juntas | la pregunta se disuelve |
+
+**Mínimos cuadrados queda fuera por una razón distinta de la de Poisson.** Poisson sale por
+sobredispersión; mínimos cuadrados sale porque ajusta la tasa, de modo que su R² sobre
+conteos es negativo en el 19,5 % de sus celdas incluso bajo su mejor offset. Conviene no
+fundir las dos razones.
+
+### Tres hallazgos de las transversales que valen por sí mismos
+
+**El denominador pesa más que cualquier variable urbana.** Dentro de la binomial negativa el
+R² mediano sobre conteos va de 0,70 con la exposición del modo afectado a **−0,62** con la de
+ambos modos, que deja ajuste negativo en el 73 % de las celdas. Ninguna predictora del
+estudio mueve el ajuste en ese orden de magnitud. Es un resultado reportable y hasta hoy no
+estaba escrito en ninguna parte.
+
+**R² e inferencia apuntan en direcciones distintas.** Poisson tiene el mejor R² mediano,
+0,767, y es la familia cuya inferencia no sirve. Por eso la familia se elige por dispersión y
+no por ajuste, y conviene decirlo donde se muestren las tablas de bondad.
+
+**Queda estructura espacial sin explicar.** El Moran de los residuales tiene mediana 0,062
+pero supera 0,1 en el 41,2 % de los modelos y 0,2 en el 22,1 %. Y el 27,2 % de los modelos
+sale marcado como colineal, que trece años de las mismas veintinueve unidades no van a
+disolver.
+
+### Lo que Bell y Papke aportan a la propuesta del panel
+
+`bellFixedRandomEffects2019` sostiene tres cosas que la propuesta necesitaba y no tenía
+citadas. Que **un modelo de efectos fijos no dice nada sobre variables que no cambian en el
+tiempo**, que es exactamente el caso de diez de nuestras doce candidatas. Que el within-between
+**da el mismo coeficiente y el mismo error estándar que los efectos fijos para la parte
+within**, de modo que no se pierde nada al preferirlo. Y que el Hausman **no es una prueba de
+si usar efectos fijos o aleatorios sino de si el efecto within y el between difieren**, lo que
+permite honrar el anteproyecto sin hacer algo mal: se reporta, pero se reporta por lo que es.
+
+`papkeEffectsSpendingTest2005` aporta dos del lado práctico. Los **errores estándar agrupados
+por unidad**, robustos a correlación serial arbitraria dentro de la unidad. Y el **costo de
+los rezagos**: cada rezago introducido cuesta un año de los trece, así que uno es asumible y
+dos empiezan a doler. De paso deja ver lo que no podemos hacer: su identificación descansa en
+un instrumento salido de un cambio de política, y nosotros no tenemos ninguno, así que el
+panel reduce la endogeneidad de la colocación sin eliminarla.
+
+### El GWR que sugirió la asesora
+
+La sugerencia apunta a algo real —el Moran lo confirma— pero la herramienta no cabe en estos
+datos, y la razón es aritmética y no de preferencia.
+
+**El tamaño de muestra de un GWR son las unidades espaciales, no las filas**, y son 29. El
+panel las multiplica por trece años y no añade ni una unidad. Una regresión local necesita
+más puntos que parámetros, y con doce candidatas más el intercepto el ancho de banda tendría
+que cubrir casi las 29, que es el punto en el que el GWR se vuelve el modelo global.
+
+No es casualidad que los antecedentes bogotanos que sí estimaron algo local trabajaran a
+escala más fina: UPZ el antecedente ciclista, ZAT el peatonal, el siniestro individual el de
+gravedad. Bajar de escala aquí obligaría además a reconstruir la exposición, que está armada
+sobre la UPL porque es donde aterriza la zonificación de las encuestas.
+
+**Lo que sí cabe es un término espacial global en el panel**, y el GWR queda declarado como
+trabajo futuro para una versión del estudio a escala de UPZ. Dicho así, la sugerencia de la
+asesora no se descarta: se sitúa.

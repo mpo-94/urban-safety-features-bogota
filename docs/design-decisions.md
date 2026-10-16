@@ -7745,3 +7745,174 @@ share is derived back from the two bases, because each component converted to th
 day-of-type basis with its own survey's share and a blended row has no single survey's;
 the ratio of its two bases is the share that makes the row self-consistent and it lies
 between the two.
+
+
+## D65 — Two selection methods run side by side, and the study has not yet chosen between them
+
+**Decided 2026-10-09.** The panel adviser asked on 2026-10-07 for backward elimination, a
+procedure that starts with every candidate and drops the least significant until none
+exceeds a declared alpha. It is now implemented beside the exhaustive search over the
+declared subset sizes, and both run on every cell of every run.
+
+**Both, rather than one replacing the other, because the question was measurable.** The two
+methods choose different models from the same data; which of them the study reports is a
+decision for a person, and a decision taken without the comparison in hand would be taken on
+an argument. `SELECTION_METHOD` is the sixth column of a model's identity and every
+exported table carries it.
+
+### What it is held to
+
+The elimination runs on **the same standardised design, the same offset and the same
+candidate pool** as the search. Two selection methods compared on different inputs compare
+the inputs. Three things come from the function the adviser sent and are kept: the intercept
+never competes for removal, one term goes per step, and the stop is
+`config.BACKWARD_ELIMINATION_ALPHA = 0.05`.
+
+**That alpha is more aggressive than the AIC and the table says so.** Dropping a term
+improves the AIC whenever its |z| is below √2, which is p > 0.157, so 0.05 removes terms the
+AIC would have kept. "It keeps the global significance" is the one claim about this method
+that is not true, and the exported figures carry the correction under themselves.
+
+### What it produces
+
+A fifth exported table, `analysis__regression_elimination_path`: one row per cell and
+candidate with the step it left on, and the coefficient and p-value it had in the last model
+that held it. **It is the only thing the elimination knows that the search does not** — the
+search fits 286 models and has no order; this one fits at most thirteen and the order is the
+reasoning — and it is why the 1,872 per-variable figures are not duplicated for it. Their
+analogue is the second panel of `betas__eliminacion`.
+
+639 figures more, from 2,550 to 3,189: every family that depends on the selected model gets
+a twin with `__eliminacion` in the name, **in the same folder**, so that comparing one year
+under the two methods is two adjacent files rather than two trees.
+
+### Two things the implementation had to decide
+
+**A cell where the elimination keeps nothing is a result and is kept.** The model that
+remains is the null — intercept and offset — and it says that no urban feature was
+significant there. It happens in 11.5 % of the least-squares cells and 2.3 % of the negative
+binomial ones. `_scale_candidates` returns a design with zero columns rather than failing,
+which is what that absence is.
+
+**A walk that does not converge records its whole pool anyway**, with no step and no
+estimate for the terms still in the model when it broke. Recording only what had been
+removed left a walk that fails at its first step with no rows at all, and a table that
+silently omits a year is read as a year whose layers were missing.
+
+### What it does not decide
+
+Which method the study reports. Measured on `run_20261009_084114`: the elimination leaves a
+median of 2 predictors in least squares, 6 in Poisson and 3 in negative binomial, and wins
+on AIC in 17.1 %, 81.1 % and 29.7 % of cells. Poisson's number is overdispersion and not
+selection — its dispersion statistic has median 3.94 — and part of the AIC difference
+measures the search's declared size cap rather than the method.
+
+## D66 — What the literature expects of each candidate is declared, not argued in prose
+
+**Decided 2026-10-12.** The panel adviser asked two things: how many variables stay
+significant at 5 % and at 10 %, and whether the variables theory and the literature name as
+relevant are the ones that come out significant at 5 %. The second question cannot be
+answered after the fact. An expectation read off the models is not an expectation, so the
+expected sign has to be written down first, and it is written in
+`config.LITERATURE_EXPECTATIONS` — one entry per candidate, with the estimate as its source
+states it and a line on how far that source's setting is from ours.
+
+**In `config` rather than in a document, for the reason the predictor dictionary is there.**
+A table in the thesis that names the twelve and what is expected of each would drift from the
+twelve the search walks the first time the candidate set moves, and the candidate set has
+moved twice in a fortnight. The table and the measurement that fills it now read the same
+declaration, and a candidate added without an expectation fails the import.
+
+### Five directions and three bases, because they are not interchangeable
+
+The direction says what the source reports: fewer casualties, more, nothing, disputed, or no
+source at all. **The distinction between the last two is the one that earns its keep.** A
+source that measured the feature and found no association is evidence about the feature; no
+source is a gap in the corpus, and a table that prints both as a blank invites the reader to
+read the gap as a null result. The pedestrian crossing and the vertical signage sit on
+opposite sides of that line.
+
+`EXPECTS_DISPUTED` covers three cases that behave the same way: two sources that disagree,
+one source whose two severities move in opposite directions, and one body of evidence that
+measures two different things and finds them opposed. The pedestrian bridge is the first —
+no association in one Bogotá study, greater severity in the other. The speed camera is the
+second: lowering and enforcing the limit on five arterials cut deaths by 16.6 % and raised
+injury crashes by 10.5 %, so for a count that merges the two severities it predicts no sign
+at all. **None of them is averaged into a direction.** The disagreement is the finding.
+
+The third was added on 2026-10-12 and it is the one that shows why the field has to be
+re-read rather than assumed. The TransMilenio station was declared `EXPECTS_FEWER` on a
+mechanism — mass transit routes belong to the family of works that reduce exposure — until
+the BRT road-safety literature was actually read. It splits: the **corridor** comes out
+protective, with annual fatalities on the Bogotá corridor falling from 61 to 16 and 60 %
+attributed to the system once the citywide downward trend is accounted for, while the
+**station** is where 54 % of the fatalities recorded across nine systems happened to
+pedestrians crossing illegally to enter or leave it. This study measures station density, so
+the half of the evidence that applies to it is the second, and the review's own verdict on
+the whole literature is that the results are mixed and no one-fits-all formula applies.
+
+The basis says what the expectation rests on. A rate ratio from a study of the same city is
+not the same evidence as a mechanism named in a review, and a column that shows them alike
+invites the reader to treat them alike. Three candidates carry a quantified estimate with a
+definite sign, one a mechanism and no estimate, five are disputed, one is a reported null
+and two have nothing in the corpus.
+
+### Four guards, each for a way the table could lie
+
+The declaration must cover the candidates exactly: one missing would print a table quietly
+shorter than the set the search walks, one extra would be an expectation about a variable no
+model can select. A quantified expectation with nothing reported would print an empty cell
+in the column the reader checks the claim against. Expecting a sign and naming no source is
+an assertion wearing a citation's clothes, and expecting nothing while naming a source is the
+same defect upside down.
+
+### What it found, and why the comparison is restricted
+
+**The crossing is only taken on the pairs whose affected party is the pedestrian.** Every
+quantified expectation in the corpus is a pedestrian casualty rate with pedestrian trips in
+the denominator; reading it against a cyclist or a motorcyclist coefficient would compare two
+different quantities. That restriction is part of the answer, not a convenience.
+
+Of the three candidates with a definite quantified sign, **two come out as expected and one
+comes out against it**. The arterial road agrees in 80 % of its significant coefficients and
+the street tree in 71 %; the signalised intersection carries the opposite sign in 93 % of its
+own. The sidewalk, the only one resting on a mechanism, agrees in 60 %. **One reversal.**
+
+**It was four, and three of them dissolved without a single coefficient changing.** The
+TransMilenio station, the bus stop and the pedestrian crossing were each declared
+`EXPECTS_FEWER` on the strength of a review that groups them among the works that separate
+the pedestrian from traffic. Reading the studies that actually measured them showed the
+evidence splits in all three cases, so none of them predicts a sign and none of them can be
+contradicted. **Three of the four contradictions were a defect of the literature review, not
+a finding of the models**, and saying so is worth more than keeping a contrast that
+flattered the work.
+
+**The reversal is not a failure of the models and it is not a contradiction of the
+literature.** A signal, a crossing, a stop and a station are placed where the traffic already
+is, so a cross-section cannot separate what the feature does from the reason it was built
+there. Chapter 2 of the thesis already says exactly this about the pedestrian bridge, so the
+reading is not one invented to accommodate this result.
+
+**And it is tested rather than asserted, which is the part that makes it usable.** If
+placement is what flips the sign, the flipped variable should be among the ones most tied to
+the arterial network — the only thing this study measures that stands for where the fast,
+heavy traffic is. Ranked against the arterial share over the twenty-nine units, the
+signalised intersection correlates at 0.89, higher than any candidate but the arterial
+itself. **The limit is kept even though the test came out in favour**: the vertical signage
+and the bridge, at 0.92 and 0.90, are the two most arterial-bound variables of all and both
+come out negative, so sitting on the arterial does not by itself force a positive sign and
+the correlation is consistent with the reading rather than a demonstration of it.
+
+**The three that stopped contradicting are still worth reading, and each one differently.**
+The TransMilenio station correlates 0.87 and comes out positive in 91 %, which is the half
+of its evidence that applies to a station. The bus stop correlates 0.27, so its positive sign
+is not arterial co-location but, if its source is right, the walking concentrating where
+people wait. The pedestrian crossing correlates −0.25, which fits placement badly and fits
+the other reading well: the marking does not protect by itself on the wide fast roads. Three
+mechanisms for three signs a cross-section cannot tell apart.
+
+That is the substantive argument for the panel stage, and it belongs in the discussion
+chapter, which is where chapter 2 promised the contrast would be made.
+
+`tools/variables_y_la_literatura.py` is the measurement, and section 18 of
+`regression-inventory.md` is the record of what the two halves of the question returned.

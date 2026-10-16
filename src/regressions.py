@@ -108,7 +108,11 @@ MEDIAN_FULLY_STANDARDISED_COL = "COEFFICIENT_MEDIAN_FULLY_STANDARDISED"
 # the run has to say which run each came from, and it does.
 MATRIX_FILENAME = "analysis__matrix_long.parquet"
 CORRECTED_MATRIX_FILENAME = "analysis__matrix_long__rho_corrected.parquet"
-EXPOSURE_FILENAME = "analysis__exposure_by_unit_interpolated.parquet"
+# **Derived from the variant the models read and not written out.** Since D63 that is
+# the fitted panel with the pandemic patch, which lives in a different table from
+# D40's; naming the file here meant the variant filter and the filename were two
+# things to keep in step, and they were in step only by coincidence.
+EXPOSURE_FILENAME = f"{config.model_exposure_table()}.parquet"
 POPULATION_FILENAME = "analysis__population_by_unit_year.parquet"
 PREDICTORS_FILENAME = "analysis__static_predictors_long.parquet"
 
@@ -153,7 +157,21 @@ def read_inputs(log: RunLog) -> tuple[dict[str, pd.DataFrame], pd.DataFrame, pd.
         ("population", POPULATION_FILENAME),
         ("predictors", PREDICTORS_FILENAME),
     ):
-        run_dir = config.run_directory_holding(filename)
+        try:
+            run_dir = config.run_directory_holding(filename)
+        except FileNotFoundError as absent:
+            if name != "exposure":
+                raise
+            # **Which route writes the exposure moved on 2026-10-07**, and the generic
+            # message does not say so. D63 made the models read the fitted panel, which
+            # `reconstruction` writes and `interpolation` does not, so a run that has only
+            # ever run the older route now fails here with nothing pointing at the cause.
+            raise FileNotFoundError(
+                f"{absent}. Since D63 the models read {config.MODEL_EXPOSURE_VARIANT}, "
+                f"which lives in {filename} and is written by the `reconstruction` route "
+                "rather than by `interpolation`. Run `python -m src.run_pipeline "
+                "reconstruction` first"
+            ) from absent
         reads[name] = pd.read_parquet(run_dir / config.DATA_SUBDIR / filename)
         log.info("%s read from %s", name, run_dir.name)
 
@@ -366,7 +384,7 @@ def _exposure(exposure: pd.DataFrame) -> pd.DataFrame:
     wanted = exposure[
         exposure[config.YEAR_COL].isin(config.REGRESSION_YEARS)
         & (exposure[config.DAY_TYPE_COL] == config.MODEL_EXPOSURE_DAY_TYPE)
-        & (exposure[config.EXPOSURE_VARIANT_COL] == config.INTERPOLATED_VARIANT)
+        & (exposure[config.EXPOSURE_VARIANT_COL] == config.MODEL_EXPOSURE_VARIANT)
     ]
     return (
         wanted[[config.AREA_CODE_COL, config.ACTOR_TYPE_COL, config.YEAR_COL, config.MODEL_EXPOSURE_COLUMN]]
@@ -457,6 +475,13 @@ def _scale_candidates(frame: pd.DataFrame, candidates: tuple[str, ...]) -> np.nd
                 )
             values = np.log(values)
         columns.append(values)
+    # **Ninguna candidata es un diseño válido y no un error.** La eliminación hacia atrás
+    # puede botarlas todas, y el modelo que queda —intercepto y offset— es el modelo nulo,
+    # que es un resultado: dice que ninguna característica urbana resultó significativa en
+    # esa celda. `column_stack` de una lista vacía no tiene forma, así que la matriz se
+    # construye con las filas del marco y cero columnas, que es lo que esa ausencia es.
+    if not columns:
+        return np.empty((len(frame), 0), dtype=float)
     return np.column_stack(columns)
 
 
@@ -661,6 +686,92 @@ def search(
     return best, null, attempted, failed, per_candidate, per_candidate_values
 
 
+def backward_elimination(
+    frame: pd.DataFrame,
+    family: str,
+    offset: config.OffsetSpec,
+    candidates: tuple[str, ...],
+) -> tuple[Fitted | None, dict[str, dict]]:
+    """Start with every candidate and drop the least significant until none is left to drop.
+
+    The method the panel adviser asked for on 2026-10-07, written against the function
+    she sent. Three things in it are hers and are kept: the intercept never competes for
+    removal, one term goes per step, and the stop is `config.BACKWARD_ELIMINATION_ALPHA`.
+
+    **It runs on the same standardised design, the same offset and the same candidate
+    pool as `search`, and that is the whole point.** Two selection methods compared on
+    different inputs compare the inputs. Her function is written for `sm.OLS`; the two
+    count families reach the same decision through the Wald p-values of the same terms,
+    which is the only reading of "least significant" available in all three.
+
+    Returns the surviving model and the path that reached it: per candidate, the step it
+    left on — `None` if it survived — and the coefficient and p-value it had in the last
+    model that contained it. **The path is the thing the exhaustive search cannot
+    produce**, because the search fits 286 models and has no order; this one fits at most
+    twelve and the order is the reasoning.
+
+    **A term whose p-value is not a number is dropped first and counted.** It happens
+    when a coefficient is not identified, and such a term is not "not significant" — it
+    is not estimated. Leaving it in the comparison would have `idxmax` pick whichever
+    real p-value happened to be largest and keep an unidentified term in the model.
+
+    Returns `(None, path)` if any step fails to fit or to converge: a cell where the
+    walk cannot be taken has no selected model, which is different from a cell that
+    selected nothing, and `verify` counts the two separately. **The path still holds
+    every candidate even then**, with no step and no estimate for the ones that were
+    still in the model when it broke. The alternative — recording only what had been
+    removed — leaves a walk that fails at its first step with no rows at all, and a
+    table that silently omits a year is read as a year whose layers were missing.
+    """
+    response = frame[RESPONSE_COL].to_numpy(dtype=float)
+    log_offset = _log_offset(frame, offset)
+    standardised, _, _ = _standardise(_scale_candidates(frame, candidates))
+    position = {name: index for index, name in enumerate(candidates)}
+
+    alive = list(candidates)
+    path: dict[str, dict] = {}
+    step = 0
+    while True:
+        design = sm.add_constant(
+            standardised[:, [position[name] for name in alive]], has_constant="add")
+        result = _fit_one(family, response, design, log_offset)
+        described = _describe(result, tuple(alive)) if result is not None else None
+        if described is None:
+            for name in alive:
+                path[name] = {"step": None, "coefficient": float("nan"),
+                              "p_value": float("nan")}
+            return None, path
+        if not alive:
+            return described, path
+
+        # **Sliced to the terms, not taken from the first element onwards.** The
+        # discrete negative binomial appends the dispersion to `params` and `pvalues`,
+        # so an open-ended slice hands this loop a parameter that is not a predictor
+        # and that it would eventually try to remove by name.
+        values = np.asarray(result.pvalues, dtype=float)[1:1 + len(alive)]
+        estimates = np.asarray(result.params, dtype=float)[1:1 + len(alive)]
+        unidentified = [name for name, value in zip(alive, values) if not np.isfinite(value)]
+        if unidentified:
+            victim = unidentified[0]
+        else:
+            worst = int(np.argmax(values))
+            if values[worst] <= config.BACKWARD_ELIMINATION_ALPHA:
+                for name, estimate, value in zip(alive, estimates, values):
+                    path[name] = {"step": None, "coefficient": float(estimate),
+                                  "p_value": float(value)}
+                return described, path
+            victim = alive[worst]
+
+        step += 1
+        index = alive.index(victim)
+        path[victim] = {
+            "step": step,
+            "coefficient": float(estimates[index]),
+            "p_value": float(values[index]) if np.isfinite(values[index]) else float("nan"),
+        }
+        alive.remove(victim)
+
+
 def _log_offset(frame: pd.DataFrame, offset: config.OffsetSpec) -> np.ndarray:
     """The logarithm of the product of the offset's quantities.
 
@@ -789,57 +900,42 @@ def _collinear_pairs(frame: pd.DataFrame, predictors: tuple[str, ...]) -> list[t
     return found
 
 
-def fit_cell(
+def _rows_for_model(
     frame: pd.DataFrame,
+    chosen: Fitted,
+    null: Fitted | None,
     dataset: str,
     offset: config.OffsetSpec,
     pair: config.ActorPair,
     year: int,
     family: str,
+    method: str,
     weights: np.ndarray,
     candidate_set: str,
-    log: RunLog,
-) -> tuple[dict, list[dict], list[dict], list[dict]] | None:
-    """Everything one regression contributes: model row, coefficients, predictions, candidates."""
-    # The year's pool, not the general one: a variable whose layer does not reach
-    # this year arrives empty, and a model built on it would be dropped silently
-    # by the fit filter rather than never attempted. See config.regression_pool_in.
-    candidates = offset.candidate_predictors(
-        config.regression_pool_in(year, candidate_set))
-    best, null, attempted, failed, per_candidate, per_candidate_values = search(
-        frame, family, offset, candidates)
-    if best is None:
-        log.warn(
-            "%s / %s / %s / %d / %s: no specification could be fitted out of %d",
-            dataset, offset.name, pair.name, year, family, attempted,
-        )
-        return None
+    response: np.ndarray,
+    log_offset: np.ndarray,
+    response_deviation: float,
+    declared: int,
+    fitted_count: int,
+) -> tuple[dict, list[dict], list[dict]]:
+    """The model row, its coefficients and its predictions, for one selected model.
 
-    result = best.result
-    response = frame[RESPONSE_COL].to_numpy(dtype=float)
-    log_offset = _log_offset(frame, offset)
+    **Written once and called once per selection method.** The two methods disagree about
+    which model to choose and about nothing else: a chosen model is described, exported
+    and drawn the same way whether a search over 286 subsets found it or a walk down from
+    twelve predictors did. A second copy of this function would be a second answer to
+    questions the study has already answered — how a coefficient returns to its own units,
+    which scale a prediction is reported on, what counts as collinear.
+    """
+    result = chosen.result
     # On the same scale the fit saw, which for a log-scaled candidate is the
     # logarithm. Taking the deviation of the raw column instead would divide a
     # coefficient estimated per standard deviation of log(trips) by the standard
     # deviation of trips, and for a quantity in the hundreds of thousands that
     # rounds every elasticity to zero.
-    raw = _scale_candidates(frame, tuple(best.predictors))
+    raw = _scale_candidates(frame, tuple(chosen.predictors))
     deviations = raw.std(axis=0, ddof=0)
 
-    # La desviación de la respuesta **que el ajuste vio**, que es la tasa en
-    # mínimos cuadrados y no el conteo. Dividir por ella completa una
-    # estandarización que hoy sólo se aplica a las variables, y sin ella los
-    # 1 639 coeficientes de MCO se redondean a cero en las figuras: el modelo
-    # ajusta siniestros por viaje, que vale del orden de una diezmilésima bajo la
-    # exposición del modo y de 1e-11 bajo el producto de las dos.
-    #
-    # **Sólo mínimos cuadrados.** El coeficiente del GLM ya es adimensional —vive
-    # en la escala logarítmica— y dividirlo rompería su significado, así que la
-    # columna llega nula ahí y no cero, que se leería como una medición. D51.
-    if family == config.OLS_FAMILY:
-        response_deviation = float(np.std(response / np.exp(log_offset), ddof=0))
-    else:
-        response_deviation = float("nan")
 
     # Least squares models the rate, so its fitted values are a rate and are
     # multiplied back to counts. The GLMs model the count directly. Putting both
@@ -862,8 +958,11 @@ def fit_cell(
     if family == config.POISSON_FAMILY:
         dispersion = float(result.pearson_chi2 / result.df_resid)
 
-    collinear = _collinear_pairs(frame, best.predictors)
-    model_id = f"{dataset}|{offset.name}|{pair.name}|{year}|{family}"
+    collinear = _collinear_pairs(frame, chosen.predictors)
+    # **El metodo entra en el identificador.** Sin el, los dos modelos de una
+    # celda comparten clave y una tabla que une por ella devuelve el doble de
+    # filas sin que nada falle.
+    model_id = f"{dataset}|{offset.name}|{pair.name}|{year}|{family}|{method}"
 
     model_row = {
         config.CANDIDATE_SET_COL: candidate_set,
@@ -872,28 +971,34 @@ def fit_cell(
         PAIR_NAME_COL: pair.name,
         config.YEAR_COL: year,
         config.FAMILY_COL: family,
+        config.SELECTION_METHOD_COL: method,
         MODEL_ID_COL: model_id,
-        "PREDICTORS": ", ".join(best.predictors),
-        "N_PREDICTORS": len(best.predictors),
+        "PREDICTORS": ", ".join(chosen.predictors),
+        "N_PREDICTORS": len(chosen.predictors),
         "N_OBSERVATIONS": len(frame),
-        "AIC": best.aic,
-        "BIC": best.bic,
-        "LOG_LIKELIHOOD": best.loglikelihood,
+        "AIC": chosen.aic,
+        "BIC": chosen.bic,
+        "LOG_LIKELIHOOD": chosen.loglikelihood,
         "NULL_AIC": null.aic if null else float("nan"),
-        "BEATS_NULL": bool(null is not None and best.aic < null.aic),
+        "BEATS_NULL": bool(null is not None and chosen.aic < null.aic),
         "DISPERSION": dispersion,
         "MORANS_I": morans_i(residuals, weights),
         "COLLINEAR": bool(collinear),
         "COLLINEAR_PAIRS": "; ".join(
             f"{left}~{right}={value:.3f}" for left, right, value in collinear
         ),
-        "SPECIFICATIONS_FITTED": attempted - failed,
-        "SPECIFICATIONS_DECLARED": attempted,
-        "CONVERGED": best.converged,
+        # **Lo que cada método recorrió para llegar aquí, y no son lo mismo.** La
+        # búsqueda declara 286 subconjuntos y ajusta los que puede; la eliminación
+        # declara a lo sumo trece modelos —uno por paso, más el que la detuvo— y ajusta
+        # los que llegó a dar. La columna se llama igual porque responde la misma
+        # pregunta: cuántos ajustes hay detrás de este modelo.
+        "SPECIFICATIONS_FITTED": fitted_count,
+        "SPECIFICATIONS_DECLARED": declared,
+        "CONVERGED": chosen.converged,
     }
 
     intervals = np.asarray(result.conf_int(alpha=1 - config.REGRESSION_CONFIDENCE), dtype=float)
-    names = ["INTERCEPT", *best.predictors]
+    names = ["INTERCEPT", *chosen.predictors]
     coefficient_rows = []
     for position, name in enumerate(names):
         if position >= len(result.params):
@@ -918,6 +1023,7 @@ def fit_cell(
                 PAIR_NAME_COL: pair.name,
                 config.YEAR_COL: year,
                 config.FAMILY_COL: family,
+                config.SELECTION_METHOD_COL: method,
                 MODEL_ID_COL: model_id,
                 "TERM": name,
                 "COEFFICIENT_STANDARDISED": estimate,
@@ -949,6 +1055,7 @@ def fit_cell(
             PAIR_NAME_COL: pair.name,
             config.YEAR_COL: year,
             config.FAMILY_COL: family,
+            config.SELECTION_METHOD_COL: method,
             MODEL_ID_COL: model_id,
             config.AREA_CODE_COL: code,
             "OBSERVED": float(observed),
@@ -957,6 +1064,123 @@ def fit_cell(
         }
         for code, observed, fitted in zip(frame[config.AREA_CODE_COL], response, predicted)
     ]
+    return model_row, coefficient_rows, prediction_rows
+
+
+def fit_cell(
+    frame: pd.DataFrame,
+    dataset: str,
+    offset: config.OffsetSpec,
+    pair: config.ActorPair,
+    year: int,
+    family: str,
+    weights: np.ndarray,
+    candidate_set: str,
+    log: RunLog,
+) -> tuple[list[dict], list[dict], list[dict], list[dict], list[dict]] | None:
+    """Everything one cell contributes, under both selection methods.
+
+    **One cell now yields up to two models and not one.** The exhaustive search over the
+    declared subset sizes and the backward elimination the panel adviser asked for are
+    run on the same frame, the same offset and the same candidate pool, and both reach
+    the tables. Which of the two the study reports is not decided here.
+
+    The two can disagree about whether a model exists at all. The search needs one of its
+    286 subsets to fit; the elimination needs every step of one walk to fit. A cell where
+    only one of them succeeds keeps the one that did, and the convergence figure is what
+    says so — dropping the cell from both would hide a difference between the methods
+    inside a number neither of them reports.
+    """
+    # The year's pool, not the general one: a variable whose layer does not reach
+    # this year arrives empty, and a model built on it would be dropped silently
+    # by the fit filter rather than never attempted. See config.regression_pool_in.
+    candidates = offset.candidate_predictors(
+        config.regression_pool_in(year, candidate_set))
+    response = frame[RESPONSE_COL].to_numpy(dtype=float)
+    log_offset = _log_offset(frame, offset)
+
+    # La desviación de la respuesta **que el ajuste vio**, que es la tasa en
+    # mínimos cuadrados y no el conteo. Dividir por ella completa una
+    # estandarización que hoy sólo se aplica a las variables, y sin ella los
+    # 1 639 coeficientes de MCO se redondean a cero en las figuras: el modelo
+    # ajusta siniestros por viaje, que vale del orden de una diezmilésima bajo la
+    # exposición del modo y de 1e-11 bajo el producto de las dos.
+    #
+    # **Sólo mínimos cuadrados.** El coeficiente del GLM ya es adimensional —vive
+    # en la escala logarítmica— y dividirlo rompería su significado, así que la
+    # columna llega nula ahí y no cero, que se leería como una medición. D51.
+    if family == config.OLS_FAMILY:
+        response_deviation = float(np.std(response / np.exp(log_offset), ddof=0))
+    else:
+        response_deviation = float("nan")
+
+    best, null, attempted, failed, per_candidate, per_candidate_values = search(
+        frame, family, offset, candidates)
+    eliminated, path = backward_elimination(frame, family, offset, candidates)
+    if best is None and eliminated is None:
+        log.warn(
+            "%s / %s / %s / %d / %s: neither selection method produced a model out of %d",
+            dataset, offset.name, pair.name, year, family, attempted,
+        )
+        return None
+
+    models: list[dict] = []
+    coefficients: list[dict] = []
+    predictions: list[dict] = []
+    # Steps walked, which is the elimination's analogue of the search's count of
+    # specifications: one fit per step plus the last one that stopped the walk.
+    removed = sum(1 for entry in path.values() if entry["step"] is not None)
+    chosen_by = (
+        (config.BEST_SUBSET_SELECTION, best, attempted, attempted - failed),
+        (config.BACKWARD_ELIMINATION_SELECTION, eliminated, len(candidates) + 1, removed + 1),
+    )
+    for method, chosen, declared, fitted_count in chosen_by:
+        if chosen is None:
+            continue
+        model_row, coefficient_rows, prediction_rows = _rows_for_model(
+            frame, chosen, null, dataset, offset, pair, year, family, method, weights,
+            candidate_set, response, log_offset, response_deviation, declared, fitted_count,
+        )
+        models.append(model_row)
+        coefficients.extend(coefficient_rows)
+        predictions.extend(prediction_rows)
+
+    # **The walk, which is the one thing the search cannot produce.** One row per
+    # candidate: the step it left on, or nothing if it survived, with what it was worth
+    # in the last model that held it. It replaces the 1,872 per-variable figures for this
+    # method, because "the best model containing this variable" is a question about 286
+    # fits and the elimination performs twelve.
+    elimination_path = [
+        {
+            config.CANDIDATE_SET_COL: candidate_set,
+            DATASET_COL: dataset,
+            config.OFFSET_COL: offset.name,
+            PAIR_NAME_COL: pair.name,
+            config.YEAR_COL: year,
+            config.FAMILY_COL: family,
+            config.SELECTION_METHOD_COL: config.BACKWARD_ELIMINATION_SELECTION,
+            MODEL_ID_COL: (
+                f"{dataset}|{offset.name}|{pair.name}|{year}|{family}"
+                f"|{config.BACKWARD_ELIMINATION_SELECTION}"
+            ),
+            "TERM": name,
+            "STEP_REMOVED": entry["step"],
+            "SURVIVED": entry["step"] is None and eliminated is not None,
+            "COEFFICIENT_STANDARDISED": entry["coefficient"],
+            "P_VALUE": entry["p_value"],
+            "WALK_COMPLETED": eliminated is not None,
+        }
+        for name, entry in path.items()
+    ]
+
+    # La identidad del modelo de la búsqueda, que es el único método al que esta tabla
+    # pertenece: «el mejor modelo que contiene a esta variable» es una pregunta sobre 286
+    # ajustes, y la eliminación recorre doce y no tiene con qué contestarla.
+    search_model_id = (
+        f"{dataset}|{offset.name}|{pair.name}|{year}|{family}"
+        f"|{config.BEST_SUBSET_SELECTION}"
+    )
+    selected_names = set(best.predictors) if best is not None else set()
 
     # One row per candidate of the year: the best model that contains it, and what
     # the candidate is worth inside that model. The winning model appears once per
@@ -992,10 +1216,11 @@ def fit_cell(
                     PAIR_NAME_COL: pair.name,
                     config.YEAR_COL: year,
                     config.FAMILY_COL: family,
-                    MODEL_ID_COL: model_id,
+                    config.SELECTION_METHOD_COL: config.BEST_SUBSET_SELECTION,
+                    MODEL_ID_COL: search_model_id,
                     "TERM": name,
                     "HAS_FITTED_MODEL": False,
-                    "IN_SELECTED_MODEL": name in best.predictors,
+                    "IN_SELECTED_MODEL": name in selected_names,
                     "N_MODELS_CONTAINING": 0,
                 }
             )
@@ -1022,13 +1247,14 @@ def fit_cell(
                 PAIR_NAME_COL: pair.name,
                 config.YEAR_COL: year,
                 config.FAMILY_COL: family,
-                MODEL_ID_COL: model_id,
+                config.SELECTION_METHOD_COL: config.BEST_SUBSET_SELECTION,
+                MODEL_ID_COL: search_model_id,
                 "TERM": name,
                 "HAS_FITTED_MODEL": True,
                 # Whether the search chose this candidate. It is also the answer to
                 # «is this candidate's best model the winner», and `verify` checks
                 # that the two agree rather than assuming it.
-                "IN_SELECTED_MODEL": name in best.predictors,
+                "IN_SELECTED_MODEL": name in selected_names,
                 "PREDICTORS": ", ".join(fit.predictors),
                 "N_PREDICTORS": len(fit.predictors),
                 "AIC": fit.aic,
@@ -1070,7 +1296,8 @@ def fit_cell(
             }
         )
 
-    return model_row, coefficient_rows, prediction_rows, candidate_rows
+    return models, coefficients, predictions, candidate_rows, elimination_path
+
 
 # ---------------------------------------------------------------------------
 # The whole walk
@@ -1144,6 +1371,7 @@ def fit_all(
     coefficients: list[dict] = []
     predictions: list[dict] = []
     candidate_models: list[dict] = []
+    elimination_paths: list[dict] = []
     cells = 0
 
     for dataset, table in datasets.items():
@@ -1172,30 +1400,45 @@ def fit_all(
                         )
                         if fitted is None:
                             continue
-                        model_row, coefficient_rows, prediction_rows, candidate_rows = fitted
-                        models.append(model_row)
+                        (model_rows, coefficient_rows, prediction_rows,
+                         candidate_rows, path_rows) = fitted
+                        models.extend(model_rows)
                         coefficients.extend(coefficient_rows)
                         predictions.extend(prediction_rows)
                         candidate_models.extend(candidate_rows)
+                        elimination_paths.extend(path_rows)
 
     tables = {
         "models": pd.DataFrame(models),
         "coefficients": pd.DataFrame(coefficients),
         "predictions": pd.DataFrame(predictions),
         "candidate_models": pd.DataFrame(candidate_models),
+        "elimination_path": pd.DataFrame(elimination_paths),
     }
     log.record(
         "fit every declared specification",
         rows_in=cells,
         rows_out=len(tables["models"]),
-        changes=[(len(tables["models"]) - cells, "cells where no specification could be fitted")],
+        changes=[(
+            len(tables["models"]) - cells,
+            "one model per cell and selection method, less the cells a method could not fit",
+        )],
         notes=[
             f"{cells:,} cells = {len(datasets)} dataset(s) x {len(config.REGRESSION_OFFSETS)} "
             f"offset(s) x pairs x {len(config.REGRESSION_YEARS)} years x 3 families",
+            # Por método y no sumados: los dos recorren la misma celda y una cuenta
+            # conjunta diría que hay el doble de celdas.
+            *[
+                f"{method}: {int((tables['models'][config.SELECTION_METHOD_COL] == method).sum()):,} "
+                f"of {cells:,} cell(s) produced a model"
+                for method in config.SELECTION_METHODS
+            ],
             f"{int(tables['models']['SPECIFICATIONS_DECLARED'].sum()):,} specifications declared, "
             f"{int(tables['models']['SPECIFICATIONS_FITTED'].sum()):,} fitted",
             f"{int(tables['models']['BEATS_NULL'].sum()):,} of {len(tables['models']):,} selected "
             "models beat their own null",
+            f"{len(tables['elimination_path']):,} elimination step(s) recorded over "
+            f"{tables['elimination_path'][MODEL_ID_COL].nunique():,} walk(s)",
             # Lo que se dejó de botar. Ningún ajuste nuevo: son los mismos modelos de
             # la línea de arriba, retenidos en vez de descartados.
             f"{len(tables['candidate_models']):,} per-candidate best model(s) retained out of "
@@ -1292,16 +1535,23 @@ def selection_frequency_by_specification(
 
     Sustituye a la fila única por variable que se exportaba antes. Esa no se
     conserva: un tablero que la encontrara la dibujaría, y es lo que D53 retira.
+
+    **El método de selección es la cuarta clave desde el 2026-10-09**, por la misma
+    razón que las otras tres y no por simetría: los dos métodos eligen conjuntos de
+    tamaño distinto —mediana dos y mediana seis en Poisson— así que una frecuencia que
+    los junte describe una mezcla de dos poblaciones de modelos y ninguna de las dos.
     """
-    keys = [DATASET_COL, config.OFFSET_COL, config.FAMILY_COL]
+    keys = [DATASET_COL, config.OFFSET_COL, config.FAMILY_COL, config.SELECTION_METHOD_COL]
     bloques = []
-    for (dataset, offset, family), block in models.groupby(keys, sort=False):
+    for (dataset, offset, family, method), block in models.groupby(keys, sort=False):
         terms = coefficients[
             (coefficients[DATASET_COL] == dataset)
             & (coefficients[config.OFFSET_COL] == offset)
             & (coefficients[config.FAMILY_COL] == family)
+            & (coefficients[config.SELECTION_METHOD_COL] == method)
         ]
         frequency = selection_frequency(terms, block, candidate_set)
+        frequency.insert(0, config.SELECTION_METHOD_COL, method)
         frequency.insert(0, config.FAMILY_COL, family)
         frequency.insert(0, config.OFFSET_COL, offset)
         frequency.insert(0, DATASET_COL, dataset)
@@ -1320,17 +1570,22 @@ def export(
     candidate_set: str,
     log: RunLog,
 ) -> dict[str, Path]:
-    """The data tables and the four result tables, plus the selection frequency.
+    """The data tables and the five result tables, plus the selection frequency.
 
     The data table is written once per casualty dataset because its response
-    differs between them; the four result tables carry the dataset as a column,
+    differs between them; the result tables carry the dataset as a column,
     because a model of one and a model of the other are rows of the same
     comparison and separating them would make that comparison a manual join.
 
-    `candidate_models` is the fourth and is not a summary of the others: it holds
-    the best model containing each candidate, which is the answer to what a
-    variable would have been worth had it entered, and every row of it comes from
-    a fit the search was already performing.
+    `candidate_models` is not a summary of the others: it holds the best model
+    containing each candidate, which is the answer to what a variable would have
+    been worth had it entered, and every row of it comes from a fit the search was
+    already performing.
+
+    `elimination_path` is the fifth and belongs to the other selection method. It
+    holds what step each candidate left the walk on, which is the only thing
+    backward elimination knows that the search does not — and the reason the 1,872
+    per-variable figures are not duplicated for it.
     """
     data_dir = log.run_dir / config.DATA_SUBDIR
     data_dir.mkdir(parents=True, exist_ok=True)
@@ -1343,7 +1598,8 @@ def export(
         frame.to_parquet(path.with_suffix(".parquet"))
         paths[f"data__{dataset}"] = path
 
-    for name in ("models", "coefficients", "predictions", "candidate_models"):
+    for name in ("models", "coefficients", "predictions", "candidate_models",
+                 "elimination_path"):
         path = data_dir / f"{config.ANALYSIS_PREFIX}__regression_{name}.csv"
         tables[name].to_csv(path, index=False, encoding="utf-8")
         tables[name].to_parquet(path.with_suffix(".parquet"))
@@ -1446,8 +1702,12 @@ def verify(
 
     # The declared set was walked whole and not exceeded. The two counts differ
     # only by specifications the estimator could not fit, which are reported.
-    declared = int(models["SPECIFICATIONS_DECLARED"].sum())
-    fitted = int(models["SPECIFICATIONS_FITTED"].sum())
+    # **Over the search's rows alone**: the elimination declares at most one model per
+    # candidate plus the one that stops the walk, so counting the two together would
+    # compare the search's 286 subsets against a total that is not a subset count.
+    searched = models[models[config.SELECTION_METHOD_COL] == config.BEST_SUBSET_SELECTION]
+    declared = int(searched["SPECIFICATIONS_DECLARED"].sum())
+    fitted = int(searched["SPECIFICATIONS_FITTED"].sum())
     # Per offset AND per year: the pool is not the same in every year, so one
     # count for the whole offset would expect models that were never declared.
     expected_declared = 0
@@ -1459,9 +1719,9 @@ def verify(
                 len(list(itertools.combinations(candidates, size)))
                 for size in config.REGRESSION_SUBSET_SIZES
             )
-            cells = len(models[
-                (models[config.OFFSET_COL] == offset.name)
-                & (models[config.YEAR_COL] == year)
+            cells = len(searched[
+                (searched[config.OFFSET_COL] == offset.name)
+                & (searched[config.YEAR_COL] == year)
             ])
             expected_declared += per_cell * cells
     checks.append(
@@ -1519,9 +1779,11 @@ def verify(
     # One row per cell and candidate of that cell's year. The expected count is
     # built from the same `regression_pool_in` the search reads, so a year the
     # signage layer does not reach is expected to carry eleven and not twelve.
+    # **Over the search's models alone**: this table belongs to that method, so
+    # counting against every model row would expect it to cover the walks too.
     candidate_models = tables["candidate_models"]
     expected_rows = 0
-    for _, row in models.iterrows():
+    for _, row in searched.iterrows():
         offset = next(o for o in config.REGRESSION_OFFSETS
                       if o.name == row[config.OFFSET_COL])
         expected_rows += len(offset.candidate_predictors(
@@ -1704,6 +1966,89 @@ def verify(
         )
     )
 
+    # -- the second selection method ---------------------------------------
+    path = tables["elimination_path"]
+    undeclared = sorted(set(models[config.SELECTION_METHOD_COL]) - set(config.SELECTION_METHODS))
+    produced = {
+        method: int((models[config.SELECTION_METHOD_COL] == method).sum())
+        for method in config.SELECTION_METHODS
+    }
+    checks.append(
+        (
+            "every model names a declared selection method, and both produced models",
+            not undeclared and all(count > 0 for count in produced.values()),
+            "; ".join(f"{method}: {count:,}" for method, count in produced.items())
+            + (f"; undeclared: {', '.join(undeclared)}" if undeclared else ""),
+        )
+    )
+
+    # **The identity has to include the method or the two models of a cell collide.**
+    # A table joined on a key that repeats returns the product of the duplicates, and the
+    # dashboard joins four tables on this one.
+    checks.append(
+        (
+            "a model identity names exactly one model",
+            models[MODEL_ID_COL].is_unique,
+            f"{models[MODEL_ID_COL].nunique():,} identities over {len(models):,} row(s)",
+        )
+    )
+
+    # **The walk and the model it produced have to say the same thing.** The survivors
+    # of the path are the predictors of the chosen model, by construction — which is
+    # exactly why it is worth checking: the two are written by different code, one from
+    # the loop's state and one from the fitted result.
+    chosen = models[models[config.SELECTION_METHOD_COL] == config.BACKWARD_ELIMINATION_SELECTION]
+    survivors = (
+        path[path["SURVIVED"]]
+        .groupby(MODEL_ID_COL)["TERM"]
+        .apply(lambda terms: ", ".join(sorted(terms)))
+    )
+    disagreeing = 0
+    for identity, predictors in zip(chosen[MODEL_ID_COL], chosen["PREDICTORS"]):
+        declared_terms = ", ".join(sorted(
+            name.strip() for name in str(predictors).split(",") if name.strip()))
+        if survivors.get(identity, "") != declared_terms:
+            disagreeing += 1
+    checks.append(
+        (
+            "the survivors of each walk are the predictors of the model it chose",
+            disagreeing == 0,
+            f"{len(chosen) - disagreeing:,} of {len(chosen):,} walk(s) agree with their model",
+        )
+    )
+
+    # Every candidate of the year appears in a completed walk exactly once: a variable
+    # that is neither removed nor a survivor has been lost, and a repeated one would be
+    # counted twice by the figure that reads this table.
+    #
+    # **A walk that did not complete is held to a weaker claim on purpose.** It records
+    # only the terms it had removed before the step that failed to fit, which is what it
+    # knows; demanding the whole pool of it would demand that it report an order it never
+    # established. What it must not do is repeat a term or invent one.
+    broken = incomplete_broken = 0
+    for (offset_name, year), block in path.groupby([config.OFFSET_COL, config.YEAR_COL]):
+        offset = next(o for o in config.REGRESSION_OFFSETS if o.name == offset_name)
+        expected_terms = set(offset.candidate_predictors(
+            config.regression_pool_in(int(year), candidate_set)))
+        for _, walk in block.groupby(MODEL_ID_COL):
+            terms = set(walk["TERM"])
+            if walk["TERM"].duplicated().any() or not terms <= expected_terms:
+                broken += 1
+            elif terms != expected_terms:
+                broken += 1
+            elif not bool(walk["WALK_COMPLETED"].iloc[0]):
+                incomplete_broken += 1
+    walks = path[MODEL_ID_COL].nunique()
+    checks.append(
+        (
+            "every walk holds its year's candidate pool exactly once",
+            broken == 0,
+            f"{walks - broken:,} of {walks:,} walk(s) over {len(path):,} step record(s); "
+            f"{incomplete_broken:,} walk(s) stopped before the end, and carry their "
+            "remaining terms with no step and no estimate",
+        )
+    )
+
     width = max(len(name) for name, _, _ in checks)
     lines = [f"{'check'.ljust(width)}  {'result':>8}  detail", f"{'-' * width}  {'-' * 8}  ------"]
     for name, ok, detail in checks:
@@ -1837,6 +2182,7 @@ def _fit_panel(
     family: str,
     year: int,
     candidate_set: str,
+    method: str,
     out_path: Path,
 ) -> None:
     """Observed against predicted, one panel per pair.
@@ -1853,7 +2199,7 @@ def _fit_panel(
     denominators are told apart before the title is read.
     """
     colour = config.OFFSET_COLORS[offset]
-    figure, axes = _panel_grid(
+    figure, axes = _panel_grid(_with_method(
         f"Observado contra predicho · {year} · {config.FAMILY_LABELS_ES[family]}\n"
         f"offset: {config.OFFSET_LABELS_ES[offset]} · conjunto: {config.DATASET_LABELS_ES[dataset]}"
         f" · candidatas: {_candidate_label(candidate_set)} · cada panel con su propia escala\n"
@@ -1861,7 +2207,7 @@ def _fit_panel(
         # entero está abajo y un lector mira el número antes de bajar la vista.
         "R² sobre conteos, comparable entre paneles · AIC en la escala que cada familia "
         "ajusta, comparable sólo dentro de una"
-    )
+    , method))
     for axis, pair in zip(axes, config.REGRESSION_PAIRS):
         rows = predictions[
             (predictions[DATASET_COL] == dataset)
@@ -1956,6 +2302,7 @@ def _coefficient_panel(
     family: str,
     year: int,
     candidate_set: str,
+    method: str,
     out_path: Path,
 ) -> None:
     """The selected coefficients of all three offsets, one panel per pair.
@@ -1980,13 +2327,13 @@ def _coefficient_panel(
     and not the other, and the absence of a variable then reads as «it was not
     selected» when what happened is that it did not exist.
     """
-    figure, axes = _panel_grid(
+    figure, axes = _panel_grid(_with_method(
         f"Coeficientes estandarizados · {year} · {config.FAMILY_LABELS_ES[family]}\n"
         f"conjunto: {config.DATASET_LABELS_ES[dataset]} · candidatas: "
         f"{_candidate_label(candidate_set)} · un color por offset · intervalo del 95 %\n"
         f"variables {config.series_available_in(year)}\n"
         f"cada punto: {_coefficient_quantity_es(family)}"
-    )
+    , method))
     valor_col, bajo_col, alto_col = _plotted_coefficient(family)
     colours = config.OFFSET_COLORS
 
@@ -2201,6 +2548,7 @@ def _beta_heatmap(
     family: str,
     pair: config.ActorPair,
     candidate_set: str,
+    method: str,
     out_path: Path,
 ) -> None:
     """Todos los betas de una pareja a lo largo de los años, como una sola imagen.
@@ -2315,14 +2663,14 @@ def _beta_heatmap(
         dim_rows={index for index, name in enumerate(variables) if name not in selected},
         crossed_cells=crossed,
         boxed_cells=boxed,
-        title=(
+        title=(_with_method(
             f"Coeficientes estandarizados por año · {pair.label_es}\n"
             f"{config.FAMILY_LABELS_ES[family]} · offset: "
             f"{config.OFFSET_LABELS_ES[offset.name]} · conjunto: "
             f"{config.DATASET_LABELS_ES[dataset]} · candidatas: "
             f"{_candidate_label(candidate_set)}\n"
             f"cada celda: {_coefficient_quantity_es(family)}"
-        ),
+        , method)),
         note=(
             "Celda recuadrada: la variable entró en el modelo de ese año y la cifra es el "
             "coeficiente que el estudio reporta.   ·   "
@@ -2347,6 +2695,197 @@ def _beta_heatmap(
         column_width=1.05,
     )
 
+
+
+def _elimination_betas(
+    path_table: pd.DataFrame,
+    dataset: str,
+    offset: config.OffsetSpec,
+    family: str,
+    pair: config.ActorPair,
+    candidate_set: str,
+    out_path: Path,
+) -> None:
+    """El análogo de `betas.png` para la eliminación hacia atrás, en dos paneles.
+
+    Arriba, el lenguaje de `betas.png` sin cambios —mismas filas, mismas columnas, mismo
+    divergente centrado en cero, recuadro para la variable que entró en el modelo— porque
+    las dos figuras se miran una al lado de la otra y nadie debería aprender un segundo
+    formato. **Lo que cambia es qué dice una celda sin recuadro.** En `betas.png` es la
+    mediana del coeficiente sobre los 55 o 66 modelos que contienen esa variable, porque
+    la búsqueda exhaustiva ajusta 286. La eliminación no ajusta 286: recorre un camino. Así
+    que una celda sin recuadro lleva el coeficiente que la variable tenía en el último
+    modelo que la contuvo, justo antes de que la botaran, que es lo único que de ella se
+    sabe.
+
+    Abajo, lo que `betas.png` no puede tener: **en qué paso salió cada variable**. Es el
+    razonamiento del método hecho visible, y es la razón por la que las 1 872 figuras de
+    `variables__<año>.png` no se duplican para este método — su contenido no tiene análogo
+    aquí y éste sí lo sustituye.
+
+    **No pasa por `_grid_table` y la razón no es prisa.** Esa función dibuja una retícula;
+    ésta son dos sobre los mismos ejes, y la segunda es justamente lo que hace que la
+    figura valga la pena. Generalizarla a dos habría tocado una función de la que cuelgan
+    siete figuras más para servir a una.
+
+    Dos cosas que vienen del prototipo y que no son cosméticas. **Un año cuyo camino no
+    convergió se dibuja con raya y queda fuera del conteo del subtítulo**, porque dejarlo
+    en blanco se lee como «sobrevivió», que es lo contrario. Y **el orden de las filas
+    lleva desempate declarado**: ordenar sólo por cuántas veces sobrevive deja los empates
+    —que son la mayoría— a merced del orden de iteración de un conjunto, y dos corridas de
+    la misma figura salían con las filas distintas.
+    """
+    block = path_table[
+        (path_table[DATASET_COL] == dataset)
+        & (path_table[config.OFFSET_COL] == offset.name)
+        & (path_table[config.FAMILY_COL] == family)
+        & (path_table[PAIR_NAME_COL] == pair.name)
+    ]
+    if block.empty:
+        return
+
+    years = list(config.REGRESSION_YEARS)
+    declared = {spec.name: index for index, spec in enumerate(config.STATIC_PREDICTORS)}
+    survivals = block[block["SURVIVED"]].groupby("TERM").size()
+    variables = sorted(
+        set(block["TERM"]),
+        key=lambda name: (-int(survivals.get(name, 0)), declared.get(name, len(declared)), name),
+    )
+
+    lookup = block.set_index([config.YEAR_COL, "TERM"])
+    walked = {
+        int(year): bool(rows["WALK_COMPLETED"].iloc[0])
+        for year, rows in block.groupby(config.YEAR_COL)
+    }
+
+    shape = (len(variables), len(years))
+    beta = np.full(shape, np.nan)
+    step = np.full(shape, np.nan)
+    survived = np.zeros(shape, dtype=bool)
+    no_layer = np.zeros(shape, dtype=bool)
+    no_walk = np.zeros(shape, dtype=bool)
+    # **El año que no convergió se resuelve antes de mirar si la variable está.** Un
+    # camino roto sólo guarda las variables que alcanzó a botar, así que las demás no
+    # aparecen en la tabla; preguntando primero por su ausencia se dibujaban con el aspa
+    # de «no tiene capa ese año», que afirma algo falso sobre la capa.
+    for column, year in enumerate(years):
+        for row, name in enumerate(variables):
+            if not walked.get(int(year), True):
+                no_walk[row, column] = True
+                continue
+            try:
+                entry = lookup.loc[(year, name)]
+            except KeyError:
+                no_layer[row, column] = True
+                continue
+            beta[row, column] = float(entry["COEFFICIENT_STANDARDISED"])
+            survived[row, column] = bool(entry["SURVIVED"])
+            if not entry["SURVIVED"]:
+                step[row, column] = float(entry["STEP_REMOVED"])
+
+    figure, (top, bottom) = plt.subplots(
+        2, 1, figsize=(1.05 * len(years) + 4.0, 0.42 * len(variables) * 2 + 3.2),
+        gridspec_kw={"height_ratios": [len(variables), len(variables) * 0.62]},
+        layout="constrained",
+    )
+
+    limit = float(np.nanmax(np.abs(beta))) if np.isfinite(beta).any() else 1.0
+    ramp = matplotlib.colormaps[config.DIVERGING_COLORMAP].with_extremes(bad="#f0f0f0")
+    top.imshow(np.ma.masked_invalid(beta), aspect="auto", cmap=ramp,
+               vmin=-limit, vmax=limit, interpolation="nearest")
+    for row in range(len(variables)):
+        for column in range(len(years)):
+            if no_layer[row, column]:
+                top.plot([column - 0.42, column + 0.42], [row - 0.42, row + 0.42],
+                         color="#9e9e9e", linewidth=1.2)
+                top.plot([column - 0.42, column + 0.42], [row + 0.42, row - 0.42],
+                         color="#9e9e9e", linewidth=1.2)
+                continue
+            if no_walk[row, column]:
+                top.plot([column - 0.42, column + 0.42], [row, row],
+                         color="#9e9e9e", linewidth=1.4)
+                continue
+            value = beta[row, column]
+            top.text(column, row, f"{value:+.2f}".replace(".", ","),
+                     ha="center", va="center", fontsize=7.5,
+                     color="#1a1a1a" if abs(value) < limit * 0.55 else "#ffffff")
+            if survived[row, column]:
+                top.add_patch(matplotlib.patches.Rectangle(
+                    (column - 0.46, row - 0.46), 0.92, 0.92, fill=False,
+                    edgecolor="#1a1a1a", linewidth=1.6, zorder=4))
+    top.set_title(
+        "Coeficientes estandarizados. Celda recuadrada: la variable sobrevivió a la "
+        "eliminación de ese año.\nSin recuadro: el coeficiente que tenía en el último "
+        "modelo que la contuvo, justo antes de salir", fontsize=9.5)
+
+    # vmin en cero y no en uno: con vmin=1 el primer paso cae en el extremo claro de la
+    # rampa y una celda de paso 1 no se distingue de una vacía.
+    highest = float(np.nanmax(step)) if np.isfinite(step).any() else 1.0
+    bottom.imshow(np.ma.masked_invalid(step), aspect="auto", cmap="YlOrBr",
+                  vmin=0, vmax=highest, interpolation="nearest")
+    for row in range(len(variables)):
+        for column in range(len(years)):
+            if no_layer[row, column]:
+                bottom.plot([column - 0.42, column + 0.42], [row - 0.42, row + 0.42],
+                            color="#9e9e9e", linewidth=1.2)
+                bottom.plot([column - 0.42, column + 0.42], [row + 0.42, row - 0.42],
+                            color="#9e9e9e", linewidth=1.2)
+                continue
+            if no_walk[row, column]:
+                bottom.plot([column - 0.42, column + 0.42], [row, row],
+                            color="#9e9e9e", linewidth=1.4)
+                continue
+            if survived[row, column]:
+                bottom.plot(column, row, marker="o", markersize=5.5,
+                            color="#1a7f37", markeredgecolor="none")
+            else:
+                bottom.text(column, row, str(int(step[row, column])),
+                            ha="center", va="center", fontsize=7.5,
+                            color="#1a1a1a" if step[row, column] < highest * 0.6 else "#ffffff")
+    bottom.set_title(
+        "Orden de eliminación: en qué paso salió cada variable. Un punto verde, no salió."
+        "\nEs el razonamiento del método, que la búsqueda exhaustiva no tiene porque no "
+        "recorre un camino", fontsize=9.5)
+
+    for axis in (top, bottom):
+        axis.set_xticks(range(len(years)))
+        axis.set_xticklabels([str(year) for year in years], fontsize=8)
+        axis.set_yticks(range(len(variables)))
+        axis.set_yticklabels(
+            [config.predictor_label_es(name) for name in variables], fontsize=8)
+        axis.tick_params(length=0)
+        for spine in axis.spines.values():
+            spine.set_visible(False)
+
+    counted = [column for column, year in enumerate(years) if walked.get(int(year), True)]
+    alive = survived[:, counted].sum(axis=0) if counted else np.array([0])
+    missing = [str(year) for year in years if not walked.get(int(year), True)]
+    closing = (
+        f"sobreviven entre {int(alive.min())} y {int(alive.max())} variables según el año; "
+        f"el método actual elige {' o '.join(str(n) for n in config.REGRESSION_SUBSET_SIZES)} "
+        "por construcción"
+    )
+    if missing:
+        closing += (
+            f"\n{', '.join(missing)} no entra" + ("n" if len(missing) > 1 else "")
+            + " en el conteo: la eliminación no llegó a converger allí"
+        )
+    figure.suptitle(
+        f"Eliminación hacia atrás por año · {pair.label_es}\n"
+        f"{config.FAMILY_LABELS_ES[family]} · offset: "
+        f"{config.OFFSET_LABELS_ES[offset.name]} · conjunto: "
+        f"{config.DATASET_LABELS_ES[dataset]} · candidatas: "
+        f"{_candidate_label(candidate_set)} · "
+        f"alfa = {config.BACKWARD_ELIMINATION_ALPHA}\n" + closing,
+        fontsize=11,
+    )
+    bottom.set_xlabel(
+        "Aspa: la variable no tiene capa ese año.    "
+        "Raya: el camino de ese año no convergió.    "
+        "Los valores p que ordenan la salida están inflados por la propia selección.",
+        fontsize=config.FIGURE_NOTE_FONTSIZE, color="#555555", labelpad=8)
+    figure.savefig(out_path, dpi=config.FIGURE_DPI, bbox_inches="tight")
+    plt.close(figure)
 
 
 def _variables_table(
@@ -2533,6 +3072,7 @@ def _models_table(
     family: str,
     pair: config.ActorPair,
     candidate_set: str,
+    method: str,
     out_path: Path,
 ) -> None:
     """El modelo elegido de una pareja en cada año, y cuánto vale.
@@ -2600,13 +3140,13 @@ def _models_table(
         text=text,
         columns=columns,
         rows=rows,
-        title=(
+        title=(_with_method(
             f"Modelos seleccionados por año · {pair.label_es}\n"
             f"{config.FAMILY_LABELS_ES[family]} · offset: "
             f"{config.OFFSET_LABELS_ES[offset]} · conjunto: "
             f"{config.DATASET_LABELS_ES[dataset]} · candidatas: "
             f"{_candidate_label(candidate_set)}"
-        ),
+        , method)),
         note=(
             "Candidatas: cuántas variables compitieron ese año. Son una menos donde la "
             f"señalización vertical no tiene capa, que es fuera de {span[0]}-{span[1]}."
@@ -2660,73 +3200,133 @@ def render_figures(
     written = 0
     families = (config.OLS_FAMILY, config.POISSON_FAMILY, config.NEGATIVE_BINOMIAL_FAMILY)
 
+    # **Las tablas se cortan una vez por método y se le pasan a las mismas funciones.**
+    # Una figura de un método es la misma figura sobre las filas de ese método, así que
+    # enhebrar el método por los filtros internos de cinco funciones habría sido escribir
+    # cinco veces una condición que el corte resuelve una sola vez. Lo único que cada
+    # función recibe del método es su nombre, y lo usa para decirlo en el título.
+    by_method = {
+        method: {
+            name: (frame[frame[config.SELECTION_METHOD_COL] == method]
+                   if config.SELECTION_METHOD_COL in frame.columns else frame)
+            for name, frame in tables.items()
+        }
+        for method in config.SELECTION_METHODS
+    }
+
     for family in families:
         for dataset in data:
             branch = principal / config.FAMILY_PATHS[family] / config.DATASET_SLUGS[dataset]
             for offset in config.REGRESSION_OFFSETS:
                 folder = branch / config.OFFSET_SLUGS[offset.name]
 
-                # Los ajustes en su carpeta: uno por año, trece archivos que se
-                # recorren en orden.
-                ajustes = folder / "ajustes"
-                ajustes.mkdir(parents=True, exist_ok=True)
-                for year in config.REGRESSION_YEARS:
-                    _fit_panel(
-                        tables["predictions"], tables["models"], dataset, offset.name,
-                        family, year, candidate_set, ajustes / f"ajuste__{year}.png",
-                    )
-                    written += 1
+                for method in config.SELECTION_METHODS:
+                    mine = by_method[method]
+                    tag = config.SELECTION_METHOD_SUFFIXES[method]
 
-                # Y una carpeta por pareja con sus dos figuras. Antes eran dos
-                # archivos que cubrían las ocho parejas a la vez; con trece años
-                # eso son 104 columnas en el mapa de betas y 104 filas en la tabla
-                # de modelos, y ninguna de las dos se lee.
-                for pair in config.REGRESSION_PAIRS:
-                    carpeta = folder / "parejas" / config.PAIR_SLUGS[pair.name]
-                    carpeta.mkdir(parents=True, exist_ok=True)
-                    _beta_heatmap(
-                        tables["candidate_models"], dataset, offset, family, pair,
-                        candidate_set, carpeta / "betas.png",
-                    )
-                    _models_table(
-                        tables["models"], dataset, offset.name, family, pair,
-                        candidate_set, carpeta / "modelos.png",
-                    )
-                    written += 2
-
-                    # Y una por año dentro de la pareja. El patrón `por_anio/` es el
-                    # mismo que usan las entradas, y el bucle vive aquí dentro porque
-                    # este recorrido ya es el de las dieciocho especificaciones por
-                    # sus ocho parejas: añadir la figura es añadir los trece años.
-                    por_anio = carpeta / "por_anio"
-                    por_anio.mkdir(parents=True, exist_ok=True)
+                    # Los ajustes en su carpeta: uno por año, trece archivos que se
+                    # recorren en orden. **Y el del otro método al lado, no en otro
+                    # árbol**, porque la comparación que un lector hace es entre el
+                    # ajuste de un año bajo los dos y así los dos quedan adyacentes.
+                    ajustes = folder / "ajustes"
+                    ajustes.mkdir(parents=True, exist_ok=True)
                     for year in config.REGRESSION_YEARS:
-                        _variables_table(
-                            tables["candidate_models"], tables["models"], dataset,
-                            offset, family, pair, year, candidate_set,
-                            por_anio / f"variables__{year}.png",
+                        _fit_panel(
+                            mine["predictions"], mine["models"], dataset, offset.name,
+                            family, year, candidate_set, method,
+                            ajustes / f"ajuste__{year}{tag}.png",
                         )
                         written += 1
 
-                # Y la frecuencia de selección de esa especificación, al lado de
-                # `ajustes/` y `parejas/`: las tres son los tres cortes posibles
-                # de los mismos 104 modelos. Ajustes corta por año, parejas por
-                # pareja, y ésta no corta, resume. D53.
-                written += _render_summary(
-                    tables, dataset, offset.name, family, candidate_set, folder)
+                    # Y una carpeta por pareja con sus dos figuras. Antes eran dos
+                    # archivos que cubrían las ocho parejas a la vez; con trece años
+                    # eso son 104 columnas en el mapa de betas y 104 filas en la tabla
+                    # de modelos, y ninguna de las dos se lee.
+                    for pair in config.REGRESSION_PAIRS:
+                        carpeta = folder / "parejas" / config.PAIR_SLUGS[pair.name]
+                        carpeta.mkdir(parents=True, exist_ok=True)
+                        # **El mapa de betas no es la misma figura en los dos métodos.**
+                        # El de la búsqueda lee el mejor modelo que contiene cada
+                        # variable; la eliminación no ajusta 286 modelos y no tiene esa
+                        # cantidad, así que el suyo lee el camino y añade un panel que el
+                        # otro no puede tener: el orden en que salió cada variable.
+                        if method == config.BEST_SUBSET_SELECTION:
+                            _beta_heatmap(
+                                mine["candidate_models"], dataset, offset, family, pair,
+                                candidate_set, method, carpeta / f"betas{tag}.png",
+                            )
+                        else:
+                            _elimination_betas(
+                                tables["elimination_path"], dataset, offset, family, pair,
+                                candidate_set, carpeta / f"betas{tag}.png",
+                            )
+                        _models_table(
+                            mine["models"], dataset, offset.name, family, pair,
+                            candidate_set, method, carpeta / f"modelos{tag}.png",
+                        )
+                        written += 2
+
+                        # Y una por año dentro de la pareja. El patrón `por_anio/` es el
+                        # mismo que usan las entradas, y el bucle vive aquí dentro porque
+                        # este recorrido ya es el de las dieciocho especificaciones por
+                        # sus ocho parejas: añadir la figura es añadir los trece años.
+                        #
+                        # **Sólo del método de la búsqueda, y es la decisión con más
+                        # contenido del reparto.** Esta figura enseña, por variable, el
+                        # mejor modelo que la contiene; la eliminación recorre un camino
+                        # y no tiene «el mejor modelo que contiene a la vía arterial».
+                        # Su análogo es el segundo panel de `betas__eliminacion`.
+                        if method != config.BEST_SUBSET_SELECTION:
+                            continue
+                        por_anio = carpeta / "por_anio"
+                        por_anio.mkdir(parents=True, exist_ok=True)
+                        for year in config.REGRESSION_YEARS:
+                            _variables_table(
+                                mine["candidate_models"], mine["models"], dataset,
+                                offset, family, pair, year, candidate_set,
+                                por_anio / f"variables__{year}.png",
+                            )
+                            written += 1
+
+                    # Y la frecuencia de selección de esa especificación, al lado de
+                    # `ajustes/` y `parejas/`: las tres son los tres cortes posibles
+                    # de los mismos 104 modelos. Ajustes corta por año, parejas por
+                    # pareja, y ésta no corta, resume. D53.
+                    written += _render_summary(
+                        tables, dataset, offset.name, family, candidate_set, method,
+                        folder)
+
+                # El cara a cara de los dos métodos sobre la misma especificación, que
+                # no lleva sufijo porque no pertenece a ninguno de los dos. Contesta de
+                # una vez lo que los 234 pares de paneles de ajuste contestan de 234
+                # veces: si lo que la eliminación elige ajusta mejor o peor.
+                written += _methods_face_to_face(
+                    tables["models"], dataset, offset.name, family, candidate_set, folder)
 
             # The coefficient panel carries all three offsets at once, so its path
             # stops at the dataset: it belongs to none of them.
             folder = root / "coeficientes" / config.FAMILY_PATHS[family] / config.DATASET_SLUGS[dataset]
             folder.mkdir(parents=True, exist_ok=True)
-            for year in config.REGRESSION_YEARS:
-                _coefficient_panel(
-                    tables["coefficients"], dataset, family, year, candidate_set,
-                    folder / f"coeficientes__{year}.png",
-                )
-                written += 1
+            for method in config.SELECTION_METHODS:
+                tag = config.SELECTION_METHOD_SUFFIXES[method]
+                for year in config.REGRESSION_YEARS:
+                    _coefficient_panel(
+                        by_method[method]["coefficients"], dataset, family, year,
+                        candidate_set, method, folder / f"coeficientes__{year}{tag}.png",
+                    )
+                    written += 1
 
     written += _render_inputs(data, log, principal / "entradas")
+
+    # Las tres que comparan los dos métodos de selección entre sí. Cruzan familias,
+    # offsets y conjuntos, así que no caben en la carpeta de ninguna especificación y
+    # tienen la suya al lado de `principal/` y `coeficientes/`.
+    cells_per_family = (
+        len(data) * len(config.REGRESSION_OFFSETS)
+        * len(config.REGRESSION_PAIRS) * len(config.REGRESSION_YEARS)
+    )
+    written += _render_selection(
+        tables["models"], candidate_set, cells_per_family, root / "seleccion")
 
     # Las dos que cruzan familias y offsets, que por eso no caben en ninguna de
     # sus carpetas. Una por conjunto de siniestralidad: el corregido con rho
@@ -2788,6 +3388,19 @@ def _tukey_outliers(values: np.ndarray) -> np.ndarray:
     first, third = np.percentile(values, [25, 75])
     spread = third - first
     return (values < first - 1.5 * spread) | (values > third + 1.5 * spread)
+
+
+def _with_method(title: str, method: str) -> str:
+    """El método de selección, añadido al título de una figura que pertenece a un método.
+
+    **Vacío para el método que el estudio reporta.** Sus figuras conservan exactamente el
+    título que tenían, y eso no es deferencia: es lo que permite comprobar este cambio
+    regenerándolas y exigiéndolas idénticas byte a byte. La línea sólo aparece donde hay
+    algo que distinguir.
+    """
+    if method == config.BEST_SUBSET_SELECTION:
+        return title
+    return f"{title}\nselección: {config.SELECTION_METHOD_LABELS_ES[method]}"
 
 
 def _figure_note(figure, text: str) -> None:
@@ -2925,6 +3538,321 @@ def _render_dispersion(per_unit: pd.DataFrame, names: dict[str, str], folder: Pa
     return 3
 
 
+def _methods_face_to_face(
+    models: pd.DataFrame,
+    dataset: str,
+    offset: str,
+    family: str,
+    candidate_set: str,
+    folder: Path,
+) -> int:
+    """Los dos métodos sobre la misma especificación: AIC contra AIC, celda por celda.
+
+    **Es la figura que contesta si lo que la eliminación elige ajusta mejor o peor**, y
+    la pregunta no la contestaban las 234 parejas de paneles de ajuste: ahí está, pero
+    hay que abrir 234 archivos de dos en dos y recordar los números. Aquí son 104 puntos
+    —ocho parejas por trece años— y la diagonal.
+
+    **Va por especificación y no agregada**, por la misma razón que la frecuencia de
+    selección: el AIC de un conjunto de siniestralidad no es comparable con el del otro
+    porque no es la misma respuesta, ni el de una familia con el de otra porque no es la
+    misma verosimilitud. Dentro de una especificación sí lo es, y por eso esta figura
+    vive en su carpeta y no en `seleccion/`.
+
+    Sin sufijo de método, deliberadamente: el sufijo dice «esta figura es de un método»
+    y ésta no lo es.
+    """
+    block = models[
+        (models[DATASET_COL] == dataset)
+        & (models[config.OFFSET_COL] == offset)
+        & (models[config.FAMILY_COL] == family)
+    ]
+    if block.empty:
+        return 0
+    keys = [PAIR_NAME_COL, config.YEAR_COL]
+    pivot = block.pivot_table(
+        index=keys, columns=config.SELECTION_METHOD_COL, values=["AIC", "N_PREDICTORS"],
+        aggfunc="first")
+    both = [method for method in config.SELECTION_METHODS
+            if ("AIC", method) in pivot.columns]
+    if len(both) < 2:
+        return 0
+    left, right = config.BEST_SUBSET_SELECTION, config.BACKWARD_ELIMINATION_SELECTION
+    paired = pivot.dropna(subset=[("AIC", left), ("AIC", right)])
+    if paired.empty:
+        return 0
+
+    x = paired[("AIC", left)].to_numpy(dtype=float)
+    y = paired[("AIC", right)].to_numpy(dtype=float)
+    sizes = paired[("N_PREDICTORS", right)].to_numpy(dtype=float)
+
+    figure, axis = plt.subplots(figsize=(7.6, 7.6))
+    span = [float(min(x.min(), y.min())), float(max(x.max(), y.max()))]
+    margin = (span[1] - span[0]) * 0.04 or 1.0
+    span = [span[0] - margin, span[1] + margin]
+    axis.plot(span, span, color="#9e9e9e", linewidth=1.0, zorder=1)
+    scatter = axis.scatter(
+        x, y, c=sizes, cmap=config.SEQUENTIAL_COLORMAP, s=26, zorder=3,
+        edgecolor="#ffffff", linewidth=0.4)
+    bar = figure.colorbar(scatter, ax=axis, fraction=0.04, pad=0.02)
+    bar.set_label("variables que la eliminación dejó", fontsize=8)
+    bar.ax.tick_params(labelsize=7)
+    axis.set_xlim(span)
+    axis.set_ylim(span)
+    axis.set_xlabel(f"AIC · {config.SELECTION_METHOD_LABELS_ES[left]}", fontsize=9)
+    axis.set_ylabel(f"AIC · {config.SELECTION_METHOD_LABELS_ES[right]}", fontsize=9)
+    axis.tick_params(labelsize=8)
+    for spine in ("top", "right"):
+        axis.spines[spine].set_visible(False)
+
+    better = int((y < x).sum())
+    axis.set_title(
+        f"Los dos métodos sobre las mismas celdas · {config.FAMILY_LABELS_ES[family]}\n"
+        f"offset: {config.OFFSET_LABELS_ES[offset]} · conjunto: "
+        f"{config.DATASET_LABELS_ES[dataset]} · candidatas: "
+        f"{_candidate_label(candidate_set)}\n"
+        f"la eliminación gana en AIC en {better} de {len(paired)} celdas",
+        fontsize=10)
+    _figure_note(
+        figure,
+        "Por debajo de la diagonal, la eliminación hacia atrás escogió un modelo de menor "
+        "AIC. Puede hacerlo porque no tiene tope de tamaño: la búsqueda está limitada a "
+        f"{' o '.join(str(n) for n in config.REGRESSION_SUBSET_SIZES)} variables por las "
+        "veintinueve observaciones de una sección cruzada, así que una parte de la "
+        "diferencia mide el tope y no el método.   ·   El AIC compara dentro de esta "
+        "especificación y no entre ellas: en mínimos cuadrados está sobre la tasa y en las "
+        "dos familias de conteo sobre el conteo.",
+    )
+    figure.tight_layout(rect=(0, 0.13, 1, 0.92))
+    figure.savefig(folder / "ajuste_comparacion.png", dpi=config.FIGURE_DPI,
+                   bbox_inches="tight")
+    plt.close(figure)
+    return 1
+
+
+_SELECTION_COLORS = {
+    config.BEST_SUBSET_SELECTION: "#1b6ca8",
+    config.BACKWARD_ELIMINATION_SELECTION: "#d95f02",
+}
+# Por debajo de esta cuota de celdas con modelo, un panel lleva aviso dentro: sus barras
+# son porcentajes de tan pocas celdas que se ven igual de sólidas que las de al lado.
+_THIN_PANEL = 0.25
+
+
+def _warn_if_thin(axis, produced: int, total: int) -> None:
+    if total and produced / total >= _THIN_PANEL:
+        return
+    axis.text(
+        0.5, 0.5, f"sólo se pudo ajustar\nen {produced} de {total} celdas",
+        transform=axis.transAxes, ha="center", va="center", fontsize=9,
+        color=config.REGRESSION_FAILING_COLOR, alpha=0.85,
+        bbox={"facecolor": "#ffffff", "edgecolor": config.REGRESSION_FAILING_COLOR,
+              "alpha": 0.9, "boxstyle": "round,pad=0.4"},
+    )
+
+
+def _render_selection(
+    models: pd.DataFrame,
+    candidate_set: str,
+    cells_per_family: int,
+    folder: Path,
+) -> int:
+    """Las tres figuras que comparan los dos métodos de selección entre sí.
+
+    **Cruzan familias, offsets y conjuntos, y por eso no caben en la carpeta de ninguna
+    especificación.** Lo que comparan no es un modelo con otro sino un procedimiento con
+    otro, y un procedimiento no cambia de una especificación a la siguiente: lo que cambia
+    es cuánto le cuesta. Las tres preguntas son cuántas variables deja cada uno, con qué
+    frecuencia coinciden, y dónde uno de los dos no pudo correr.
+
+    **La frecuencia de selección no está aquí y no es un olvido.** Contarla cruzando
+    offsets promedia justo el eje donde los resultados más se contradicen —el orden de las
+    doce se mueve hasta siete puestos de doce entre offsets, D53— así que vive dentro de
+    cada especificación, donde las dos versiones quedan en archivos adyacentes.
+
+    **Y lo que cada variable compra tampoco está aquí.** Esa pregunta —si el conjunto
+    elegido es el mejor de su propio tamaño— necesita el mejor subconjunto del tamaño que
+    la eliminación escoge, y la búsqueda sólo recorre los tamaños declarados. Medirla
+    obligaría a ajustar subconjuntos que el estudio no declara, así que se queda en
+    `tools/compra_cada_variable.py`, que es donde se midió.
+    """
+    folder.mkdir(parents=True, exist_ok=True)
+    families = [config.OLS_FAMILY, config.POISSON_FAMILY, config.NEGATIVE_BINOMIAL_FAMILY]
+    written = 0
+
+    # -- 1. Cuántas variables deja cada método ----------------------------
+    figure, axes = plt.subplots(1, 3, figsize=(12.5, 4.8), sharey=True)
+    span = np.arange(0, len(config.REGRESSION_URBAN_CANDIDATES) + 1)
+    for axis, family in zip(axes, families):
+        for shift, method in zip((-0.21, 0.21), config.SELECTION_METHODS):
+            sizes = models[
+                (models[config.FAMILY_COL] == family)
+                & (models[config.SELECTION_METHOD_COL] == method)
+            ]["N_PREDICTORS"]
+            share = [100 * float((sizes == k).mean()) if len(sizes) else 0.0 for k in span]
+            axis.bar(span + shift, share, width=0.42, color=_SELECTION_COLORS[method],
+                     label=f"{config.SELECTION_METHOD_LABELS_ES[method]} (n={len(sizes):,})")
+        # El tope declarado, dibujado: es la restricción que separa a los dos métodos.
+        axis.axvspan(min(config.REGRESSION_SUBSET_SIZES) - 0.5,
+                     max(config.REGRESSION_SUBSET_SIZES) + 0.5,
+                     color="#1a1a1a", alpha=0.06, zorder=0)
+        axis.set_title(config.FAMILY_LABELS_ES[family], fontsize=10)
+        axis.set_xticks(span)
+        axis.set_xticklabels([str(k) for k in span], fontsize=7)
+        axis.set_xlabel("variables en el modelo", fontsize=8)
+        axis.tick_params(length=0)
+        for spine in ("top", "right"):
+            axis.spines[spine].set_visible(False)
+        axis.legend(fontsize=7, frameon=False, loc="upper right")
+        produced = int((
+            (models[config.FAMILY_COL] == family)
+            & (models[config.SELECTION_METHOD_COL] == config.BACKWARD_ELIMINATION_SELECTION)
+        ).sum())
+        _warn_if_thin(axis, produced, cells_per_family)
+    axes[0].set_ylabel("% de las celdas", fontsize=9)
+    figure.suptitle(
+        "Cuántas variables deja cada método de selección\n"
+        "la banda gris es el tope declarado de la búsqueda, que la eliminación no tiene\n"
+        f"candidatas: {_candidate_label(candidate_set)}",
+        fontsize=11)
+    _figure_note(
+        figure,
+        "El tope de la búsqueda no es una preferencia: veintinueve observaciones no "
+        "sostienen más de tres predictores a diez observaciones por predictor, que es la "
+        "regla con la que se declaró.   ·   Que la eliminación deje más en Poisson no es "
+        "selección sino sobredispersión: Poisson subestima sus errores estándar con "
+        "conteos sobredispersos, los valores p salen chicos y casi nada se elimina.")
+    figure.tight_layout(rect=(0, 0.10, 1, 0.90))
+    figure.savefig(folder / "cuantas_variables.png", dpi=config.FIGURE_DPI,
+                   bbox_inches="tight")
+    plt.close(figure)
+    written += 1
+
+    # -- 2. Con qué frecuencia coinciden ----------------------------------
+    keys = [DATASET_COL, config.OFFSET_COL, config.FAMILY_COL, PAIR_NAME_COL,
+            config.YEAR_COL]
+    pivot = models.pivot_table(
+        index=keys, columns=config.SELECTION_METHOD_COL, values="PREDICTORS",
+        aggfunc="first")
+    left, right = config.BEST_SUBSET_SELECTION, config.BACKWARD_ELIMINATION_SELECTION
+    agreement = []
+    if left in pivot.columns and right in pivot.columns:
+        both = pivot.dropna(subset=[left, right])
+        for family in families:
+            rows = both[both.index.get_level_values(config.FAMILY_COL) == family]
+            identical = overlap = empty = 0
+            shares = []
+            for a, b in zip(rows[left], rows[right]):
+                first = {name.strip() for name in str(a).split(",") if name.strip()}
+                second = {name.strip() for name in str(b).split(",") if name.strip()}
+                if not second:
+                    empty += 1
+                if first == second:
+                    identical += 1
+                if first & second:
+                    overlap += 1
+                union = first | second
+                shares.append(len(first & second) / len(union) if union else 1.0)
+            agreement.append((family, len(rows), identical, overlap, empty,
+                              float(np.mean(shares)) if shares else float("nan")))
+
+    figure, axis = plt.subplots(figsize=(9.0, 4.6))
+    if agreement:
+        labels = [config.FAMILY_LABELS_ES[family] for family, *_ in agreement]
+        places = np.arange(len(labels))
+        totals = [total for _, total, *_ in agreement]
+        axis.bar(places - 0.21,
+                 [100 * identical / total if total else 0
+                  for _, total, identical, *_ in agreement],
+                 width=0.42, color="#1b6ca8", label="eligen exactamente lo mismo")
+        axis.bar(places + 0.21,
+                 [100 * overlap / total if total else 0
+                  for _, total, _, overlap, *_ in agreement],
+                 width=0.42, color="#7fb3d5", label="comparten al menos una variable")
+        # Debajo del eje y no sobre las barras: encima de la barra oscura el gris del
+        # pie no se lee, y subirlo al tope lo dejaba tapado por la leyenda.
+        for place, (_, total, _, _, empty, jaccard) in zip(places, agreement):
+            axis.annotate(
+                f"n={total:,}   ·   Jaccard {jaccard:.2f}".replace(".", ","),
+                xy=(place, 0), xytext=(place, -0.085), textcoords=("data", "axes fraction"),
+                ha="center", va="top", fontsize=7.5, color="#555555", annotation_clip=False)
+        axis.set_xticks(places)
+        axis.set_xticklabels(labels, fontsize=9)
+        axis.set_ylabel("% de las celdas donde los dos produjeron modelo", fontsize=9)
+        axis.legend(fontsize=8, frameon=False, loc="upper right")
+    axis.tick_params(length=0)
+    for spine in ("top", "right"):
+        axis.spines[spine].set_visible(False)
+    figure.suptitle(
+        "Con qué frecuencia los dos métodos eligen lo mismo\n"
+        "sobre las celdas donde los dos produjeron un modelo",
+        fontsize=11)
+    _figure_note(
+        figure,
+        "El índice de Jaccard es el tamaño de la intersección sobre el de la unión, "
+        "promediado sobre las celdas: vale uno cuando los dos eligen el mismo conjunto y "
+        "cero cuando no comparten ninguna variable. Una celda donde la eliminación no "
+        "dejó ninguna variable cuenta como coincidencia sólo si la búsqueda tampoco "
+        "eligió, lo que no puede pasar: la búsqueda elige siempre.")
+    # `acuerdo_entre_metodos` y no `acuerdo`: `principal/comparacion/` ya tiene un
+    # `acuerdo.png` que contesta otra cosa, y dos archivos del mismo nombre en un
+    # árbol son dos preguntas que un lector confunde al buscarlas.
+    figure.tight_layout(rect=(0, 0.12, 1, 0.90))
+    figure.savefig(folder / "acuerdo_entre_metodos.png", dpi=config.FIGURE_DPI,
+                   bbox_inches="tight")
+    plt.close(figure)
+    written += 1
+
+    # -- 3. Dónde uno de los dos no pudo correr ---------------------------
+    figure, axis = plt.subplots(figsize=(9.0, 4.8))
+    places = np.arange(len(families))
+    for shift, method in zip((-0.21, 0.21), config.SELECTION_METHODS):
+        produced = [
+            int(((models[config.FAMILY_COL] == family)
+                 & (models[config.SELECTION_METHOD_COL] == method)).sum())
+            for family in families
+        ]
+        axis.bar(places + shift,
+                 [100 * value / cells_per_family if cells_per_family else 0
+                  for value in produced],
+                 width=0.42, color=_SELECTION_COLORS[method],
+                 label=config.SELECTION_METHOD_LABELS_ES[method])
+        for place, value in zip(places + shift, produced):
+            axis.text(place, 1.5, f"{value:,}", ha="center", va="bottom",
+                      fontsize=7.5, color="#ffffff")
+    axis.set_xticks(places)
+    axis.set_xticklabels([config.FAMILY_LABELS_ES[family] for family in families],
+                         fontsize=9)
+    axis.set_ylabel(f"% de las {cells_per_family:,} celdas de la familia", fontsize=9)
+    # Hasta 125 y la leyenda arriba: las barras llegan a cien cuando los dos métodos
+    # corren en todas partes, que es el caso bueno, y ahí una leyenda dentro del eje se
+    # monta sobre ellas.
+    axis.set_ylim(0, 125)
+    axis.set_yticks([0, 20, 40, 60, 80, 100])
+    axis.legend(fontsize=8, frameon=False, loc="upper center", ncol=2)
+    axis.tick_params(length=0)
+    for spine in ("top", "right"):
+        axis.spines[spine].set_visible(False)
+    figure.suptitle(
+        "Dónde cada método consiguió producir un modelo\n"
+        "una celda es una pareja, un año, un offset y un conjunto de siniestralidad",
+        fontsize=11)
+    _figure_note(
+        figure,
+        "Los dos métodos necesitan cosas distintas para producir un modelo. La búsqueda "
+        "necesita que uno de sus subconjuntos declarados ajuste; la eliminación necesita "
+        "que ajusten todos los pasos de un camino que empieza con las doce candidatas "
+        "dentro.   ·   Una celda donde sólo uno de los dos lo consigue se queda con el "
+        "que lo consiguió, y es esta figura la que dice cuántas son: descartarla de los "
+        "dos escondería una diferencia entre los métodos dentro de un número que ninguno "
+        "de los dos reporta.")
+    figure.tight_layout(rect=(0, 0.16, 1, 0.90))
+    figure.savefig(folder / "convergencia.png", dpi=config.FIGURE_DPI, bbox_inches="tight")
+    plt.close(figure)
+    written += 1
+    return written
+
+
 def _render_inputs(data: dict[str, pd.DataFrame], log: RunLog, folder: Path) -> int:
     """What went in, which depends on no offset and no family — except one thing.
 
@@ -3046,6 +3974,7 @@ def _render_summary(
     offset: str,
     family: str,
     candidate_set: str,
+    method: str,
     folder: Path,
 ) -> int:
     """La frecuencia de selección **dentro de una especificación**, no sobre todo.
@@ -3068,10 +3997,13 @@ def _render_summary(
     folder.mkdir(parents=True, exist_ok=True)
     models = tables["models"]
     coefficients = tables["coefficients"]
+    # El método entra en el corte como la familia y el offset: contar juntos dos métodos
+    # que eligen conjuntos de tamaño distinto describe una mezcla y no una selección.
     block_models = models[
         (models[DATASET_COL] == dataset)
         & (models[config.OFFSET_COL] == offset)
         & (models[config.FAMILY_COL] == family)
+        & (models[config.SELECTION_METHOD_COL] == method)
     ]
     if block_models.empty:
         return 0
@@ -3079,6 +4011,7 @@ def _render_summary(
         (coefficients[DATASET_COL] == dataset)
         & (coefficients[config.OFFSET_COL] == offset)
         & (coefficients[config.FAMILY_COL] == family)
+        & (coefficients[config.SELECTION_METHOD_COL] == method)
     ]
     frequency = selection_frequency(block_terms, block_models, candidate_set)
     total = len(block_models)
@@ -3101,13 +4034,13 @@ def _render_summary(
         text=text,
         columns=columns,
         rows=[config.predictor_label_es(name) for name in frequency["TERM"]],
-        title=(
+        title=(_with_method(
             f"Frecuencia de selección · {total} modelos\n"
             f"{config.FAMILY_LABELS_ES[family]} · offset: "
             f"{config.OFFSET_LABELS_ES[offset]} · conjunto: "
             f"{config.DATASET_LABELS_ES[dataset]} · candidatas: "
             f"{_candidate_label(candidate_set)}"
-        ),
+        , method)),
         note="Los modelos de esta tabla comparten familia, respuesta, denominador y bolsa "
              "de candidatas: lo único que varía entre ellos son las ocho parejas y los "
              f"{len(config.REGRESSION_YEARS)} años. Por eso una variable que gana aquí gana "
@@ -3118,7 +4051,8 @@ def _render_summary(
              "vertical sólo está en la bolsa en los años cuya capa existe.   ·   Un signo "
              "que se sostiene vale más que cualquiera de los valores p, que están inflados "
              "por la selección.",
-        out_path=folder / "frecuencia_seleccion.png",
+        out_path=folder
+        / f"frecuencia_seleccion{config.SELECTION_METHOD_SUFFIXES[method]}.png",
         column_width=1.35,
     )
     return 1
@@ -3377,9 +4311,24 @@ def _write_readme(
         "      ajustes/                      un ajuste por año\n"
         "      parejas/<pareja>/             betas y modelos de esa pareja\n"
         "      parejas/<pareja>/por_anio/    por qué entró cada variable, un año\n"
+        "      frecuencia_seleccion.png      qué variable gana más veces, aquí dentro\n"
+        "      ajuste_comparacion.png        los dos métodos sobre las mismas celdas\n"
         "  entradas/predictoras/             una tabla de predictoras por año\n"
         "  entradas/respuestas/<conjunto>/   las partes afectadas, por año\n"
-        "  frecuencia_seleccion.png          qué variable gana más veces, sobre todo\n"
+        "  ../seleccion/                     los dos métodos comparados entre sí\n"
+        "\n"
+        "LOS DOS MÉTODOS DE SELECCIÓN\n"
+        "\n"
+        "Un archivo con __eliminacion en el nombre es la misma figura bajo el método\n"
+        "que pidió la asesora del panel: se arranca con las doce candidatas dentro y\n"
+        "se bota la menos significativa hasta que ninguna pase de alfa. Sin sufijo es\n"
+        "la búsqueda sobre todos los subconjuntos declarados, que es la que el texto\n"
+        "cita hoy. Van en la misma carpeta a propósito, para que la comparación de un\n"
+        "año sean dos archivos adyacentes y no dos árboles.\n"
+        "\n"
+        "Lo que no se duplica es por_anio/: enseña el mejor modelo que contiene cada\n"
+        "variable, y eso es una pregunta sobre 286 ajustes. La eliminación recorre un\n"
+        "camino, y su análogo es el segundo panel de betas__eliminacion.png.\n"
         "\n"
         "Las dos figuras que cruzan los años —betas y modelos— van por pareja y no\n"
         "todas juntas: con trece años, las ocho parejas a la vez son 104 columnas en\n"
