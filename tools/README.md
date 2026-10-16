@@ -60,6 +60,7 @@ recomputed against the run it came from rather than against the newest one.
 | `estandarizar_arregla.py` | How much does `_standardise` buy, which until now the code asserted without measuring? | `regression-inventory.md` section 17.12 |
 | `variables_y_la_literatura.py` | How many variables survive at 5 % and at 10 %, and do the ones the literature names come out with the sign it predicts? | `regression-inventory.md` section 18, **D66** |
 | `que_decide_el_panel.py` | Which pieces of the panel specification can the cross-sections settle, with what figure, and which one can they not settle at all? | `regression-inventory.md` section 19 |
+| `variacion_para_el_panel.py` | How much variation is left to a within estimator once year effects are in, is a year of horizontal marking a change in the stock, and does painting or cycleway follow casualties? | **D46** (the panel amendment), `regression-inventory.md` section 19 |
 
 `flujos_vs_stock.py` measures the three line layers that carry an annual series
 together, with the cycleway among them **as a control**. That is deliberate: the

@@ -3729,8 +3729,13 @@ disolver.
 `bellFixedRandomEffects2019` sostiene tres cosas que la propuesta necesitaba y no tenía
 citadas. Que **un modelo de efectos fijos no dice nada sobre variables que no cambian en el
 tiempo**, que es exactamente el caso de diez de nuestras doce candidatas. Que el within-between
-**da el mismo coeficiente y el mismo error estándar que los efectos fijos para la parte
-within**, de modo que no se pierde nada al preferirlo. Y que el Hausman **no es una prueba de
+**usa el mismo centrado en la media de la unidad que los efectos fijos**, de modo que no se
+pierde nada al preferirlo. **Corregido el 2026-10-15:** aquí decía que daba «el mismo
+coeficiente y el mismo error estándar», y Bell no dice eso. La identidad del coeficiente la
+afirma sólo para el enlace identidad; con otros enlaces, la binomial negativa entre ellos,
+«no produce resultados idénticos a los efectos fijos», y su remedio es comparar contra el
+estimador de verosimilitud condicional donde exista, que para conteos es el Poisson de efectos
+fijos (§5 del artículo). Del error estándar no dice que coincida en ningún caso. Y que el Hausman **no es una prueba de
 si usar efectos fijos o aleatorios sino de si el efecto within y el between difieren**, lo que
 permite honrar el anteproyecto sin hacer algo mal: se reporta, pero se reporta por lo que es.
 

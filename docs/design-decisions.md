@@ -72,7 +72,7 @@ carried, so the second is larger for the same underlying records.
 | D43 | The same events get a second cut, by unit, year and month, with no pair attached | Implementation | Closed | Yes |
 | D44 | The casualty map places every casualty where it happened, and is not a map of risk | Methodological | Closed on what it is and on the recipe | Yes, for the observed set |
 | D45 | The first variable with a year, and the shape a series takes | Methodological and structural | Closed on the mechanism, on the stock reading and on 2014 | Yes, the cycleway over thirteen years |
-| D46 | The two horizontal marking layers are flows with no inventory, and no year of them is usable | Methodological | Closed | No, and deliberately |
+| D46 | The two horizontal marking layers are flows with no inventory, and no year of them is usable | Methodological | Closed; for the panel too since 2026-10-16, in D67 | No, and deliberately |
 | D47 | A series delivered as an inventory plus its movements, and why the stock is a method | Methodological and structural | Closed | Yes, the vertical signage over nine years |
 | D48 | The cross-sections are a first step, not the methodology, and the offset is declared rather than fixed | Methodological | Closed on scope and on the offsets | Pending: this is what the stage is written against |
 | D49 | The pandemic years are patched from an outside measure of how much the city moved | Methodological, supersedes D42 | Closed | Yes, on 2026-09-24 |
@@ -5977,6 +5977,67 @@ reads the layers through `config.resolve_source_path`, because two of these
 folder names carry an ñ that this filesystem stores decomposed and a plain glob
 silently finds nothing — which it did, on the first run of this very check.
 
+### Examined again for the panel, 2026-10-15
+
+**Status of this amendment: decided on 2026-10-16, in D67.** Neither layer enters the panel,
+as a stock or as a flow; the flow is left as future work. What follows is the measurement the
+decision rests on. The panel adviser asked whether the
+marking layers can enter the panel, and the question is fair, because a panel removes one of
+the two objections above. Whether the layers enter is Mateo's decision; what follows is what
+was measured to make it. The full argument, in Spanish, is
+`deliverables/informes/discusion-modelo-de-panel.md` section 2.
+
+**What the panel changes.** If a unit's stock is its starting inventory plus what was added
+since, the starting inventory is one number per unit, and **a unit effect absorbs it**. In the
+within term of a within-between model, or in fixed effects, the missing inventory stops
+mattering; only the yearly change in the stock is needed. "No inventory at any year" was
+decisive for a cross-section and is not, by itself, decisive for a within estimator. It still
+rules out the between term, which is built from the unit's mean level.
+
+**What it does not change: a file is not a change in the stock.** Measured as the share of
+each year's length lying within half a metre of a line of any earlier year of the delivery,
+with the cycleway as the control:
+
+| | Share on earlier years | Length on ground no earlier year touched |
+|---|---|---:|
+| Cycleway (control, a stock) | 86 % to 100 % in ten of twelve years | 13.9 % of 4,148 km |
+| Horizontal marking | 6.7 % to 35.8 % | **78.5 % of 3,035 km** |
+| School zones | 2.2 % to 17.3 % | **93.9 % of 481 km** |
+
+The two marking layers move by less than a point between 0.5 m and 2 m of tolerance. So at
+least 21.5 % of what was painted repaints something painted earlier in the delivery and adds
+nothing; the remaining 78.5 % cannot be told apart between new marking and maintenance of
+marking older than 2017, which the delivery never recorded; and wear is not recorded at all.
+**Cumulating the files does not give the change in the stock, with or without a base.**
+
+**The flow, and the objection it was rejected on.** The rejection above says kilometres
+painted respond to observed danger. That was argued and not measured. The descriptive form of
+Papke's strict exogeneity test — correlations of two-way demeaned log affected parties,
+summed over the eight pairs, with two-way demeaned painting density — gives:
+
+| Painting density | Horizontal marking | School zones |
+|---|---:|---:|
+| the year after the casualties | +0.075 | +0.096 |
+| the same year | −0.032 | +0.039 |
+| the year before the casualties | −0.089 | −0.039 |
+
+On the rho-corrected set, 29 units, n = 174 to 203, with a naive 95 % band of ±0.14 to
+±0.15 that treats unit-years as independent and is therefore optimistic. **No sign that
+painting follows casualties**, though the lead carries the sign the objection feared and a
+moderate response would pass unseen at this size. The other half of the objection stands
+untouched: a flow of works beside twelve stock variables mixes two questions in one
+specification.
+
+**What the measurement leaves open.** As a level or a between effect: impossible. As a
+within-only stock proxy: constructible from cumulated new-ground kilometres, under two
+assumptions the delivery cannot check, that new ground is new marking and that wear is common
+to the city. As a flow, in a separate model on 2017–2023: possible, answering whether years of
+more intervention than usual go with fewer casualties, which is not the study's question.
+
+**Reproduce it.** `tools/variacion_para_el_panel.py`, measurements 2 and 3. The cut at unit
+boundaries is `predictors.split_lines_by_unit`, the one the cycleway is measured with, so if the
+flow were ever declared it would be a declaration and not a new module.
+
 ---
 
 ## D47 — A series delivered as an inventory plus its movements, and why the stock is a method
@@ -7916,3 +7977,151 @@ chapter, which is where chapter 2 promised the contrast would be made.
 
 `tools/variables_y_la_literatura.py` is the measurement, and section 18 of
 `regression-inventory.md` is the record of what the two halves of the question returned.
+
+---
+
+## D67 — The panel specification: correlated random effects in within-between form, with year effects
+
+**Decided by Mateo on 2026-10-15. Not implemented.** It closes the first of the questions the
+panel adviser left open, which pieces of the panel are fixed effects and which random, and it
+answers the second, whether horizontal marking enters, as far as the main panel goes. The
+discussion it rests on is `deliverables/informes/discusion-modelo-de-panel.md`, in Spanish,
+and the measurement is `tools/variacion_para_el_panel.py`.
+
+### What the approved anteproyecto already fixes
+
+The anteproyecto approved on 2026-10-07 (`texto_corregido_v2`) says that in the panel "the
+treatment of differences between units (fixed, random or correlated random effects) is
+decided by the Hausman test, bearing in mind that most predictors do not vary in time", that
+the panel carries temporal controls including the 2018 change in severity classification,
+that models are estimated with and without the recording correction, that the same covariates
+serve every pair and are fixed before estimating, that Moran's I is evaluated on the residuals
+and a spatial term added if it is relevant, that non-nested specifications are compared by
+AIC and BIC, and that significance is adjusted for multiple comparisons.
+
+**This decision complies with every clause.** The 2026-10-09 proposal called the within-between
+form a divergence from an approved document; it was written against an earlier version, and
+the approved one names correlated random effects as one of the three options.
+
+### The measurement that governs it
+
+| Variable | Within share of variance | Left with year effects |
+|---|---:|---:|
+| Cycleway, 2012–2024 | 46.4 % | **14.8 %** |
+| Vertical signage, 2015–2023 | 0.9 % | **0.23 %** |
+| The other ten | 0 | 0 |
+
+The pooled within variance over the total, on the 29 estimating units; the second column is
+what remains after unit and year means, checked against a regression on unit and year dummies.
+**The 2026-10-09 proposal said 38.5 % and 0.7 %**, which put a mean of per-unit standard
+deviations into a variance share; only the pooled deviation adds with the between variance to
+the total, and that is the check that tells them apart. The signage keeps almost nothing once
+year effects are in because it grows nearly alike everywhere, from 171 to 197 signs per square
+kilometre on average over 2015–2023.
+
+### The decision
+
+| Piece | What | Why |
+|---|---|---|
+| Differences between units | Correlated random effects in within-between form: each time-varying variable enters as its unit mean and its deviation from it; the ten constants enter as they are | Fixed effects would give no coefficient to ten of twelve; plain random effects assume the unit effect uncorrelated with the predictors, which placement contradicts (the signalised intersection correlates 0.89 with the arterial share) |
+| Hausman | Computed inside the within-between, as the test of equal within and between coefficients, for the cycleway and the signage | Bell et al. 2019, §2.2 and §3: that is what the Hausman test tests. **It says nothing about the ten constants**, which have no within effect to compare, and the chapter says so |
+| Time | One effect per year | Satisfies the contract's temporal controls, the 2018 change among them, and absorbs the common part of the recording drift ρ shows. A trend with break dummies was rejected: it would identify the signage by its city-wide growth, which is the variation confounded with everything else that changed in the city |
+| Family | Negative binomial, with dispersion measured again inside the panel | The unit effect absorbs part of the cross-sectional overdispersion (Mannering et al. 2016); if it is still there, NB has no conditional-likelihood fixed effects estimator and its maximum-likelihood one suffers the incidental parameters problem, so within-between is the best available method for it (Bell et al. 2019, §5) |
+| Check on the within coefficients | Poisson with unit fixed effects and errors clustered by unit, on the cycleway and the signage | With a log link the within-between does not reproduce fixed effects exactly (Bell et al. 2019, §5); its remedy is comparing against the conditional-likelihood estimator where one exists, and for counts it does |
+| Standard errors | Clustered by unit, reported beside the model's own | Papke 2005; 377 rows per pair are 29 units seen thirteen times |
+| Cycleway | Entered as the mean of the year and the previous one; Papke's lead test inside the model; with and without a random slope | A cycleway opened late in a year cannot change that year; the lead test is the strict exogeneity check, and descriptively the cycleway does not move after casualties (r = +0.005); a random slope because both Bell (§4) and Mannering ask for heterogeneous within effects, and it fits in one variable with 29 units |
+| Vertical signage | Within and between, with the chapter stating that its within effect is practically unidentified | 0.23 % of its variance left |
+| The ten constants | Between effects, read as associations that summarise what the variable accompanies | Bell et al. 2019, §2.3: unmeasured unit characteristics can bias them |
+| Horizontal marking | Out of the candidates | D46, panel amendment: the files record works, not changes in the stock |
+| Casualty sets | Both, as the contract requires | Which is reported as primary is left to Mateo |
+| Spatial term, AIC and BIC, multiple comparisons | As the contract states | Moran on the panel's own residuals decides the spatial term |
+
+### What this corrects in what was already written
+
+Four places said the within-between gives "the same coefficient and the same standard error as
+fixed effects": the 2026-10-09 proposal, slide 36 of the presentation for the panel adviser, its
+script, and `regression-inventory.md`. True of a linear model only, and Bell never claims it for
+the standard error. All four were corrected on 2026-10-15.
+
+### What it left open, each decided on its own
+
+**All five were closed by Mateo on 2026-10-15 and 2026-10-16**, one at a time, each after the
+measurement that decides it. Each entry keeps the measurement beside the decision.
+
+1. **How the signage's four missing years are handled. Closed on 2026-10-16 by Mateo: two
+   panels.** The main one runs 2012–2024 with the eleven candidates that exist every year; a
+   complementary one runs 2015–2023 with all twelve, and measures how much the arterial share,
+   the signalised intersections and the TransMilenio stations move when the signage enters,
+   since it correlates with them at 0.92, 0.91 and 0.84 in rank over unit means. Rejected: a
+   single panel on 2015–2023, which loses 116 unit-years and 28.6 % of the affected parties;
+   carrying 2015 back and 2023 forward, which invents flat values; and **carrying the stock back
+   from the inventory's installation dates**, which reproduces the pipeline's 2015 exactly but
+   cannot see the signs removed or replaced before 2015 — at the 0.82 % a year the later files
+   record, about 2.5 % of the stock by 2012 against the 14.9 % growth it would attribute to
+   2012 — and leaves the signage 0.51 % of its variance with year effects instead of 0.23 %.
+   Verified before deciding that the signage enters the cross-sections of
+   `run_20261009_084114` in exactly 2015–2023, in the design table of both sets, in the
+   per-variable table, in the backward elimination and in the selected models, and that the
+   elimination starts from eleven candidates in 2012–2014 and 2024 and twelve otherwise.
+   `tools/variacion_para_el_panel.py --signage` is the measurement.
+2. **Which casualty set is primary. Closed on 2026-10-16 by Mateo: the rho-corrected set is
+   primary, and for car occupants against motorcycles the two sets are reported side by side
+   with equal weight.** In seven pairs the choice changes nothing; in that one, reporting either
+   as the result and the other as robustness would claim one of them is right, when what the
+   data show is that the pair's result depends on the correction. The corrected set leads
+   because the panel reads time and the observed one carries a known artefact in time. Measured
+   on 2026-10-16, before deciding: **97.1 % of
+   everything the correction adds across the panel's eight pairs falls in one, car occupants
+   against motorcycles**, whose corrected-over-observed ratio is 14.14 in 2012, 3.54 in 2018 and
+   1.000 from 2023. The two pedestrian pairs and the two same-type pairs are identical in both
+   sets, and the other three differ by at most 4.1 % in any year. In that one pair the observed
+   series rises from 1.7 affected parties per unit in 2012 to 46.8 in 2023, a factor of 27 that is
+   recording; the corrected one from 24.4 to 46.8, but in 2012 thirteen of every fourteen of its
+   parties are the correction's estimate. Year and unit effects absorb most of the difference and
+   leave 14.3 % of its variance, which correlates −0.22 with the cycleway's within variation, so
+   in that pair the two sets would give different cycleway coefficients.
+   `tools/variacion_para_el_panel.py --correction`.
+3. **Whether horizontal marking is analysed as a flow. Closed on 2026-10-16 by Mateo: no.** The
+   thesis states why the layers do not enter, with the measurements of the D46 panel amendment,
+   and leaves the question of intervention intensity as future work, naming what would make it
+   answerable: an inventory of the marking in any one year, or a longer series. Measured on
+   2026-10-16: as a flow the variable is well identified, keeping 37.1 % of its
+   variance with year effects (school zones 52.0 %), and only 5 % of unit-years paint nothing.
+   But the model would have 203 rows per pair, 174 with a lag, and telling apart from zero a
+   correlation of 0.1, the order of the one measured, takes about 780 independent observations
+   at the usual power; these are 29 units seen seven times, before the multiple-comparisons
+   adjustment the contract requires. The contract also closes the phase on the declared
+   covariate set, so an addition would have to be declared before any panel is estimated.
+4. **Whether the accumulated cross-section the contract describes as the base of Phase 4 is
+   produced. Closed on 2026-10-16 by Mateo: yes, as the contract describes it.** One
+   cross-section per pair, with counts and exposure summed over 2012–2024 on the 29 estimating
+   units, in two strata, deaths and affected parties, on the variables with a European
+   equivalent. It is Phase 4's base and has its own specification, distinct from the panel's,
+   because the comparable variables include the walking and cycling shares; the thesis says
+   that Phase 4 compares few variables and why. The thirteen annual cross-sections stay as
+   what they are, the step the advisers asked for before the panel. Measured on 2026-10-16: the contract
+   limits Phase 4's level comparison to the deaths stratum, and **deaths only support it
+   accumulated**. Per unit-year, five of the eight pairs have no death in more than half the
+   cells; summed over 2012–2024, seven pass the contract's threshold of fewer than half the
+   cells at zero, and only car occupants against motorcycles fail, with six deaths in thirteen
+   years. Of the European study's five variables, only the cycleway has an equivalent among
+   the twelve candidates, and an approximate one; the walking and cycling shares are
+   comparable but are exposure quantities D52 removed from the candidates.
+   `tools/variacion_para_el_panel.py --deaths`, on `analysis__matrix_long` of
+   `run_20261006_203551`, 29 units.
+5. **How the thesis states that the fitting's seed is the blend of D64** and not the nearest
+   survey the contract names. **Closed on 2026-10-16 by Mateo: section 4.6.3 declares it, with
+   the measurement, and nothing is recomputed.** It is stated as what building the fitting
+   revealed and not as an error: the contract's seed was implemented as declared, and measured,
+   the year-on-year change of the exposure at 2014, 2018 and 2022 was 2.55 times that of the
+   other years, against 1.18 in D40 and 1.17 with the blend. A cross-section does not see that
+   step and a panel reads it in its own offset, which is the same reason the contract chose a
+   panel. Rejected: a sensitivity run on the nearest-survey seed, which would compare against an
+   exposure already measured to jump; and reverting to it. The divergence is narrow: method, margins, the identity at survey
+   years and 2024 seeded on 2023 all match the contract, and the blend happens at the unit of
+   analysis, which is where the contract says zoning changes are resolved. The nearest-survey
+   seed no longer exists as a variant: D64 removed the tie rule for 2013, 2017 and 2021, so
+   recomputing it means deciding that tie again.
+
+Not decided here and not to be proposed: which of the twelve candidates are finally excluded,
+which Mateo settles with Olmos.
