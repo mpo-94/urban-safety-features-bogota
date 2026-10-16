@@ -16,6 +16,15 @@ CLAUDE.md
 legacy/
 docs/auditoria/
 
+# Working material from the advisory sessions: the papers the panel adviser
+# shared, which are not ours to redistribute, and the notes of those sessions
+analisis-variables/
+descarte-variables/
+
+# Correspondence received from the advisor, kept beside the documents it led to
+# but private to the people who wrote it
+docs/cambios_olmos.*
+
 # Python
 __pycache__/
 *.pyc
