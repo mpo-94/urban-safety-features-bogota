@@ -651,6 +651,23 @@ RHO_NUMERATOR_COL = "CRASHES_BOTH_AFFECTED"
 RHO_DENOMINATOR_COL = "CRASHES_TOTAL"
 RHO_COL = "RHO"
 
+# Each unit cell's rho moved toward the city's by empirical Bayes, and the share of the
+# moved value that came from the city. The anteproyecto's Phase 1 promises both: in the
+# units with few crashes completeness approaches the city value, in inverse proportion to
+# the number of crashes. Within a pair, a unit's true rho is Beta with mean the city rho of
+# its year and one concentration M per pair, so a cell keeps n / (n + M) of itself. Exported
+# beside the raw rho and never in its place: the correction still reads the city figure
+# (D28), and the shrunk value is a measurement of how far the units differ (D68).
+RHO_SHRUNK_COL = "RHO_SHRUNK"
+RHO_CITY_WEIGHT_COL = "RHO_CITY_WEIGHT"
+RHO_CONCENTRATION_COL = "RHO_CONCENTRATION"
+RHO_CONCENTRATION_FILENAME = f"{REFERENCE_PREFIX}__rho_concentration"
+
+# Where the concentration search stops. Past the upper bound the beta-binomial is the
+# binomial to within the precision of the likelihood, so reaching it means "the units do
+# not differ from the city beyond their own noise", and it is reported as that.
+RHO_CONCENTRATION_BOUNDS: tuple[float, float] = (1e-2, 1e6)
+
 # Used to report how much of the grid rests on few crashes, and for nothing else.
 # It is not a filter and not a mark on any figure: no value is hidden, dropped or
 # drawn differently for being thin. The denominator travels beside rho in every
@@ -2681,6 +2698,63 @@ def regression_pool_in(year: int, candidate_set: str) -> tuple[str, ...]:
     if not CANDIDATE_SETS_BY_NAME[candidate_set].admits_offset_quantities:
         return urban
     return urban + OFFSET_QUANTITIES
+
+
+# ---------------------------------------------------------------------------
+# The placebo regression of completeness on the urban candidates (D68)
+# ---------------------------------------------------------------------------
+# The anteproyecto's Phase 1: a placebo regression of completeness on the urban variables
+# says whether the correction is needed to read their coefficients. Completeness is rho, so
+# the regression is binomial on the crashes behind each unit cell, one candidate at a time,
+# with year effects and errors clustered by unit, over the units and the candidates the
+# regressions read. It runs on both casualty sets.
+#
+# rho is not only recording: a fast street can hurt both parties more often for physical
+# reasons. The windows separate the two. An association that is there while the recording
+# was stable and fades once it settles belongs to the form; one that stays in the reference
+# window may belong to the street. The ramp is fitted too, so the fading can be watched
+# rather than inferred from its two ends.
+PLACEBO_STABLE_YEARS: tuple[int, ...] = tuple(range(2012, 2017))
+PLACEBO_RAMP_YEARS: tuple[int, ...] = tuple(range(2017, 2023))
+
+
+@dataclass(frozen=True)
+class PlaceboWindow:
+    name: str
+    years: tuple[int, ...]
+    datasets: tuple[str, ...]
+
+
+PLACEBO_WINDOWS: tuple[PlaceboWindow, ...] = (
+    PlaceboWindow("WINDOW", REGRESSION_YEARS, (OBSERVED_DATASET, CORRECTED_DATASET)),
+    PlaceboWindow("STABLE", PLACEBO_STABLE_YEARS, (OBSERVED_DATASET,)),
+    PlaceboWindow("RAMP", PLACEBO_RAMP_YEARS, (OBSERVED_DATASET,)),
+    PlaceboWindow("REFERENCE", CORRECTION_REFERENCE_YEARS, (OBSERVED_DATASET,)),
+)
+
+
+def placebo_candidates(years: tuple[int, ...]) -> tuple[str, ...]:
+    """The urban candidates every year of a window has, in the declared order.
+
+    Derived rather than listed, for the same reason the regressions ask for the pool of
+    each year: a candidate with no layer in part of a window would regress rho on a column
+    that is empty in those years.
+    """
+    present = set(REGRESSION_URBAN_CANDIDATES)
+    for year in years:
+        present &= set(regression_candidates_in(year))
+    return tuple(name for name in REGRESSION_URBAN_CANDIDATES if name in present)
+
+
+PLACEBO_FILENAME = f"{ANALYSIS_PREFIX}__completeness_placebo"
+PLACEBO_WINDOW_COL = "WINDOW"
+PLACEBO_CANDIDATE_COL = "CANDIDATE"
+PLACEBO_COEFFICIENT_COL = "COEFFICIENT"
+PLACEBO_STD_ERROR_COL = "STD_ERROR"
+PLACEBO_P_VALUE_COL = "P_VALUE"
+PLACEBO_P_HOLM_COL = "P_VALUE_HOLM"
+PLACEBO_CELLS_COL = "CELLS"
+PLACEBO_UNITS_COL = "UNITS"
 
 # The candidates that enter the design in logarithms rather than raw.
 #

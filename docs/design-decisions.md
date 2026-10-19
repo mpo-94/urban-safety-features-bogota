@@ -1956,6 +1956,14 @@ The evidence, in the order it settles the question:
   2023 to 2024 (0.18 sd, three of nine rise). A decelerating ramp that flattens at
   2023. A year that is followed by a further climb has not reached the plateau,
   and 2022 is followed by one.
+  **The scale is now an instrument, since 2026-10-16.** Which years and which
+  estimator gave "a settled year" was not written down anywhere. `tools/rampa_de_rho.py`
+  fixes it as the population standard deviation of the common increment over the six
+  steps inside the settled years 2010-2016, which reproduces 2.20 exactly. On
+  `run_20261016_031817` the three steps are +0.383, +0.167 and −0.030, that is +2.20,
+  +0.96 and −0.17 sd. The tool prints five other choices of span and estimator: 2022
+  stays between 1.5 and 2.2 sd and 2024 stays flat, so the decision does not rest on
+  the choice.
 
 Including 2022 would have dragged the reference below the level the practice
 actually reached, and would have done so in the pairs that had already arrived as
@@ -1979,6 +1987,11 @@ change of procedure rather than from local habit, but it is an assumption and it
 is stated as one. What follows from it in the arithmetic is that the deficit is
 computed city-wide for each pair and year and then spread over the units in
 proportion to the pool of convertible crashes each one holds.
+
+**Measured on 2026-10-16, in D68: the assumption is partly contradicted.** Six of the nine
+pairs differ between units beyond their noise, and while the recording was stable the
+difference was tied to the arterial network. The spreading by convertible crashes removes about
+half of it. The city reference stays, and D68 says what that means for each pair.
 
 **Decision — every year below the reference is corrected, pair by pair.** Not a
 fixed cut at 2018. Each pair reached its ceiling at a different moment, and
@@ -2987,6 +3000,20 @@ exposure by a back-projected population.
 disaggregated to the UPL or a model of the city's own, and how it treats the units
 whose boundaries Decreto 555 de 2021 drew after the census was taken. Neither
 changes the sentence above.
+
+**The first of those two is answered by the source itself, read on 2026-10-16.** The
+dataset publishes a metadata file beside the data (`metadato-osb_demografia-poblacion.csv`
+on the same portal), and it names the source as *"Proyecciones de población, localidad y
+Bogotá, UPL 2005 - 2035. Contrato Interadministrativo 500 de 2025 - DANE, Secretaría
+Distrital de Planeación (SDP) y Región Metropolitana Bogotá Cundinamarca (RMBC); agosto de
+2025"*, and its formula as *"Estimación de retroproyecciones y proyecciones"*. So it is a joint
+DANE product disaggregated to the UPL, and DANE's current projections are built on the 2018
+census. **One correction to the advisor's statement follows, and it strengthens it**: not even
+2018 is a count in this file. The metadata calls the whole series estimates, and a DANE
+projection's base year is the census conciliated for omission, not the raw enumeration. The
+thesis says that and cites the metadata and DANE's projection page. With the window at
+2012-2024, the back-projected years the models read are 2012 to 2017. How the units drawn in
+2021 were treated is still not stated anywhere.
 
 ---
 
@@ -7669,6 +7696,13 @@ factors. Measured, borrowing D40's would have been wrong where it matters most:
 | **pedestrian 2020** | **0.534** | **0.567** |
 | **pedestrian 2021** | **0.741** | **0.810** |
 
+**The fitted column is from before D64.** With the blended seeds, run `run_20261009_043126`,
+the fitted panel's factors are 0.740 and 1.069 for the bicycle, 0.466 and 0.690 for the car,
+0.545 and 0.747 for the motorcycle and 0.534 and 0.740 for the pedestrian, back on D40's to
+a thousandth, measured on 2026-10-16 as the ratio of the patched to the unpatched weekday
+city total. The paragraph below describes the panel D64 replaced; what it says about why the
+factors are recomputed still holds, since they are.
+
 Three modes agree to a few thousandths and **the pedestrian differs by 6 % and 9 %**. That
 is not rounding: it is the fitted panel expecting a different 2021 of walking than D40
 does, and nine per cent of the pedestrian exposure is the kind of error that reaches a
@@ -8008,6 +8042,16 @@ serve every pair and are fixed before estimating, that Moran's I is evaluated on
 and a spatial term added if it is relevant, that non-nested specifications are compared by
 AIC and BIC, and that significance is adjusted for multiple comparisons.
 
+**Amended on 2026-10-16, decided by Mateo: the "2018 change in severity classification" has no
+source.** The anteproyecto attributes it to `carvajalBicycleSafetyBogota2020`, which says that
+severity "is not consistent across years due to procedural changes (Secretariat of Mobility,
+personal meeting, May 24th of 2018)". The date is that of the meeting. The source acknowledges
+changes and dates none of them. The thesis therefore states the control without a date: a year
+effect absorbs any city-wide change of procedure in a year, including the ones the source
+acknowledges. The break in 2018 is stated as what ρ measures, which is nine pairs rising at once
+(verification §28). This is declared in section 4.8 as a divergence from the contract, like the
+others.
+
 **This decision complies with every clause.** The 2026-10-09 proposal called the within-between
 form a divergence from an approved document; it was written against an earlier version, and
 the approved one names correlated random effects as one of the three options.
@@ -8034,7 +8078,7 @@ kilometre on average over 2015–2023.
 |---|---|---|
 | Differences between units | Correlated random effects in within-between form: each time-varying variable enters as its unit mean and its deviation from it; the ten constants enter as they are | Fixed effects would give no coefficient to ten of twelve; plain random effects assume the unit effect uncorrelated with the predictors, which placement contradicts (the signalised intersection correlates 0.89 with the arterial share) |
 | Hausman | Computed inside the within-between, as the test of equal within and between coefficients, for the cycleway and the signage | Bell et al. 2019, §2.2 and §3: that is what the Hausman test tests. **It says nothing about the ten constants**, which have no within effect to compare, and the chapter says so |
-| Time | One effect per year | Satisfies the contract's temporal controls, the 2018 change among them, and absorbs the common part of the recording drift ρ shows. A trend with break dummies was rejected: it would identify the signage by its city-wide growth, which is the variation confounded with everything else that changed in the city |
+| Time | One effect per year | Satisfies the contract's temporal controls, any city-wide change of procedure in the classification of severity among them, and absorbs the common part of the recording drift ρ shows. A trend with break dummies was rejected: it would identify the signage by its city-wide growth, which is the variation confounded with everything else that changed in the city |
 | Family | Negative binomial, with dispersion measured again inside the panel | The unit effect absorbs part of the cross-sectional overdispersion (Mannering et al. 2016); if it is still there, NB has no conditional-likelihood fixed effects estimator and its maximum-likelihood one suffers the incidental parameters problem, so within-between is the best available method for it (Bell et al. 2019, §5) |
 | Check on the within coefficients | Poisson with unit fixed effects and errors clustered by unit, on the cycleway and the signage | With a log link the within-between does not reproduce fixed effects exactly (Bell et al. 2019, §5); its remedy is comparing against the conditional-likelihood estimator where one exists, and for counts it does |
 | Standard errors | Clustered by unit, reported beside the model's own | Papke 2005; 377 rows per pair are 29 units seen thirteen times |
@@ -8116,6 +8160,26 @@ measurement that decides it. Each entry keeps the measurement beside the decisio
    years. Of the European study's five variables, only the cycleway has an equivalent among
    the twelve candidates, and an approximate one; the walking and cycling shares are
    comparable but are exposure quantities D52 removed from the candidates.
+   **Corrected and specified on 2026-10-16 by Mateo.** The last clause was wrong: a modal share
+   is not an offset quantity, so D52 does not remove it; it is simply not among the twelve,
+   which are all built environment. And the European study divides by population, not by modal
+   share: the share is one of its explanatory variables (`klanjcicIdentifyingUrbanFeatures2022`,
+   "we normalized the number of KSI … by population size"). Phase 4 therefore replicates that
+   design: **the population offset; as candidates the walking share, the cycling share and the
+   cycleway; selection by AIC among models of two or three variables**, as they did. The shares
+   are computed **over every mode of each survey, public transport and taxi included**, because
+   theirs include public transport, and in 2011 public transport and taxi were 43 % of trips
+   (TPC 27.2 %, TransMilenio 11.3 %, taxi 4.7 %, verification §15); a share over the four modes
+   the exposure follows would be a different variable, inflated where buses dominate. They come
+   from the survey years and are averaged over the window, which is what an accumulated
+   cross-section asks for. With it the strong European result can be tested: in level, on deaths,
+   for car occupants against cars (64 deaths) and not against motorcycles (6), which gives
+   direction only, on affected parties.
+   **Not built yet, on purpose.** Nothing reads the shares until Phase 4 exists, and an exported
+   table no stage consumes is one of the inherited pipeline's defects. They are built with Phase
+   4. One choice is left for that moment and is Mateo's: whether a unit's share counts the trips
+   generated in it, which is how a modal share describes a place's own travel, or the trips
+   crossing it, which is how the exposure is built. The first is the recommendation.
    `tools/variacion_para_el_panel.py --deaths`, on `analysis__matrix_long` of
    `run_20261006_203551`, 29 units.
 5. **How the thesis states that the fitting's seed is the blend of D64** and not the nearest
@@ -8134,3 +8198,95 @@ measurement that decides it. Each entry keeps the measurement beside the decisio
 
 Not decided here and not to be proposed: which of the twelve candidates are finally excluded,
 which Mateo settles with Olmos.
+
+---
+
+## D68 — Completeness per unit, by empirical Bayes, and the placebo regression on it
+
+**Decided by Mateo on 2026-10-16. Built the same day.** It fulfils two clauses of the approved
+anteproyecto's Phase 1 that nothing fulfilled until then: completeness is measured per pair,
+unit and year and moved toward the city value in inverse proportion to the number of crashes
+(empirical Bayes), and a placebo regression of completeness on the urban variables says
+whether the correction is needed to read their coefficients. The discussion, with the three
+options and the choice, is `deliverables/informes/bayes-empirico-y-placebo.md`, in Spanish.
+
+### What was built
+
+**Empirical Bayes, in the `rho` route.** Within a pair, a unit's true ρ is Beta with mean the
+city ρ of its year and one concentration M per pair, fitted by maximum likelihood over every
+year. Every unit cell gets `RHO_SHRUNK` = (k + M ρ_city) / (n + M) and `RHO_CITY_WEIGHT` =
+M / (n + M), beside the raw ρ; `reference__rho_concentration` holds M, the likelihood ratio
+against the binomial in which every unit has the city value, and its p-value on the boundary.
+Four checks were added to the route's seven: every shrunk cell lies between its own ρ and the
+city's, an empty cell takes the city value exactly, the weight lies in [0, 1], and city rows
+keep their own ρ. Run `run_20261016_031817`, eleven checks in green.
+
+**The placebo, as a route of its own.** `python -m src.run_pipeline placebo` reads the ρ table,
+the correction plan and the regression design, and rebuilds none of them. Per pair, a binomial
+regression of ρ on one standardised candidate at a time, year effects, errors clustered by unit,
+over the 29 estimating units and the candidates every year of the window has. It runs over the
+whole window on both sets, and on the observed set inside the stable regime (2012-2016), the
+ramp (2017-2022) and the reference window (2023-2024), with Holm over every test of one window
+and set. The corrected cell is the observed numerator plus the crashes the plan reclassifies
+there. Six checks, among them that the plan and the ρ table rebuild the correction's own city ρ
+in all 153 pair-years, to 9.7e-17. Run `run_20261016_031937`.
+
+**It runs on the counts, not on the shrunk value.** In a pair with no spread beyond noise every
+shrunk cell is the city value of its year, the year effects absorb it, and the regression
+returns zero with a standard error of zero.
+
+### What it found
+
+| Pair | M | p against homogeneity |
+|---|---:|---:|
+| Pedestrian-motorcycle | 77 | 5e-13 |
+| Motorcycle-car | 229 | 9e-8 |
+| Car-public transport | 35 | 0.007 |
+| Pedestrian-public transport | 121 | 0.013 |
+| Bicycle-car | 151 | 0.021 |
+| Bicycle-motorcycle | 130 | 0.044 |
+| Pedestrian-car, bicycle-public transport, motorcycle-public transport | at bound | 0.5 |
+
+**Six of the nine pairs differ between units beyond their own noise.** In the placebo, the whole
+window on the observed set gives 24 of 99 tests below 0.05 against about 5 by chance, and 5
+survive Holm. Log-odds per standard deviation:
+
+| Pair and candidate | Stable | Ramp | Reference | Corrected, whole window |
+|---|---:|---:|---:|---:|
+| Motorcycle-car, arterial road | −0.145 | −0.065 | −0.066 | −0.035 |
+| Motorcycle-car, bridge | −0.176 | −0.087 | −0.066 | −0.039 |
+| Pedestrian-motorcycle, arterial road | +0.205 | +0.174 | +0.072 | +0.090 |
+| Pedestrian-motorcycle, bridge | +0.219 | +0.176 | +0.048 | +0.087 |
+
+**Completeness was not homogeneous between units, and the difference is tied to the arterial
+network.** While the recording was stable, units with more arterial road and bridge recorded the
+motorcyclist of a pedestrian-motorcycle crash more often, and recorded both parties of a
+motorcycle-car crash less often, the one missing being almost always the car occupant (D29). Most
+of it fades once the recording settles; in motorcycle-car 38 to 46 per cent of it remains, and that
+remainder may be physical. **D28's homogeneity assumption is therefore measured and partly
+contradicted.**
+
+**The correction removes about half of it without having been designed to.** It spreads the city
+deficit in proportion to each unit's convertible crashes, and a unit that recorded worse holds
+more of them: in motorcycle-car the whole-window coefficient goes from −0.071 to −0.035 on arterial
+road and from −0.083 to −0.039 on bridge.
+
+### What it changes
+
+**No figure of the study.** The correction keeps its city reference. Rejected: a reference per
+unit, shrunk by empirical Bayes, which would rewrite the whole corrected set and would turn into a
+reference the part of the difference between units that, in the reference window, may belong to
+the street rather than the form. Kept open as a robustness run if the advisor asks for one.
+
+**How one pair is read.** The row the correction changes in motorcycle-car is the car occupant hurt
+against a motorcycle, the pair that holds 97.1 per cent of the correction and that D67.2 already
+presents with both sets side by side. An arterial or bridge coefficient there is biased downward
+by the recording on the observed set and keeps about half of that on the corrected one.
+
+**What it does not touch.** The pedestrian-motorcycle heterogeneity is about whether the
+motorcyclist was recorded, which is the row of the motorcyclist hurt by a pedestrian, not
+modelled. The pairs with a pedestrian affected do not depend on this mechanism at all: ρ measures
+whether the second party was recorded, and an affected pedestrian always is. Under the panel's unit
+effects, the part of the difference that does not change in time is absorbed; what is left changes
+with the regime and touches the between effects of the constants, not the within effect of the
+cycleway.

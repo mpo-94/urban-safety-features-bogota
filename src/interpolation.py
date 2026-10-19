@@ -2187,7 +2187,7 @@ def apply_pandemic_patch(
     )
 
     log.record(
-        "add the variant with the pandemic years rebuilt from the casualties",
+        "add the variant with the pandemic years patched from an outside measure of mobility",
         rows_in=len(panel),
         rows_out=len(both),
         changes=[

@@ -11,6 +11,7 @@ resolution should not have to rebuild fifty-seven figures first.
     python -m src.run_pipeline parties         # stop after party resolution
     python -m src.run_pipeline loading         # sources only
     python -m src.run_pipeline rho             # the rho(t) diagnostic
+    python -m src.run_pipeline placebo         # completeness against the urban candidates
     python -m src.run_pipeline predictors      # the static urban predictors
     python -m src.run_pipeline population      # the denominator, per unit and per year
     python -m src.run_pipeline exposure        # travel exposure from the mobility surveys
@@ -47,6 +48,7 @@ from src import (
     matrix,
     mobility_reports,
     parties,
+    placebo,
     population,
     predictors,
     reconstruction,
@@ -304,14 +306,36 @@ def run_rho(log: RunLog) -> None:
     units, casualties, vehicles = load_sources(log)
     universe = parties.party_universe(casualties, vehicles, log)
     long_table, crashes = rho.compute(universe, parties.crash_attributes(casualties), units, log)
+    # Beside the raw rho and never in its place: the correction reads the city figure
+    # (D28), and what the shrunk value adds is how far the units sit from it (D68).
+    long_table, concentration = rho.shrink_toward_city(long_table, log)
 
-    paths = rho.export(long_table, log)
+    paths = rho.export(long_table, log, concentration)
     rho.render_figures(long_table, units, log)
 
     log.table("record funnel:", log.funnel())
     if not rho.verify(long_table, crashes, units, log, paths):
         raise RouteFailed("the rho table does not agree with what entered it")
     rho.report(long_table, log)
+    rho.report_concentration(concentration, long_table, log)
+
+
+def run_placebo(log: RunLog) -> None:
+    """The placebo regression of completeness on the urban candidates (D68).
+
+    It reads three tables other routes export, the rho table, the correction plan and the
+    regression design, and rebuilds none of them, for the reason `regressions` gives for
+    the same choice.
+    """
+    frames = placebo.read_inputs(log)
+    cells = placebo.unit_cells(frames, log)
+    table = placebo.fit(cells, frames["design"], log)
+    placebo.export(table, log)
+
+    log.table("record funnel:", log.funnel())
+    if not placebo.verify(table, cells, frames, log):
+        raise RouteFailed("the placebo does not agree with the tables it was built from")
+    placebo.report(table, log)
 
 
 def run_predictors(log: RunLog) -> None:
@@ -729,6 +753,11 @@ ROUTES: tuple[Route, ...] = (
         run_reconstruction,
     ),
     Route("rho", "rho(t): share of two-party crashes where both parties were hurt", run_rho),
+    Route(
+        "placebo",
+        "the placebo regression of completeness on the urban candidates, both sets (D68)",
+        run_placebo,
+    ),
     Route("map", "the reference map of the territorial units, with and without a scale bar", run_map),
     Route("completeness", "month-by-month coverage of the casualty layers", run_completeness),
     Route("integrate", f"rebuild the layers with {config.REPLACED_YEAR} from the updated extract", run_integrate),

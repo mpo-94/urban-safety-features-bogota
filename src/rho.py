@@ -42,6 +42,7 @@ matplotlib.use("Agg")  # figures are written to disk, never displayed
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+from scipy import optimize, special, stats
 
 try:  # regular package import
     from src import config
@@ -376,6 +377,84 @@ def build_long_table(
     return long_table
 
 
+def _beta_binomial_loglik(log_m: float, k: np.ndarray, n: np.ndarray, mu: np.ndarray) -> float:
+    """Log-likelihood of the unit cells under Beta(mu M, (1 - mu) M), less the binomial coefficient.
+
+    betaln(k + a, n - k + b) - betaln(a, b) is the log of E[p^k (1 - p)^(n - k)] under the
+    Beta, so as M grows it tends to k log mu + (n - k) log(1 - mu), the binomial at the city
+    value. The two leave out the same coefficient, which is what lets the report state the
+    likelihood ratio between them.
+    """
+    m = np.exp(log_m)
+    a, b = mu * m, (1.0 - mu) * m
+    return float(np.sum(special.betaln(k + a, n - k + b) - special.betaln(a, b)))
+
+
+def shrink_toward_city(long_table: pd.DataFrame, log: RunLog) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Empirical Bayes: every unit cell moved toward the city value of its pair and year.
+
+    The anteproyecto's Phase 1 asks for it, and D28's reason for a city reference is the
+    reason it is needed: 40.9 % of the unit cells rest on fewer than ten crashes. Within a
+    pair, a unit's true rho is Beta with mean the city rho of the year and one concentration
+    M for the pair, estimated by maximum likelihood over every year. The shrunk value is
+    (k + M rho_city) / (n + M), so a cell keeps n / (n + M) of its own value.
+
+    **A concentration at the upper bound is a finding**: the units do not differ from the
+    city by more than their own noise, which is exactly the homogeneity D28 assumes. City
+    rows keep their own rho as the shrunk value and carry no weight, because the city is
+    the anchor and not a cell moved toward it. Nothing else in the table changes.
+    """
+    table = long_table.copy()
+    city = table.loc[table[config.AGGREGATION_LEVEL_COL] == config.CITY_LEVEL,
+                     [config.YEAR_COL, config.PAIR_COL, config.RHO_COL]].rename(
+        columns={config.RHO_COL: "_city_rho"})
+    table = table.merge(city, on=[config.YEAR_COL, config.PAIR_COL], how="left")
+    is_unit = table[config.AGGREGATION_LEVEL_COL] == config.UNIT_LEVEL
+    k_all = table[config.RHO_NUMERATOR_COL].astype(float)
+    n_all = table[config.RHO_DENOMINATOR_COL].astype(float)
+    mu_all = table["_city_rho"].astype(float)
+
+    low, high = (np.log(bound) for bound in config.RHO_CONCENTRATION_BOUNDS)
+    rows = []
+    concentration = pd.Series(np.nan, index=table.index)
+    for pair in config.RHO_PAIR_LABELS:
+        in_pair = is_unit & (table[config.PAIR_COL] == pair)
+        # Cells with no crash carry no information about M, and a year whose city value is
+        # exactly 0 or 1 cannot be the mean of a Beta; both stay out of the fit and are
+        # still shrunk below, onto the city value they cannot depart from.
+        usable = in_pair & (n_all > 0) & (mu_all > 0) & (mu_all < 1)
+        k, n, mu = k_all[usable].to_numpy(), n_all[usable].to_numpy(), mu_all[usable].to_numpy()
+        fit = optimize.minimize_scalar(lambda lm: -_beta_binomial_loglik(lm, k, n, mu),
+                                       bounds=(low, high), method="bounded")
+        m = float(np.exp(fit.x))
+        binomial = float(np.sum(k * np.log(mu) + (n - k) * np.log1p(-mu)))
+        ratio = max(2.0 * (-float(fit.fun) - binomial), 0.0)
+        concentration[in_pair] = m
+        rows.append({
+            config.PAIR_COL: pair,
+            config.RHO_CONCENTRATION_COL: m,
+            "AT_UPPER_BOUND": bool(fit.x > high - 0.05),
+            "CELLS_FITTED": int(usable.sum()),
+            "LIKELIHOOD_RATIO": ratio,
+            # A variance parameter tested on its boundary: half a chi-square of one degree.
+            "P_HOMOGENEOUS": 0.5 * float(stats.chi2.sf(ratio, 1)),
+            "MEDIAN_CRASHES": float(n_all[in_pair & (n_all > 0)].median()),
+        })
+
+    weight = concentration / (n_all + concentration)
+    shrunk = (k_all + concentration * mu_all) / (n_all + concentration)
+    table[config.RHO_CITY_WEIGHT_COL] = weight.where(is_unit & mu_all.notna()).astype("Float64")
+    table[config.RHO_SHRUNK_COL] = shrunk.where(is_unit & mu_all.notna(), table[config.RHO_COL]).astype("Float64")
+    table = table.drop(columns="_city_rho")
+
+    summary = pd.DataFrame(rows)
+    homogeneous = int(summary["AT_UPPER_BOUND"].sum())
+    log.info("empirical Bayes: %d of %d pairs differ between units beyond their own noise; "
+             "%d sit on the upper bound, where every unit takes the city value",
+             len(summary) - homogeneous, len(summary), homogeneous)
+    return table, summary
+
+
 def city_table(long_table: pd.DataFrame, column: str) -> pd.DataFrame:
     """One city-level column as a year-by-pair table, in the declared pair order.
 
@@ -412,7 +491,8 @@ def pgfplots_table(long_table: pd.DataFrame) -> pd.DataFrame:
 # ---------------------------------------------------------------------------
 
 
-def export(long_table: pd.DataFrame, log: RunLog) -> dict[str, Path]:
+def export(long_table: pd.DataFrame, log: RunLog,
+           concentration: pd.DataFrame | None = None) -> dict[str, Path]:
     """Write the analysis table and the city views, and return the paths."""
     data_dir = log.run_dir / config.DATA_SUBDIR
     data_dir.mkdir(parents=True, exist_ok=True)
@@ -422,6 +502,11 @@ def export(long_table: pd.DataFrame, log: RunLog) -> dict[str, Path]:
     long_table.to_csv(long_path, index=False, encoding="utf-8")
     long_table.to_parquet(long_path.with_suffix(".parquet"))
     paths["long"] = long_path
+
+    if concentration is not None:
+        path = data_dir / f"{config.RHO_CONCENTRATION_FILENAME}.csv"
+        concentration.to_csv(path, index=False, encoding="utf-8")
+        paths["concentration"] = path
 
     # The denominator is exported beside rho at every level, and on its own for
     # the city, because a rho without its denominator invites reading noise as
@@ -445,7 +530,7 @@ def export(long_table: pd.DataFrame, log: RunLog) -> dict[str, Path]:
     )
     paths["city_rho_plot"] = plot_path
 
-    log.info("exported 1 analysis table and %d presentation tables to %s/", len(paths) - 1, config.DATA_SUBDIR)
+    log.info("exported %d tables to %s/", len(paths), config.DATA_SUBDIR)
     return paths
 
 
@@ -697,6 +782,46 @@ def verify(
         f"{entered:,} in, {counted:,} counted",
     ))
 
+    if config.RHO_SHRUNK_COL in long_table.columns:
+        # The shrunk value is a weighted mean of the cell and the city, so it can never
+        # leave the segment between them; outside it, the formula was not the one declared.
+        cells = by_unit[by_unit[config.RHO_SHRUNK_COL].notna()].merge(
+            by_city[[config.YEAR_COL, config.PAIR_COL, config.RHO_COL]].rename(
+                columns={config.RHO_COL: "_city"}),
+            on=[config.YEAR_COL, config.PAIR_COL])
+        shrunk = cells[config.RHO_SHRUNK_COL].astype(float)
+        city_value = cells["_city"].astype(float)
+        has_crashes = cells[config.RHO_DENOMINATOR_COL] > 0
+        own = cells[config.RHO_COL].astype(float)
+        low = np.minimum(own, city_value)[has_crashes]
+        high = np.maximum(own, city_value)[has_crashes]
+        outside_segment = int(((shrunk[has_crashes] < low - 1e-12) | (shrunk[has_crashes] > high + 1e-12)).sum())
+        checks.append((
+            "every shrunk cell lies between its own rho and the city's",
+            outside_segment == 0,
+            f"{int(has_crashes.sum()):,} cells with crashes, {outside_segment} outside",
+        ))
+        empty_moved = int(((shrunk[~has_crashes] - city_value[~has_crashes]).abs() > 1e-12).sum())
+        checks.append((
+            "a cell with no crash takes the city value exactly",
+            empty_moved == 0,
+            f"{int((~has_crashes).sum()):,} empty cells, {empty_moved} elsewhere",
+        ))
+        weight = cells[config.RHO_CITY_WEIGHT_COL].astype(float)
+        bad_weight = int(((weight < 0) | (weight > 1) | weight.isna()).sum())
+        checks.append((
+            "the city's weight in every shrunk cell lies in [0, 1]",
+            bad_weight == 0,
+            f"{bad_weight} outside",
+        ))
+        city_kept = bool((by_city[config.RHO_SHRUNK_COL].astype("Float64").fillna(-1)
+                          == by_city[config.RHO_COL].astype("Float64").fillna(-1)).all())
+        checks.append((
+            "city rows keep their own rho as the shrunk value",
+            city_kept,
+            f"{len(by_city):,} city rows",
+        ))
+
     expected_rows = (len(units) + 1) * len(config.STUDY_YEARS) * len(config.RHO_PAIRS)
     checks.append((
         "grid has exactly the declared number of cells",
@@ -740,6 +865,23 @@ def verify(
 
 def _pair_columns_header(label: str) -> str:
     return f"{label:>6}  " + "  ".join(f"{_short_pair(pair):>9}" for pair in config.RHO_PAIR_LABELS)
+
+
+def report_concentration(summary: pd.DataFrame, long_table: pd.DataFrame, log: RunLog) -> None:
+    """How far the units sit from the city beyond their noise, pair by pair."""
+    by_unit = long_table[(long_table[config.AGGREGATION_LEVEL_COL] == config.UNIT_LEVEL)
+                         & (long_table[config.RHO_DENOMINATOR_COL] > 0)]
+    lines = [f"{'pair':<10}  {'M':>10}  {'LR':>7}  {'p homog.':>9}  {'median n':>8}  {'city weight':>11}",
+             f"{'-' * 10}  {'-' * 10}  {'-' * 7}  {'-' * 9}  {'-' * 8}  {'-' * 11}"]
+    for row in summary.itertuples():
+        weight = by_unit.loc[by_unit[config.PAIR_COL] == row.PAIR, config.RHO_CITY_WEIGHT_COL].astype(float).median()
+        m = "at bound" if row.AT_UPPER_BOUND else f"{row.RHO_CONCENTRATION:.1f}"
+        lines.append(f"{_short_pair(row.PAIR):<10}  {m:>10}  {row.LIKELIHOOD_RATIO:>7.1f}  "
+                     f"{row.P_HOMOGENEOUS:>9.2g}  {row.MEDIAN_CRASHES:>8.0f}  {weight:>11.1%}")
+    lines.append("")
+    lines.append("M: concentration of the units around the city value of each year; at bound means no spread")
+    lines.append("beyond binomial noise. city weight: median share of a cell's shrunk value taken from the city.")
+    log.table("empirical Bayes, the concentration of each pair:", "\n".join(lines))
 
 
 def report(long_table: pd.DataFrame, log: RunLog) -> None:

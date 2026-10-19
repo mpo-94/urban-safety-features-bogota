@@ -5005,3 +5005,70 @@ empty cells get a figure instead of a gap in a folder.
 - **Which of the twelve candidates are finally excluded.** Deferred by my advisor after the
   panel session; `MODEL_PREDICTOR_NAMES` holds the earlier decision and the regressions do
   not read it. Section 5 of `regression-inventory.md`.
+
+---
+
+## 28. Completeness per unit, and the placebo regression on it
+
+Two routes, D68. `python -m src.run_pipeline rho` now shrinks every unit cell toward the city
+value by empirical Bayes, run `run_20261016_031817`; `python -m src.run_pipeline placebo` is
+new and regresses ρ on the urban candidates, run `run_20261016_031937`, reading that ρ run, the
+correction plan of `run_20261006_203551` and the design of `run_20261009_084114`. Every raw ρ,
+denominator and city value of the `rho` route is what `run_20261006_203822` gave; the route only
+gained two columns and one table.
+
+### Checks
+
+| Route | Check | Result | Verdict |
+|---|---|---|---|
+| `rho` | Every shrunk cell lies between its own ρ and the city's | 4,591 cells with crashes, 0 outside | **Pass** |
+| `rho` | A cell with no crash takes the city value exactly | 89 empty cells, 0 elsewhere | **Pass** |
+| `rho` | The city's weight lies in [0, 1] | 0 outside | **Pass** |
+| `rho` | City rows keep their own ρ as the shrunk value | 162 rows | **Pass** |
+| `placebo` | No corrected numerator exceeds its denominator | 0 above | **Pass** |
+| `placebo` | The plan and the ρ table rebuild the correction's own city ρ | 153 of 153 pair-years, worst 9.7e-17 | **Pass** |
+| `placebo` | It runs on the units the regressions read | 29 and 29 | **Pass** |
+| `placebo` | One row per declared window, set, pair and candidate | 504 of 504 | **Pass** |
+| `placebo` | Every p-value and Holm value in [0, 1], Holm never below its p | 504 defined | **Pass** |
+| `placebo` | Every defined coefficient has a positive standard error | — | **Pass** |
+
+The second `placebo` check is the one worth having. The plan comes from the `corrected` route
+and the ρ table from the `rho` route, which read the sources separately; if they described
+different crashes, the corrected unit cells would not add back to the corrected city ρ the
+correction reports.
+
+### What it found
+
+Six of the nine pairs differ between units beyond binomial noise; pedestrian-motorcycle and
+motorcycle-car most, at p 5e-13 and 9e-8. Over the window, 24 of the 99 placebo tests on the
+observed set are below 0.05 and 5 survive Holm; on the corrected set 29 and 4. By window on the
+observed set: stable 19 and 4, ramp 21 of 108 and 6, reference 13 and 1. The pattern and what it
+means are in D68: an association with the arterial network while the recording was stable,
+mostly gone once it settles, and halved by the correction.
+
+**The corrected set has more tests below 0.05 than the observed one, with smaller coefficients.**
+That is not the correction adding association. The correction pulls every unit toward the
+reference, the empirical Bayes concentration of the corrected cells sits on its upper bound in all
+nine pairs, and with the spread between units smaller the clustered standard errors shrink faster
+than the coefficients do. The magnitudes are the thing to compare.
+
+### Where the change of regime falls, settled on 2026-10-16
+
+Sections 1 to 7 say "flat from 2008 to 2016, climbing from 2018", and the thesis's chapter 3 put
+the break between 2016 and 2017, reading pedestrian-motorcycle alone. Measured on the city ρ of
+`run_20261016_031817`, step by step:
+
+| Step | Pairs rising | Median step |
+|---|---:|---:|
+| 2014 to 2015 | 4 of 9 | −0.004 |
+| 2015 to 2016 | 7 of 9 | +0.008 |
+| 2016 to 2017 | 7 of 9 | +0.008 |
+| 2017 to 2018 | 9 of 9 | +0.050 |
+| 2018 to 2019 | 2 of 9 | −0.007 |
+
+2017 moves like 2016. Only the two pedestrian pairs with a private vehicle step beyond a
+typical stable year, pedestrian-motorcycle at 3.9 times and pedestrian-car at 2.0. The
+city-wide break is 2018, and 2019 is a pause. **Mateo settled the wording: stable 2008-2016, a
+year of transition in 2017, rising from 2018 with a pause in 2019.** Nothing computed depends on
+it. The correction corrects every year below the reference, and the placebo's stable window
+of D68 is already 2012-2016.
