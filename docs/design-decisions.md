@@ -309,8 +309,13 @@ levels that the stated principle says are the same.
 **Built:** Yes. The threshold counts every recorded party of a crash, whether or
 not it suffered casualties, and each run reports what it removes.
 
-**Context.** This follows the criterion of the European study being replicated,
-but it also resolves a real problem in the data. With three or more parties the
+**Context.** This is stricter than the criterion of the European study being
+replicated. That study drops crashes with more than two *types* of party, so a
+crash between four cars stays in as a car-car crash, and the drop costs it at most
+2% of the casualties of each city. Here the counterpart is assigned to each party
+rather than to each type, and with two cars and a pedestrian an occupant of either
+car has two possible counterparts even though there are only two types. The rule
+resolves a real problem in the data. With three or more parties the
 counterpart of a given casualty is ambiguous: nothing in the sources says which
 of the other two caused the harm, and any choice among them is an assumption
 dressed as a rule. With at most two parties the counterpart is simply the other
@@ -6362,7 +6367,7 @@ not. Wilches-Mogollón et al. (2024) put Bogotá's bicycle users at 205,081 in 2
 2020. Their agent counts give the same ratio, which is the check that the two
 figures are the same measurement.
 
-### The bicycle figure has a second, independent confirmation
+### The bicycle figure has a second confirmation, from a different measure of the same Secretaría
 
 Lucas, Gouëset and Demoraes (2024), writing on Bogotá's pop-up bikeways, quote
 the Secretaría de Movilidad putting the cycling modal share at around 10 per cent
@@ -6377,9 +6382,10 @@ cycling trips at **0.773** of normal in those two months.
 
 Wilches-Mogollón's figure is **0.740** for the year as a whole, and the last
 months of 2020 should sit above the annual mean of a year whose April was a
-lockdown. Two routes that share no data — a trip count taken through the 2019
-survey, and a modal share from the Secretaría divided into Google's total — land
-within a few per cent of each other, in the right order.
+lockdown. Two different measures — a count of daily bicycle trips, and a modal share
+divided into Google's total — land within a few per cent of each other, in the right
+order. They are not independent: both come from the Secretaría de Movilidad, and
+nothing in either paper says whether they rest on the same count.
 
 The same chapter says the increase in cycle traffic "stabilised in 2021 at levels
 slightly below the peaks that were reached in the second half of 2020". That
@@ -6409,7 +6415,7 @@ from the common shock in 2020 — a ratio of 1.503 — is carried across. It ass
 that divergence held across two years whose drivers differed: 2020 was lockdown
 and the first pop-up lanes, 2021 was the Paro Nacional and those lanes becoming
 permanent. It cannot be checked against anything, where 2020 could be checked
-against three independent estimates. The exported table marks it `EXTRAPOLATED`
+against three estimates. The exported table marks it `EXTRAPOLATED`
 in a column of its own, and a measured 2021 figure replaces it the day one
 appears. `La bicicleta en cifras` is where to look.
 
@@ -6427,9 +6433,11 @@ breakdown and certainly no UPL. The factor therefore moves the level of every
 unit and none of the geography, and the spatial structure D41 found in 2020 is
 still in there untouched.
 
-**Wilches-Mogollón's own provenance stops one step short of ours.** Their 2020
-figure is "estimated with the percentage of change in daily trips" and the source
-of that percentage is not named in the paper. They also filter to mandatory
+**Wilches-Mogollón's 2020 figure is not a survey measurement.** It is "estimated
+with the percentage of change in daily trips", and the paper names that
+percentage: daily bicycle trips fell 26 %, from 880,000 in 2019 to 650,000 by the
+end of 2020, according to the Secretaría Distrital de Movilidad. 151,759 over
+205,081 is 0.740, which is that fall. They also filter to mandatory
 weekday trips excluding recreation and sport, where this panel's weekday measure
 has no purpose filter.
 
@@ -7905,8 +7913,9 @@ The third was added on 2026-10-12 and it is the one that shows why the field has
 re-read rather than assumed. The TransMilenio station was declared `EXPECTS_FEWER` on a
 mechanism — mass transit routes belong to the family of works that reduce exposure — until
 the BRT road-safety literature was actually read. It splits: the **corridor** comes out
-protective, with annual fatalities on the Bogotá corridor falling from 61 to 16 and 60 %
-attributed to the system once the citywide downward trend is accounted for, while the
+protective, with annual fatalities on the Bogotá corridor falling from 61 to 16 and the
+system estimated to have cut them by 60 % once the citywide downward trend is accounted
+for, while the
 **station** is where 54 % of the fatalities recorded across nine systems happened to
 pedestrians crossing illegally to enter or leave it. This study measures station density, so
 the half of the evidence that applies to it is the second, and the review's own verdict on

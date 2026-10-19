@@ -324,7 +324,14 @@ def report_literature(data: Path) -> pd.DataFrame:
         for e in config.LITERATURE_EXPECTATIONS
         if e.basis == config.QUANTIFIED_BASIS and EXPECTED_SIGN[e.direction] is not None
     )
-    mechanism = sum(1 for e in config.LITERATURE_EXPECTATIONS if e.basis == config.MECHANISM_BASIS)
+    # Counted only where a sign is expected, like the quantified ones, so the five
+    # categories stay a partition: the speed camera rests on a mechanism but is also
+    # disputed, and counting it twice would make the categories add up to thirteen.
+    mechanism = sum(
+        1
+        for e in config.LITERATURE_EXPECTATIONS
+        if e.basis == config.MECHANISM_BASIS and EXPECTED_SIGN[e.direction] is not None
+    )
     disputed = sum(
         1 for e in config.LITERATURE_EXPECTATIONS if e.direction == config.EXPECTS_DISPUTED
     )

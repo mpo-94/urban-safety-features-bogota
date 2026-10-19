@@ -382,9 +382,10 @@ CRASH_POINT_TOLERANCE_M = 1.0
 # motorcycle hitting a lamp post. The study being replicated counts these too.
 SELF_COUNTERPART = "SELF"
 
-# Same criterion as the European study being replicated. Counts every recorded
-# party, whether or not it suffered casualties: with three or more parties the
-# counterpart of a given casualty is ambiguous.
+# Stricter than the European study being replicated, which drops crashes with more
+# than two types of party rather than more than two parties (D5). Counts every
+# recorded party, whether or not it suffered casualties: with three or more parties
+# the counterpart of a given casualty is ambiguous.
 MAX_PARTIES_PER_CRASH = 2
 
 # ---------------------------------------------------------------------------
@@ -2327,8 +2328,9 @@ LITERATURE_EXPECTATIONS: tuple[LiteratureExpectation, ...] = (
         reported=(
             "rate ratio 0.89 for pedestrian deaths in Bogota, with no detectable effect on "
             "injuries; but on American arterials ten more people boarding and alighting "
-            "within 250 feet raised the odds that a site is a pedestrian accident location "
-            "by 1.17, and such sites carried six times the stop usage of the matched ones"
+            "within 250 feet multiplied the odds that a site is a pedestrian accident "
+            "location by 1.17, and on the busiest route of the study such sites carried six "
+            "times the stop usage of the matched ones"
         ),
         comparability=(
             "the Bogota estimate is the equivalent variable, stop density over a zone. The "
@@ -2377,15 +2379,19 @@ LITERATURE_EXPECTATIONS: tuple[LiteratureExpectation, ...] = (
     LiteratureExpectation(
         predictor="SPEED_CAMERA_DENSITY",
         direction=EXPECTS_DISPUTED,
-        basis=QUANTIFIED_BASIS,
+        # Changed 2026-10-19 from QUANTIFIED_BASIS. The estimate is for a speed limit
+        # enforced by the traffic police, and the source never mentions cameras, so for
+        # this feature it names a mechanism and estimates nothing.
+        basis=MECHANISM_BASIS,
         source_citation=("lopezEffectsReducingEnforcing2021",),
         reported=(
             "lowering and enforcing the speed limit on five Bogota arterials cut deaths "
             "by 16.6 % and raised injury crashes by 10.5 %"
         ),
         comparability=(
-            "same city and the same enforcement mechanism, but the source evaluates a "
-            "limit change on five corridors rather than camera density over a unit, and "
+            "same city and the same mechanism, a lower speed through enforcement, but the "
+            "source evaluates a police-enforced limit change on five corridors rather than "
+            "camera density over a unit, and "
             "its two severities move in opposite directions, so it predicts no sign for a "
             "count that merges them"
         ),
@@ -2403,8 +2409,9 @@ LITERATURE_EXPECTATIONS: tuple[LiteratureExpectation, ...] = (
             "stokerPedestrianSafetyBuilt2015",
         ),
         reported=(
-            "along the Bogota corridor, annual fatalities fell from 61 to 16 and 60 % is "
-            "attributed to the system once the citywide downward trend is accounted for; "
+            "along the Bogota corridor, annual fatalities fell from 61 to 16, and once the "
+            "citywide downward trend is accounted for the system is estimated to have cut "
+            "them by 60 %; "
             "but 54 % of the fatalities recorded across nine systems were pedestrians, and "
             "the dangerous crossings concentrate next to the stations"
         ),
@@ -5944,9 +5951,10 @@ GOOGLE_REFERENCE_YEAR = 2022
 # and 151,759 in 2020. Their agent counts give the same ratio, which is the check
 # that the two numbers are the same measurement.
 #
-# Two things are declared with it rather than buried. Their 2020 figure is
-# "estimated with the percentage of change in daily trips" and the source of that
-# percentage is not named, so the provenance stops one step short of ours. And
+# Two things are declared with it rather than buried. Their 2020 figure is not a
+# survey measurement: it is "estimated with the percentage of change in daily
+# trips", which the paper names as a 26 % fall in daily bicycle trips, 880,000 to
+# 650,000, from the Secretaría Distrital de Movilidad. And
 # they filter to mandatory weekday trips, excluding recreation and sport, where
 # this panel's weekday measure has no purpose filter.
 BICYCLE_2020_USERS_MEASURED = 151_759
@@ -5962,7 +5970,7 @@ BICYCLE_MEASURED_SOURCE = "wilchesmogollonImpactAssessmentActive2024"
 # general activity by the same ratio in two years whose drivers differed — 2020
 # was lockdown and the first pop-up lanes, 2021 was the Paro Nacional and those
 # lanes becoming permanent — and it cannot be checked against anything, where
-# 2020 could be checked against three independent estimates. It closes the panel
+# 2020 could be checked against three estimates. It closes the panel
 # at a stated price. A measured 2021 figure, if one appears, replaces it.
 BICYCLE_2021_IS_EXTRAPOLATED = True
 
