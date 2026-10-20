@@ -8083,7 +8083,7 @@ kilometre on average over 2015–2023.
 | Check on the within coefficients | Poisson with unit fixed effects and errors clustered by unit, on the cycleway and the signage | With a log link the within-between does not reproduce fixed effects exactly (Bell et al. 2019, §5); its remedy is comparing against the conditional-likelihood estimator where one exists, and for counts it does |
 | Standard errors | Clustered by unit, reported beside the model's own | Papke 2005; 377 rows per pair are 29 units seen thirteen times |
 | Cycleway | Entered as the mean of the year and the previous one; Papke's lead test inside the model; with and without a random slope | A cycleway opened late in a year cannot change that year; the lead test is the strict exogeneity check, and descriptively the cycleway does not move after casualties (r = +0.005); a random slope because both Bell (§4) and Mannering ask for heterogeneous within effects, and it fits in one variable with 29 units |
-| Vertical signage | Within and between, with the chapter stating that its within effect is practically unidentified | 0.23 % of its variance left |
+| Vertical signage | Within and between, with the chapter stating that its within effect is practically unidentified; no random slope | 0.23 % of its variance left. No random slope (stated on 2026-10-19): with 0.23 % of its variance within the unit, a slope per unit has nothing to be estimated from, and the within effect it would protect (Bell et al. 2019, §4) is already declared unidentified |
 | The ten constants | Between effects, read as associations that summarise what the variable accompanies | Bell et al. 2019, §2.3: unmeasured unit characteristics can bias them |
 | Horizontal marking | Out of the candidates | D46, panel amendment: the files record works, not changes in the stock |
 | Casualty sets | Both, as the contract requires | Which is reported as primary is left to Mateo |
@@ -8180,6 +8180,15 @@ measurement that decides it. Each entry keeps the measurement beside the decisio
    4. One choice is left for that moment and is Mateo's: whether a unit's share counts the trips
    generated in it, which is how a modal share describes a place's own travel, or the trips
    crossing it, which is how the exposure is built. The first is the recommendation.
+   **Amended on 2026-10-19 by Mateo: the level comparison goes ahead with its difference
+   declared.** The European matrices are not built with D5's rule. That study drops crashes
+   with more than two *types* of party and keeps a crash among four cars as car-car; this one
+   drops every crash with more than two parties, 8.16 % of the crashes. In direction the
+   difference does not matter. In level it does, because Bogotá's counts come out lower by
+   construction, and Phase 4 compares them in level on the deaths stratum. Of three ways out —
+   declaring it, rebuilding the deaths stratum with the European rule for that comparison
+   alone, or comparing in direction only — Mateo chose the first: the comparison is made, and
+   the thesis states the difference beside it as a limitation of the level reading.
    `tools/variacion_para_el_panel.py --deaths`, on `analysis__matrix_long` of
    `run_20261006_203551`, 29 units.
 5. **How the thesis states that the fitting's seed is the blend of D64** and not the nearest
