@@ -62,6 +62,7 @@ recomputed against the run it came from rather than against the newest one.
 | `que_decide_el_panel.py` | Which pieces of the panel specification can the cross-sections settle, with what figure, and which one can they not settle at all? | `regression-inventory.md` section 19 |
 | `variacion_para_el_panel.py` | How much variation is left to a within estimator once year effects are in, is a year of horizontal marking a change in the stock, and does painting or cycleway follow casualties? | **D46** (the panel amendment), `regression-inventory.md` section 19 |
 | `rampa_de_rho.py` | How steep is the ρ climb year by year, on the scale of a settled year, and does that scale depend on which years and which estimator define it? | **D28** (the reference window), thesis section 4.4 |
+| `reparto_entre_unidades.py` | Does the split of a casualty count across units change enough from year to year that one choropleth per year would show something the accumulated one does not, and how much deadlier is one unit than another? | the casualty annexes of the thesis, which show only accumulated choropleths, and the deaths per hundred injured on one of their own |
 
 `flujos_vs_stock.py` measures the three line layers that carry an annual series
 together, with the cycleway among them **as a control**. That is deliberate: the
