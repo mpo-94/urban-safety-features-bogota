@@ -1498,8 +1498,13 @@ def apportion_survey(
         per_unit=per_unit,
         outside=outside,
         lines=lines[[_PAIR_ID_COL, _PAIR_KM_COL, "geometry"]],
+        # The fifteen-minute count travels with the line too, because it is the pedestrian
+        # exposure the models read (D39): a figure of the lines that showed every walk would
+        # draw a quantity no model uses, and 2005, which only recorded the long walks, would
+        # not be comparable with the years after it. Kept beside the trips, never instead.
         line_trips=between[
-            [config.ACTOR_TYPE_COL, config.DAY_TYPE_COL, _PAIR_ID_COL, surveys.TRIPS_COL]
+            [config.ACTOR_TYPE_COL, config.DAY_TYPE_COL, _PAIR_ID_COL, surveys.TRIPS_COL,
+             surveys.TRIPS_OVER_15MIN_COL]
         ],
         zones_read=len(zones),
         zones_reaching_a_unit=int(zone_shares[surveys.ZONE_CODE_COL].nunique()),
