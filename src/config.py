@@ -2088,9 +2088,17 @@ class ActorPair:
         return f"{ROAD_USER_LABELS_ES[self.affected]}-{ROAD_USER_LABELS_ES[self.counterpart]}"
 
 
-# Eight pairs over four of the six actor classes, which is the subset the European
-# study modelled. Pedestrian and cyclist counterpart columns are nearly empty in
-# any casualty matrix, because those actors impose almost no risk on anyone else.
+# Eight pairs: the four modes that have an exposure, as the affected side, against the
+# two counterparts that do almost all the harm, motorcycle and car. Pedestrian and
+# cyclist counterpart columns are nearly empty in any casualty matrix, because those
+# actors impose almost no risk on anyone else, and public transport has no exposure
+# of its own, so the both-exposures offset would not exist for it.
+#
+# **This is not the European study's selection.** It used the same four classes but
+# modelled six pairs, those with a median above five, and two of them are
+# single-vehicle crashes (a powered two-wheeler alone, a car alone), which this matrix
+# does not have because it counts two-party crashes only.
+#
 # Ordered as the figures print them: vulnerable victims first, then motorised,
 # which is the two rows of the 2-by-4 panel.
 REGRESSION_PAIRS: tuple[ActorPair, ...] = (
