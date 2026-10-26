@@ -65,6 +65,8 @@ recomputed against the run it came from rather than against the newest one.
 | `reparto_entre_unidades.py` | Does the split of a casualty count across units change enough from year to year that one choropleth per year would show something the accumulated one does not, and how much deadlier is one unit than another? | the casualty annexes of the thesis, which show only accumulated choropleths, and the deaths per hundred injured on one of their own |
 | `posiciones_de_la_senalizacion.py` | Can the vertical signage stock be rebuilt sign by sign, with positions, by pairing each removal with its sign through the identifier or by distance? It cannot, and this is the measurement that says so | **D47**, and the signage map of the urban-variables annex, which shows the records by class instead |
 | `demarcacion_por_unidad.py` | How many kilometres of road marking were painted in each unit each year, for the two layers D46 rejects, measured with the pipeline's own line measurement? | **D46**, and the last section of the urban-variables annex |
+| `duplicados_por_anio.py` | Are affected persons repeated in the casualty layers, and more so before 2021, as the approved anteproyecto states? | the question to my advisor about the pre-2021 duplication; no identical row in any year |
+| `parque_automotor.py` | What does the RUNT extract say about Bogotá's fleet, and do the four derived files beside it rebuild from it with the parameters their notebook declares? | `docs/vehicle-fleet-source.md`, and the fleet section of the annex on population and the vehicle fleet |
 
 `flujos_vs_stock.py` measures the three line layers that carry an annual series
 together, with the cycleway among them **as a control**. That is deliberate: the

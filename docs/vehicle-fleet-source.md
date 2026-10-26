@@ -30,11 +30,22 @@ nine columns**, published by the RUNT with a cut of **July 2026**.
 It is a count table and not a record per vehicle: a row is a combination of the other
 eight fields with its total in `CANTIDAD`.
 
-The other files are Mateo's own derivations, and two of them carry something the raw
-extract does not: `bogota_serie_2000_2026.csv` separates the registered fleet from the
-circulating one with an attrition model and a mean age, and
-`bogota_tasas_motorizacion.csv` holds population and a rate per thousand for nineteen
-municipalities.
+The other files are my advisor's derivations, built in `parque_automotor_bogota.ipynb`
+(corrected on 2026-10-24: this document first called them mine). They carry what the raw
+extract does not: `bogota_perfil_edad.csv` gives the cohorts by year of registration with a
+Weibull survival curve, `bogota_serie_2000_2026.csv` separates the registered fleet from the
+circulating one and gives its mean age, `bogota_tasas_motorizacion.csv` holds an assumed
+population and a rate per thousand for nineteen municipalities, and
+`bogota_soacha_escenarios_2000_2026.csv` adds Soacha four ways. None of the assumptions has a
+published source yet.
+
+**`tools/parque_automotor.py` rebuilds every derived column from the raw extract** with the
+parameters the notebook declares, and they match to rounding: the cohorts exactly, the survival
+and the stocks within 10⁻¹⁰. Two things the rebuild found. The Bogotá row of the rates file
+counts one light vehicle more than the series, because it keeps the registration year 1900, the
+extract's code for no year, which the series drops. And the scenario file keeps a single D: the
+notebook names both of its D scenarios, ψ = 0.30 and ψ = 0.50, with the same letter, so the
+second overwrites the first and the file holds ψ = 0.50. The tool rebuilds both.
 
 ## What it says about Bogotá
 
@@ -117,7 +128,9 @@ same defect.
 **Context of motorisation, not a denominator.** `bogota_serie_2000_2026.csv` separates the
 registered fleet from the circulating one with an attrition model and gives a mean age, and
 that is a legitimate thing to cite when the final report describes how the city motorised
-over the study period. It is not a quantity any model divides by.
+over the study period. It is not a quantity any model divides by. Since 2026-10-24 the annex
+book shows the extract and the four derived files in its chapter on population and the vehicle
+fleet, with the figures of `tools/parque_automotor.py`.
 
 ## Corrected here, because it was wrong where it was first written
 

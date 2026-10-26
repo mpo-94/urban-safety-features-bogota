@@ -78,12 +78,12 @@ data/
 │   ├── encuestas_movilidad/              the five mobility survey publications, 2026-09-05,
 │   │   └── <year>/                       1.8 GB, 546 files; all five years declared and read
 │   └── parque automotor/                 the RUNT vehicle registry, cut of July 2026,
-│       │                                 examined and read by nothing — see below
+│       │                                 read by tools/parque_automotor.py only — see below
 │       ├── CRECIMIENTO_DEL_PARQUE_AUTOMOTOR_RUNT2.0_20260810.csv   15.1 MB, 191,293 rows
 │       ├── bogota_serie_2000_2026.csv    registered against circulating, with attrition
 │       ├── bogota_tasas_motorizacion.csv population and fleet per 1,000, 19 municipalities
 │       └── bogota_perfil_edad.csv, bogota_soacha_escenarios_2000_2026.csv, three figures
-│                                         and a notebook, all Mateo's own derivations
+│                                         and a notebook, all my advisor's derivations
 ├── integrated/                           written by `integrate`, read by everything else
 │   ├── fatalities__2024_updated_extract.parquet
 │   └── injuries__2024_updated_extract.parquet
