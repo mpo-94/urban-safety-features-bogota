@@ -583,8 +583,8 @@ def seeding_blend(year: int, anchors: tuple[int, ...]) -> tuple[tuple[int, float
     this year" is three different questions and asking it once with the weekday's answer
     would seed a Saturday from a year that measured none.
 
-    **Linear in the year, which is what D40 already does with the rates.** 2017 is three
-    quarters of 2015 and one quarter of 2019. The alternative was the nearest survey
+    **Linear in the year, which is what D40 already does with the rates.** 2016 is three
+    quarters of 2015 and one quarter of 2019, and 2017 half of each. The alternative was the nearest survey
     alone, and it is what D64 replaced: the shape of the matrix then changed in one step
     at 2014, 2018 and 2022, and because a unit's exposure counts the travel that crosses
     it as well as the travel that begins there, that step landed in the exposure. The

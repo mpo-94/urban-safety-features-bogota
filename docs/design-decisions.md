@@ -7753,8 +7753,11 @@ essentially flat.
 declared methodology and reads exactly the within-unit variation over time. A twenty per
 cent artificial jump every four years is what that model would read as real change.
 
-A year now rests on the two surveys that frame it, weighted linearly in the year: 2017 is
-three quarters of 2015 and one quarter of 2019. A year at an anchor rests on that anchor
+A year now rests on the two surveys that frame it, weighted linearly in the year: 2016 is
+three quarters of 2015 and one quarter of 2019, and 2017 half of each. (Corrected on
+2026-10-26: this paragraph first gave 2017 the three quarters, which is 2016's weight; the code
+always computed it right, and `reference__fitted_blocks` of `run_20261009_043126` carries 0.5
+for both of 2017's seeds.) A year at an anchor rests on that anchor
 alone with weight one, so a surveyed year is still an observation and D60's identity is
 untouched. Beyond the last anchor the nearest survey is held rather than extrapolated, so
 2024 is 2023's matrix.
