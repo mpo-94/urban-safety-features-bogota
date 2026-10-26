@@ -351,12 +351,12 @@ YEAR_COL = "YEAR"
 # When the crash happened inside its year, and where it happened, both resolved
 # once per crash and carried on every party of it.
 #
-# **The month does not come from MES_OCURRE.** That column is named as though it
-# held it and is null in every row of both sources — 8,592 of 8,592 and 268,921 of
-# 268,921 — while FECHA_OCUR parses in 100 % of them and agrees with ANO_OCURRE in
-# 100 % of them. Measured on 2026-09-11; it is the same trap as len_km, and the
-# reason DATE_SOURCE_COL is what both the completeness audit and the party stage
-# read.
+# **The month comes from FECHA_OCUR,** which parses in 100 % of the rows of both
+# sources and agrees with ANO_OCURRE in 100 % of them, so DATE_SOURCE_COL is what
+# both the completeness audit and the party stage read. MES_OCURRE holds the same
+# month as a Spanish name and agrees with the date in every row (measured on
+# 2026-10-26, tools/campos_de_la_fuente.py); an earlier note here said it was empty,
+# from a measurement that could not be reproduced.
 MONTH_COL = "MONTH"
 
 # The coordinate of the crash, in SOURCE_CRS, which is degrees. Anything that

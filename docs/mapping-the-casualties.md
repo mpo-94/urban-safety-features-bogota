@@ -86,10 +86,13 @@ below.
 `MUERTO.shp` and `LESIONADO.shp` as this repository reads them, through
 `config.FATALITIES_PATH` and `config.INJURIES_PATH`.
 
-### The month is not in the column called `MES_OCURRE`
+### The month is read from `FECHA_OCUR`
 
-`MES_OCURRE` is **null in every row of both sources** — 8,592 of 8,592 and 268,921
-of 268,921. It is not sparse; it is empty.
+`MES_OCURRE` holds the month as a Spanish name and agrees with the month of
+`FECHA_OCUR` in every row of both sources, with no empty row (measured on 2026-10-26
+with `tools/campos_de_la_fuente.py`). This document first said it was null in every
+row, from a measurement of 2026-09-11 that could not be reproduced; the date was and
+is the column the month is read from, and the two say the same.
 
 `FECHA_OCUR` parses to a date in **100 %** of the rows of both sources, and its
 year agrees with `ANO_OCURRE` in **100 %** of them. Every month from 1 to 12 is
@@ -346,7 +349,9 @@ that year, because a figure saved out of its folder has to keep saying what it i
 - **Weighting by rows instead of by the count.** Drawing one dot per source row
   would weight `parties/` by how many people were hurt, which is the difference
   between the three counts and the reason the study keeps them apart (D2, D3).
-- **The month taken from `MES_OCURRE`** because it is called that. It is empty.
+- **The month taken from a column because of its name.** `MES_OCURRE` turned out to
+  agree with the date, but that was measured, not assumed; the month is read from
+  `FECHA_OCUR`, which the pipeline already parses and checks against `ANO_OCURRE`.
 - **Two tables of the same events that disagree.** The master table and the matrix
   come from one resolution of parties or they will drift; hence the check above.
 - **A map drawn from a different set of crashes than the table beside it.** Both

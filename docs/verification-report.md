@@ -3524,16 +3524,25 @@ territorial unit in `parties.crash_attributes`, which is the one function that
 places a crash in space and time and is what makes the matrix and ρ agree by
 construction rather than by two implementations matching.
 
-**The month does not come from the column called `MES_OCURRE`.** Measured on
-2026-09-11 against both layers as this repository reads them:
+**The month comes from `FECHA_OCUR`, and `MES_OCURRE` agrees with it.** Measured on
+2026-10-26 with `tools/campos_de_la_fuente.py`, on the integrated layers through
+`loading.read_point_layer`:
 
-| | Rows | `MES_OCURRE` null | `FECHA_OCUR` parses | Year agrees with `ANO_OCURRE` |
-|---|---:|---:|---:|---:|
-| `MUERTO` | 8,592 | **8,592 (100 %)** | 8,592 (100 %) | 8,592 (100 %) |
-| `LESIONADO` | 268,921 | **268,921 (100 %)** | 268,921 (100 %) | 268,921 (100 %) |
+| | Rows | `MES_OCURRE` empty | `MES_OCURRE` agrees with the month of `FECHA_OCUR` |
+|---|---:|---:|---:|
+| `MUERTO` | 8,592 | 0 | 8,592 (100 %) |
+| `LESIONADO` | 268,921 | 0 | 268,921 (100 %) |
 
-It is not sparse, it is empty, and the date is the only thing in the sources that
-says which month a crash happened in.
+`FECHA_OCUR` parses in every row and its year agrees with `ANO_OCURRE` in every row,
+which was measured on 2026-09-11 and still holds.
+
+**Corrected here, because it was wrong where it was first written.** This section
+said on 2026-09-11 that `MES_OCURRE` was null in 100 % of both layers, and that the
+date was therefore the only column that carried the month. The new measurement
+finds no empty row and full agreement, and the old figure could not be reproduced.
+`MES_OCURRE` holds the month as a Spanish name, and converted to a number every row
+comes out null, which may be what was counted. Nothing built on the date changes,
+because the two columns say the same.
 
 **The check that keeps `first` honest.** A crash must carry one month and one
 coordinate, and it is measured on every route that places a crash:

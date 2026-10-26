@@ -311,9 +311,10 @@ def resolve_pairs(parties: pd.DataFrame, log: RunLog) -> pd.DataFrame:
 def _crash_month(casualties: pd.DataFrame) -> pd.Series:
     """The month of each casualty record, taken from the date and never from MES_OCURRE.
 
-    MES_OCURRE is null in every row of both sources. FECHA_OCUR parses in all of
-    them and its year agrees with ANO_OCURRE in all of them, so the date is the
-    only thing in the sources that says which month a crash happened in.
+    FECHA_OCUR parses in every row of both sources and its year agrees with
+    ANO_OCURRE in every row, so the month is read from the date the pipeline already
+    checks. MES_OCURRE holds the same month as a Spanish name and agrees with it
+    (tools/campos_de_la_fuente.py), but a name needs a lookup the date does not.
     """
     return pd.to_datetime(casualties[config.DATE_SOURCE_COL], errors="coerce").dt.month.astype("Int64")
 
@@ -419,7 +420,7 @@ def check_crash_attributes(casualties: pd.DataFrame, log: RunLog) -> bool:
             f"widest separation inside a crash: {widest:.3f} m",
             f"{undated} casualty record(s) have no usable date, leaving {no_month} crash(es) "
             f"with no month at all",
-            f"month read from {config.DATE_SOURCE_COL}; MES_OCURRE is null in every row of both sources",
+            f"month read from {config.DATE_SOURCE_COL}, the date the party stage already parses",
         ],
     )
 

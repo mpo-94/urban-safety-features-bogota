@@ -279,8 +279,7 @@ def build_master_table(
         changes=[(delta, cause) for delta, cause in causes if delta],
         notes=[
             f"grid = {len(units)} units x {len(year_range)} years x 12 months",
-            f"month read from {config.DATE_SOURCE_COL}, which is the only column of the sources "
-            f"that carries one: MES_OCURRE is null in every row of both",
+            f"month read from {config.DATE_SOURCE_COL}, as in the party stage",
             f"dataset recorded as {dataset} on every row; years {min(year_range)}-{max(year_range)}",
         ],
     )

@@ -39,8 +39,8 @@ def monthly_counts(log: RunLog) -> pd.DataFrame:
     """One row per layer, year and month, with the records seen in it.
 
     The month comes from the date rather than from MES_OCURRE, so a row with a
-    damaged month name still lands in the right month, and the two can be
-    compared if they ever disagree.
+    damaged month name would still land in the right month. Today the two agree in
+    every row (tools/campos_de_la_fuente.py).
     """
     frames: list[pd.DataFrame] = []
     for path, label in (

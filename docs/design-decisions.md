@@ -5557,13 +5557,20 @@ of the same one.
 The grid is complete for the reason D10 gives: a unit-month with no casualty is an
 observation of no harm and has to be a zero rather than a row that is not there.
 
-**Decision — the month comes from `FECHA_OCUR` and the column named `MES_OCURRE`
-is empty.** Measured on 2026-09-11: `MES_OCURRE` is null in 8,592 of 8,592
-fatality rows and 268,921 of 268,921 injury rows. It is not sparse; it is empty.
-`FECHA_OCUR` parses in 100 % of the rows of both layers and its year agrees with
-`ANO_OCURRE` in 100 % of them. This is the third time this project has been saved
-by refusing to take a column's name as evidence of what it holds, after `len_km`
-and `p34_aplicacion_durante_viaje`.
+**Decision — the month comes from `FECHA_OCUR`.** `FECHA_OCUR` parses in 100 % of
+the rows of both layers and its year agrees with `ANO_OCURRE` in 100 % of them, so
+the month is read from the date the pipeline already parses and checks, with no
+table of month names in between.
+
+**Corrected on 2026-10-26: `MES_OCURRE` is not empty.** This record first said it
+was null in 8,592 of 8,592 fatality rows and 268,921 of 268,921 injury rows,
+measured on 2026-09-11, and gave that as the reason for reading the date. Measured
+again with `tools/campos_de_la_fuente.py`, it has no empty row in either layer,
+delivered or integrated, and its month name agrees with the month of `FECHA_OCUR` in
+every row; the 2026-09-11 figure could not be reproduced. It holds the month as a
+Spanish name, and a name converted to a number comes out null, which may be what was
+counted. The decision stands, because the two columns say the same; what changes is
+that it no longer rests on the other one being empty.
 
 **Decision — the month and the point are resolved in `crash_attributes` and
 nowhere else.** That function already gives a crash its year, its crash type and
