@@ -679,9 +679,12 @@ matriz» de «la iteración necesitaba más pasos», que tienen remedios opuesto
 más `SEED_SURVEY_YEAR`. Y `reference__fitted_blocks` al lado, un bloque por año y modo, que
 es donde está lo que el piso abrió: un grano distinto y por tanto una tabla distinta.
 
-**Las dos variantes coinciden en el agregado y discrepan mucho por unidad.** La razón de la
-exposición ajustada a la de D40 tiene mediana 0,999 en los cuatro modos y rango 0,493–2,348
-en la bicicleta. Ésa es la justificación del método, enunciada como medición: **una tasa
+**Las dos variantes coinciden en el agregado y discrepan por unidad.** Medida al construir el
+panel, la razón de la exposición ajustada a la de D40 tenía mediana 0,999 en los cuatro modos y
+rango 0,493–2,348 en la bicicleta. Con la mezcla de semillas de D64 el rango se estrechó a
+0,787–1,382 en la bicicleta, y la mitad de las celdas construidas queda a menos del 1 % de D40;
+la medición vigente está en D62, «Measured again after D64», y la hace
+`tools/ajustada_contra_interpolada.py`. Ésa es la justificación del método, enunciada como medición: **una tasa
 interpolada por unidad le da a cada unidad su propia curva y no sabe nada de a dónde van
 los viajes**, y el ajuste es lo que devuelve eso. Si las dos hubieran coincidido en todas
 partes, la conclusión honesta habría sido que el supuesto extra no compra nada, y es la

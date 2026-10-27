@@ -7642,6 +7642,29 @@ assumption buys nothing. That conclusion was reachable and this is the table tha
 have said so, which is why the comparison is printed by the route and not left to a
 document.
 
+### Measured again after D64, on 2026-10-26
+
+**The table above predates D64 and no longer describes the panel the models read.** D64 rests
+each year on the two surveys that frame it, and a blend of two seeds moves each unit less than
+one seed does. Measured again on `run_20261009_043126` against D40's `run_20260924_233646` by
+`tools/ajustada_contra_interpolada.py`, which the route no longer replaces:
+
+| Mode | median | quartiles | range |
+|---|---:|---:|---:|
+| Bicycle | 1.0017 | 0.992–1.009 | **0.787–1.382** |
+| Car | 1.0004 | 0.996–1.005 | 0.922–1.060 |
+| Motorcycle | 0.9999 | 0.992–1.009 | 0.900–1.097 |
+| Pedestrian | 1.0035 | 1.000–1.010 | 0.966–1.161 |
+
+The 360 measured cells still agree to rounding. In the city the two differ by less than 0.3%
+for three modes in every year, and for the pedestrian by up to 2.2%, in 2013.
+
+**The direction of the result holds and its size does not.** The fitted panel still moves each
+unit by where its travel goes, which is the case for the method; but half of the constructed cells
+now sit within 1% of D40's, and the widest disagreement, cycling, is a fifth below to two fifths
+above rather than half to more than double. "Disagree about units by a great deal" overstated it
+for the panel as it stands, and documents cite this table rather than the first.
+
 ### What it supersedes, and what it does not
 
 **Nothing yet.** The regressions still read `INTERPOLATED`, because which variant the study
