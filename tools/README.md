@@ -48,6 +48,7 @@ recomputed against the run it came from rather than against the newest one.
 | `exclusion_de_una_unidad.py` | What would break if one unit left the regressions, before the pipeline is touched? | **D56** |
 | `efecto_de_la_exclusion.py` | What actually moved once it did? | **D56**, `verification-report.md` §27 |
 | `estabilidad_de_la_seleccion.py` | Leaving each unit out in turn, how stable is what each selection method chooses inside the specification the panel inherits? | thesis section 5.4.2 |
+| `verificar_panel.py` | Does a finished `panel` run agree with the measurements `tools/` already had: the marking, the delays, the variance left, Holm, the held-out level, and the two models' within effects? | **D67**, the amendment of 2026-10-27 |
 | `verificar_estimador_panel.py` | Does the random-intercept negative binomial of `src/panel.py` estimate what it claims, on simulated panels whose answer is known? | **D67**, the panel's correlated random effects |
 | `ajuste_proporcional.py` | Does the fitting return the matrix it should on cases whose answer is known in advance? | **D54**, **D60**, **D61** |
 | `margenes_para_el_ajuste.py` | Do the margins the fitting is given hold every property it takes for granted? | **D60** |

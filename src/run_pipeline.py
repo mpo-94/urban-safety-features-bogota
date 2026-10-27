@@ -12,6 +12,7 @@ resolution should not have to rebuild fifty-seven figures first.
     python -m src.run_pipeline loading         # sources only
     python -m src.run_pipeline rho             # the rho(t) diagnostic
     python -m src.run_pipeline placebo         # completeness against the urban candidates
+    python -m src.run_pipeline panel           # fixed effects against correlated random effects (D67)
     python -m src.run_pipeline predictors      # the static urban predictors
     python -m src.run_pipeline population      # the denominator, per unit and per year
     python -m src.run_pipeline exposure        # travel exposure from the mobility surveys
@@ -47,6 +48,7 @@ from src import (
     maps,
     matrix,
     mobility_reports,
+    panel,
     parties,
     placebo,
     population,
@@ -336,6 +338,20 @@ def run_placebo(log: RunLog) -> None:
     if not placebo.verify(table, cells, frames, log):
         raise RouteFailed("the placebo does not agree with the tables it was built from")
     placebo.report(table, log)
+
+
+def run_panel(log: RunLog) -> None:
+    """The first attempt at the panel: fixed effects against correlated random effects (D67).
+
+    It reads the design the `regressions` route exported and rebuilds none of it, measures the
+    horizontal marking the amendment adds, and fails loudly on any check `panel.verify` makes.
+    """
+    tables = panel.run(log)
+    panel.export(tables, log)
+    log.table("record funnel:", log.funnel())
+    failures = panel.verify(tables, log)
+    if failures:
+        raise RouteFailed("the panel failed its checks: " + "; ".join(failures))
 
 
 def run_predictors(log: RunLog) -> None:
@@ -757,6 +773,11 @@ ROUTES: tuple[Route, ...] = (
         "placebo",
         "the placebo regression of completeness on the urban candidates, both sets (D68)",
         run_placebo,
+    ),
+    Route(
+        "panel",
+        "the panel's first attempt: fixed effects against correlated random effects, three panels (D67)",
+        run_panel,
     ),
     Route("map", "the reference map of the territorial units, with and without a scale bar", run_map),
     Route("completeness", "month-by-month coverage of the casualty layers", run_completeness),

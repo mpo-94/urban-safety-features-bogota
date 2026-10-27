@@ -2120,6 +2120,73 @@ REGRESSION_PAIRS: tuple[ActorPair, ...] = (
 REGRESSION_MAX_ZERO_SHARE = 0.5
 
 
+# -- the panel (D67, amended on 2026-10-27) ---------------------------------
+# The first attempt the two advisers asked for: fixed effects with unit and year
+# indicators beside the correlated random effects, on three panels that differ in
+# which time-varying variables they carry, compared by how well each predicts the
+# held-out year. Everything here was declared and committed before the first
+# estimate (3595133), and the panel route reads it rather than repeating it.
+@dataclass(frozen=True)
+class PanelSpec:
+    """One panel: its years and the variables that change in time inside it."""
+
+    key: str
+    label_es: str
+    first_year: int
+    last_year: int
+    varying: tuple[str, ...]
+
+    @property
+    def years(self) -> tuple[int, ...]:
+        return tuple(range(self.first_year, self.last_year + 1))
+
+
+# The horizontal marking as the panel uses it: the general layer, painted kilometres
+# per square kilometre accumulated from 2017, lagged a year. Not one of the static
+# predictors: D46 still keeps it out of the cross-sections, and declaring it there
+# would put it in their candidate pool.
+PANEL_HORIZONTAL_MARKING = "HORIZONTAL_MARKING_CUMULATIVE"
+PANEL_HORIZONTAL_MARKING_LABEL_ES = "Señalización horizontal"
+PANEL_HORIZONTAL_MARKING_YEARS = tuple(range(2017, 2024))
+# The layer as measured, declared with the fields `tools/demarcacion_por_unidad.py` gives it, so the
+# panel and that check measure the same thing: kilometres painted in each unit each year.
+PANEL_HORIZONTAL_MARKING_LAYER = StaticPredictor(
+    name="HORIZONTAL_MARKING_PAINTED",
+    label="Horizontal Marking Painted",
+    label_es="Demarcación horizontal",
+    source_layer="Señalizacion_Horizontal",
+    source_citation=("SenalizacionSemaforizacionPMT",),
+    source_files={year: f"Implementación_demarcación_{year}.shp" for year in PANEL_HORIZONTAL_MARKING_YEARS},
+    geometry=LINE_GEOMETRY,
+    method=LINE_LENGTH_METHOD,
+    measures="kilometres of road marking painted that year, not the marking in place (D46)",
+    time_coverage=ANNUAL_SERIES_COVERAGE,
+    zero_is_implausible=False,
+)
+
+PANEL_SPECS: tuple[PanelSpec, ...] = (
+    PanelSpec("PRINCIPAL", "Panel principal", 2012, 2024, ("CYCLEWAY_LENGTH_DENSITY",)),
+    PanelSpec("VERTICAL", "Panel con la vertical", 2016, 2024,
+              ("CYCLEWAY_LENGTH_DENSITY", "VERTICAL_SIGNAGE_DENSITY")),
+    PanelSpec("DOS", "Panel con las dos señalizaciones", 2018, 2024,
+              ("CYCLEWAY_LENGTH_DENSITY", "VERTICAL_SIGNAGE_DENSITY", PANEL_HORIZONTAL_MARKING)),
+)
+PANEL_SPECS_BY_KEY = {spec.key: spec for spec in PANEL_SPECS}
+
+# The year every model is fitted without and asked to predict. All three panels end
+# in it, because the signage delays bring 2024 back to the two that carry signage.
+PANEL_HOLDOUT_YEAR = 2024
+# The one pair estimated on the observed set too, as the sensitivity check of the
+# amendment: it holds 97.1 % of what the correction adds.
+PANEL_SENSITIVITY_PAIR = "CAR__MOTORCYCLE"
+# Moran's criterion, fixed before estimating: the permutations behind its p-value,
+# and the level below which, after Holm over the eight pairs, the residuals are said
+# to hold a spatial structure the model does not capture.
+PANEL_MORAN_PERMUTATIONS = 999
+PANEL_MORAN_ALPHA = 0.05
+PANEL_RANDOM_SEED = 20261027
+
+
 # -- the unit that does not enter the models --------------------------------
 # **This is not the study universe.** The study covers thirty UPL and that is the
 # denominator of every coverage figure; what is declared here is narrower and
