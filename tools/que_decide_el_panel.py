@@ -97,6 +97,23 @@ def fit_by_offset(models: pd.DataFrame, predictions: pd.DataFrame) -> pd.DataFra
         models="size", median="median", share_negative=lambda column: (column < 0).mean())
 
 
+def offset_wins_by_method(models: pd.DataFrame, dataset: str, family: str) -> pd.DataFrame:
+    """In one dataset and family, how many cells each offset has the lowest AIC in, per method.
+
+    A cell counts when at least one offset produced a model there, and the lowest is taken over
+    the offsets that did; that is how the thesis's 68 of 104 was counted. Per method, because the
+    thesis gives the two methods the same weight and a pooled count would say there are twice as
+    many cells.
+    """
+    inside = models[(models["DATASET"] == dataset) & (models["FAMILY"] == family)]
+    rows = {}
+    for method, block in inside.groupby("SELECTION_METHOD"):
+        wide = block.pivot_table(index=["PAIR", "YEAR"], columns="OFFSET", values="AIC")
+        wins = wide.idxmin(axis=1).value_counts()
+        rows[method] = {**wins.to_dict(), "cells": len(wide)}
+    return pd.DataFrame(rows).T.fillna(0).astype(int)
+
+
 def fit_by_pair(models: pd.DataFrame, predictions: pd.DataFrame,
                 dataset: str, offset: str, family: str) -> pd.DataFrame:
     """Median R-squared on counts by pair and selection method, inside one specification.

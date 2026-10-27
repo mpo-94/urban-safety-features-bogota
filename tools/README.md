@@ -47,6 +47,7 @@ recomputed against the run it came from rather than against the newest one.
 | `seleccion_por_aic.py` | Does minimising a negative AIC select the model the fit figure then shows as the best one? | **D59** |
 | `exclusion_de_una_unidad.py` | What would break if one unit left the regressions, before the pipeline is touched? | **D56** |
 | `efecto_de_la_exclusion.py` | What actually moved once it did? | **D56**, `verification-report.md` §27 |
+| `estabilidad_de_la_seleccion.py` | Leaving each unit out in turn, how stable is what each selection method chooses inside the specification the panel inherits? | thesis section 5.4.2 |
 | `ajuste_proporcional.py` | Does the fitting return the matrix it should on cases whose answer is known in advance? | **D54**, **D60**, **D61** |
 | `margenes_para_el_ajuste.py` | Do the margins the fitting is given hold every property it takes for granted? | **D60** |
 | `desagregacion_a_zonas.py` | Does bringing a year's margins back onto the seeding survey's zones give the survey back when it is handed the survey? | **D60** |
@@ -139,6 +140,16 @@ frequency within a specification, has a median Spearman of +0.943 across the
 eighteen and moves no variable more than one place of twelve. D53's argument that
 a count is read and not a winner stops being an argument there and becomes a
 measurement.
+
+`estabilidad_de_la_seleccion.py` asks the same question for both selection methods, which
+the comparison above cannot: its two runs predate backward elimination, so every figure in
+it is the search's. It leaves each of the twenty-nine units out in turn and refits the
+specification the panel inherits through `fit_cell`, after requiring that the refit on all
+twenty-nine reproduces the run model by model. The winner changes in **31.0 %** of the
+cells with the search and **35.7 %** with the elimination, and the frequency order holds at
+a median Spearman of 0.949 and 0.946. Four of the twenty-nine removals cannot be measured,
+because each leaves a unit without a neighbour and the pipeline refuses Moran's I there; the
+script says which and does not patch the weights.
 
 `ajuste_proporcional.py` and `margenes_para_el_ajuste.py` are the two halves of
 what stands behind the fitting D54 declared and D60 settled, and they are
