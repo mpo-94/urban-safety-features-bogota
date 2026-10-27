@@ -8387,6 +8387,17 @@ now, for lack of time.
   capture, as a fact of the data and not a suggestion of the study. The term is left as future work,
   and the decision is the advisers'.
 
+**Status on 2026-10-27: run and verified, `run_20261027_052859`, route `panel`.** All 54 main
+models converge, `tools/verificar_panel.py` passes its six checks, and the two models agree in sign
+on all 48 within effects. What it found, and the two estimation details the run changed, are in
+section 29 of `docs/verification-report.md`:
+- the pooled fits use the random-intercept estimator with sigma near zero, because statsmodels'
+  negative binomial failed with 41 indicators;
+- Newton steps finish what BFGS leaves.
+
+The model the thesis carries forward is the advisers' decision, from the presentation in
+`deliverables/presentacion-panel-resultados/`.
+
 Not decided here and not to be proposed: which of the twelve candidates are finally excluded,
 which Mateo settles with Olmos.
 

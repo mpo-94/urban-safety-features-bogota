@@ -5101,3 +5101,104 @@ city-wide break is 2018, and 2019 is a pause. **Mateo settled the wording: stabl
 year of transition in 2017, rising from 2018 with a pause in 2019.** Nothing computed depends on
 it. The correction corrects every year below the reference, and the placebo's stable window
 of D68 is already 2012-2016.
+
+
+## 29. The panel's first attempt: fixed effects against correlated random effects
+
+**Run:** `run_20261027_052859`, route `panel`, on the design of `run_20261009_084114`. Declared before
+estimating in the D67 amendment of 2026-10-27 (commit `3595133`); the route is commit `bc24729`. An
+earlier run of the same day, `run_20261027_052641`, predates the Newton steps described below and is
+not quoted.
+
+**What it fits.** Three panels on the 29 estimating units:
+
+| Panel | Years | Rows per pair | Time-varying variables |
+|---|---|---:|---|
+| Main | 2012–2024 | 377 | cycleway |
+| With the vertical signage | 2016–2024 | 261 | cycleway, vertical signage |
+| With both signages | 2018–2024 | 203 | cycleway, vertical, horizontal marking |
+
+Each of the eight pairs is fitted, on the corrected set, with four models:
+- negative binomial fixed effects, with unit and year indicators;
+- the correlated random effects model;
+- Poisson with fixed effects and the pooled Mundlak version, as checks.
+
+Car occupants against motorcycles is fitted on the observed set too, as the sensitivity check. That
+is 54 main models, all converged.
+
+**Two things the run changed in the estimation, both before any result was read.**
+- **The pooled fits do not use statsmodels.** statsmodels' `NegativeBinomial` returned NaN with 41
+  indicators in the first pair tried, by Newton and by BFGS. The pooled fits use the random-intercept
+  estimator of `src/panel.py` with sigma held at 1e-6, which its verification checks against
+  statsmodels to six decimals of log-likelihood.
+- **A few Newton steps finish what BFGS leaves.** BFGS stopped one fit of 54 at a gradient of 1.7e-4,
+  above the tolerance of 1e-4. The steps are taken on the same likelihood when the gradient is above
+  the tolerance. `tools/verificar_estimador_panel.py` still passes, now with 300 of 300 simulated
+  panels converged.
+
+**Checks, `tools/verificar_panel.py`, all six pass:**
+1. The horizontal marking the route measures equals `demarcacion_por_unidad.measure` exactly, over
+   203 unit-years.
+2. The delays match the raw design exactly over the 841 panel unit-years.
+3. The variance left by unit and year effects equals `variacion_para_el_panel.variance_shares`:
+
+   | Panel | Cycleway | Vertical | Horizontal |
+   |---|---:|---:|---:|
+   | Main | 14.60 % | | |
+   | With the vertical | 9.30 % | 0.23 % | |
+   | With both | 3.55 % | 0.15 % | 12.58 % |
+4. Holm reproduces with statsmodels.
+5. With the level fixed by the observed total, every predicted total equals the observed one, to
+   1e-12.
+6. **Fixed effects and the correlated model agree in sign on all 48 within effects.** On the
+   cycleway of the main panel they differ by at most 0.5 percentage points.
+
+**What it found** (corrected set; percentages are the change of the rate per standard deviation over
+the panel's unit-years, and significance is Holm over the eight pairs on errors clustered by unit):
+
+- **Cycleway.** Negative in 7 of 8 pairs in the main panel, from −1.7 % to −14.5 % with fixed effects;
+  motorcycle against motorcycle is positive. None is significant there. Bicycle against motorcycle
+  is significant in the two signage panels, at about −31 % and −27 % with both models.
+- **Horizontal marking.** Positive in all eight pairs with both models, from 0.5 % to 21.5 %;
+  significant only in bicycle against car, with fixed effects.
+- **Vertical signage.** Effects of several hundred percent per standard deviation and none
+  significant. With 0.23 % and 0.15 % of its variance left, its standard deviation is almost all
+  between units, and a within change of that size is far outside what any unit saw. It is read as not
+  identified, as D67 anticipated.
+- **The ratio** vertical over horizontal is bounded in 2 of 8 pairs, bicycle against car and
+  motorcycle against motorcycle, and both intervals include zero. Elsewhere its Fieller interval is
+  unbounded.
+- **Hausman**, within against between inside the correlated model, is significant after Holm once,
+  on the vertical signage in bicycle against motorcycle in the vertical-signage panel (p 0.020). That
+  is the variable with 0.23 % of its variance within, so the within side of the test is barely
+  estimated.
+- **In the training years the criteria disagree.** The AIC favours fixed effects in 24 of 24
+  pair-panels, by 41 to 87 points. The BIC, which charges fixed effects for its 28 unit indicators,
+  favours the correlated model in 12 of 24. As D67 requires, the disagreement is declared: the
+  in-sample choice depends on the criterion.
+- **On the held-out year, 2024**, with its level fixed by the observed total, the correlated model
+  has the higher log-likelihood summed over the eight pairs in all three panels. Both beat the
+  reference with no built-environment variable, by a few points:
+
+  | Panel | Correlated | Fixed effects | Reference |
+  |---|---:|---:|---:|
+  | Main | −918.8 | −925.3 | −928.6 |
+  | With the vertical | −889.8 | −898.5 | −901.1 |
+  | With both | −870.1 | −879.5 | −885.3 |
+- **Moran**, on each unit's mean residual, with 999 permutations and Holm, asks for a spatial term:
+  - in motorcycle against motorcycle, in the main panel and the vertical-signage panel with both
+    models;
+  - in bicycle against motorcycle, in the main panel with fixed effects.
+
+  By the amendment's criterion this is declared as a fact of the data and left as future work.
+- **Sensitivity.** In car occupants against motorcycles, the cycleway of the main panel is −1.7 %
+  (corrected) and +19.2 %, significant (observed), with fixed effects. That pair's result depends on
+  the correction, which is what D67.2 measured before estimating.
+- **Dispersion.** Inside the panel, alpha is between 0.007 and 0.06, against a Pearson dispersion of
+  3.94 in the cross-sections; the unit effect absorbs most of what made those overdispersed. Sigma,
+  the spread of the correlated model's unit effect, is between 0.15 and 0.34.
+
+**What it does not settle.** The model the thesis carries forward, the rolling validation, the
+spatial term, the random slope on the cycleway and the school-zone layer are all left to the advisers,
+in the presentation `deliverables/presentacion-panel-resultados/`. The intervals of the ten
+constants are somewhat narrow with 29 units, as the estimator's verification measured.
