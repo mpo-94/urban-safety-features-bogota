@@ -166,6 +166,54 @@ def count_by_alpha(walks: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def search_significance_by_family(data: Path) -> pd.DataFrame:
+    """In the AIC search, how many chosen coefficients are significant at 5 % and 10 %, by family.
+
+    The twin of the elimination counts: there the alpha is the stopping rule, here it never
+    enters, so significance is read afterwards on what AIC chose. Pure, so a document table can
+    call it instead of counting the same thing a second way.
+    """
+    coefficients = pd.read_parquet(data / "analysis__regression_coefficients.parquet")
+    chosen = coefficients[(coefficients["TERM"] != "INTERCEPT")
+                          & (coefficients["SELECTION_METHOD"] == config.BEST_SUBSET_SELECTION)]
+    return chosen.groupby("FAMILY").agg(
+        models=("MODEL_ID", "nunique"), chosen=("TERM", "size"),
+        at_05=("P_VALUE", lambda column: (column <= 0.05).mean()),
+        at_10=("P_VALUE", lambda column: (column <= 0.10).mean()))
+
+
+def method_agreement(data: Path, dataset: str, offset: str, family: str) -> pd.DataFrame:
+    """Per cell of one specification, what the two methods chose and how the two sets relate.
+
+    Only cells where both methods produced a model count: a walk that stopped before its end
+    left no elimination model, and comparing it against the search would score as disagreement
+    what is a failed fit. An elimination that kept nothing is a model with no terms and does
+    count, since an empty set is a real answer. Taken inside one specification because D53 says
+    a selection count is legitimate only there.
+    """
+    models = pd.read_parquet(data / "analysis__regression_models.parquet")
+    coefficients = pd.read_parquet(data / "analysis__regression_coefficients.parquet")
+    inside = {"DATASET": dataset, "OFFSET": offset, "FAMILY": family}
+    for column, value in inside.items():
+        models = models[models[column] == value]
+        coefficients = coefficients[coefficients[column] == value]
+    terms = (coefficients[coefficients["TERM"] != "INTERCEPT"]
+             .groupby("MODEL_ID")["TERM"].agg(frozenset))
+    chosen = models.assign(TERMS=models["MODEL_ID"].map(terms))
+    # A model with no row besides the intercept maps to nothing; that is the empty set.
+    chosen["TERMS"] = chosen["TERMS"].apply(lambda value: value if isinstance(value, frozenset) else frozenset())
+    wide = chosen.pivot_table(index=["PAIR", "YEAR"], columns="SELECTION_METHOD", values="TERMS",
+                              aggfunc="first").dropna()
+    search = wide[config.BEST_SUBSET_SELECTION]
+    elimination = wide[config.BACKWARD_ELIMINATION_SELECTION]
+    return pd.DataFrame({
+        "search": search, "elimination": elimination,
+        "same_set": [a == b for a, b in zip(search, elimination)],
+        "share_any": [bool(a & b) for a, b in zip(search, elimination)],
+        "search_inside_elimination": [a <= b for a, b in zip(search, elimination)],
+    })
+
+
 def report_alpha(data: Path) -> pd.DataFrame:
     paths = pd.read_parquet(data / "analysis__regression_elimination_path.parquet")
     coefficients = pd.read_parquet(data / "analysis__regression_coefficients.parquet")
@@ -243,7 +291,8 @@ def report_alpha(data: Path) -> pd.DataFrame:
     return counts
 
 
-def literature_crossing(data: Path) -> pd.DataFrame:
+def literature_crossing(data: Path, dataset: str | None = None, offset: str | None = None,
+                        family: str | None = None, method: str | None = None) -> pd.DataFrame:
     """Each candidate's declared expectation against the sign its coefficients carry.
 
     Restricted to the pairs whose affected party is the pedestrian. That restriction is
@@ -251,10 +300,21 @@ def literature_crossing(data: Path) -> pd.DataFrame:
     with pedestrian trips in the denominator, and reading it against a cyclist or
     motorcyclist coefficient would be comparing two different quantities.
 
+    **Without arguments it pools every specification and both methods**, which is what the
+    figures in this module's docstring are. D53 says a count is legitimate only inside one
+    family, dataset and offset, and the specifications disagree on signs, so the thesis reads
+    the crossing inside the one the panel inherits and one method at a time (Mateo,
+    2026-10-26); the pooled reading stays callable because the docstring and section 18 of
+    the inventory quote it.
+
     Pure: it prints nothing, so the slide generator in `deliverables/` can call it
     instead of reimplementing the crossing and measuring its own copy of it.
     """
     coefficients = pd.read_parquet(data / "analysis__regression_coefficients.parquet")
+    inside = {"DATASET": dataset, "OFFSET": offset, "FAMILY": family, "SELECTION_METHOD": method}
+    for column, value in inside.items():
+        if value is not None:
+            coefficients = coefficients[coefficients[column] == value]
     predictors = coefficients[coefficients["TERM"] != "INTERCEPT"].copy()
     predictors["AFFECTED"] = predictors["PAIR"].str.split("__").str[0]
     pedestrian = predictors[predictors["AFFECTED"] == "PEDESTRIAN"]
@@ -269,12 +329,17 @@ def literature_crossing(data: Path) -> pd.DataFrame:
         wanted = EXPECTED_SIGN[expectation.direction]
         if wanted is None:
             verdict = "no sign predicted"
+        elif not len(significant):
+            # Inside one specification a candidate can go unselected in the pedestrian pairs,
+            # and a share of nothing compared against one half read as a contradiction.
+            verdict = "no significant coefficient"
         else:
             share_as_expected = share_positive if wanted > 0 else 1 - share_positive
-            verdict = (
-                f"{'agrees' if share_as_expected > 0.5 else 'contradicts'}"
-                f" ({share_as_expected:.0%} as expected)"
-            )
+            # An exact half is neither: with the four coefficients one specification can leave,
+            # a two-two split happens, and scoring it as a contradiction would invent one.
+            leaning = ("split" if share_as_expected == 0.5
+                       else "agrees" if share_as_expected > 0.5 else "contradicts")
+            verdict = f"{leaning} ({share_as_expected:.0%} as expected)"
         rows.append(
             {
                 "predictor": name,
@@ -352,7 +417,7 @@ def report_literature(data: Path) -> pd.DataFrame:
     return crossing
 
 
-def placement_against_arterial(data: Path) -> pd.DataFrame:
+def placement_against_arterial(data: Path, **specification: str) -> pd.DataFrame:
     """Puts the placement reading to the test instead of accepting it.
 
     If what contaminates the coefficient is where the work gets built, the variables that
@@ -362,6 +427,9 @@ def placement_against_arterial(data: Path) -> pd.DataFrame:
 
     **It survives for two of the four and fails for the other two**, which is the result
     that keeps the reading from being a blanket excuse.
+
+    The correlations do not depend on any model; only the verdict column does, and it takes
+    the same `dataset`, `offset`, `family` and `method` arguments as `literature_crossing`.
 
     Pure, like `literature_crossing`, so the slide generator can call it.
     """
@@ -375,13 +443,17 @@ def placement_against_arterial(data: Path) -> pd.DataFrame:
     # mantener la lista a mano ya se desincronizó una vez cuando TransMilenio pasó a estar
     # en disputa.
     verdicts = {}
-    for row in literature_crossing(data).to_dict("records"):
+    for row in literature_crossing(data, **specification).to_dict("records"):
         wanted = EXPECTED_SIGN[row["direction"]]
         if wanted is None:
             verdicts[row["predictor"]] = "no expectation"
             continue
+        if not row["significant_05"]:
+            verdicts[row["predictor"]] = "no significant coefficient"
+            continue
         share = row["share_positive"] if wanted > 0 else 1 - row["share_positive"]
-        verdicts[row["predictor"]] = "agrees" if share > 0.5 else "contradicts"
+        verdicts[row["predictor"]] = ("split" if share == 0.5
+                                      else "agrees" if share > 0.5 else "contradicts")
 
     rows = [
         {

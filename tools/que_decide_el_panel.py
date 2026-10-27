@@ -97,6 +97,22 @@ def fit_by_offset(models: pd.DataFrame, predictions: pd.DataFrame) -> pd.DataFra
         models="size", median="median", share_negative=lambda column: (column < 0).mean())
 
 
+def fit_by_pair(models: pd.DataFrame, predictions: pd.DataFrame,
+                dataset: str, offset: str, family: str) -> pd.DataFrame:
+    """Median R-squared on counts by pair and selection method, inside one specification.
+
+    The medians by family and offset hide which pairs the model reaches and which it does not,
+    and that is a property of the pair rather than of the specification, so it is read inside
+    the one the panel inherits.
+    """
+    inside = models[(models["DATASET"] == dataset) & (models["OFFSET"] == offset)
+                    & (models["FAMILY"] == family)]
+    per_model = predictions[predictions["MODEL_ID"].isin(inside["MODEL_ID"])].groupby(
+        "MODEL_ID").apply(count_r_squared, include_groups=False)
+    joined = inside.merge(per_model.rename("R2"), left_on="MODEL_ID", right_index=True)
+    return joined.groupby(["PAIR", "SELECTION_METHOD"])["R2"].median().unstack()
+
+
 def what_the_panel_inherits(models: pd.DataFrame) -> dict:
     """The two things the cross-sections hand over instead of settling."""
     moran = models[models["MORANS_I"].notna()]
