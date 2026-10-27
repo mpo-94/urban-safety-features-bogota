@@ -7653,7 +7653,7 @@ one seed does. Measured again on `run_20261009_043126` against D40's `run_202609
 |---|---:|---:|---:|
 | Bicycle | 1.0017 | 0.992–1.009 | **0.787–1.382** |
 | Car | 1.0004 | 0.996–1.005 | 0.922–1.060 |
-| Motorcycle | 0.9999 | 0.992–1.009 | 0.900–1.097 |
+| Motorcycle | 0.9999 | 0.992–1.008 | 0.900–1.097 |
 | Pedestrian | 1.0035 | 1.000–1.010 | 0.966–1.161 |
 
 The 360 measured cells still agree to rounding. In the city the two differ by less than 0.3%
