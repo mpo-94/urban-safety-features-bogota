@@ -72,7 +72,7 @@ carried, so the second is larger for the same underlying records.
 | D43 | The same events get a second cut, by unit, year and month, with no pair attached | Implementation | Closed | Yes |
 | D44 | The casualty map places every casualty where it happened, and is not a map of risk | Methodological | Closed on what it is and on the recipe | Yes, for the observed set |
 | D45 | The first variable with a year, and the shape a series takes | Methodological and structural | Closed on the mechanism, on the stock reading and on 2014 | Yes, the cycleway over thirteen years |
-| D46 | The two horizontal marking layers are flows with no inventory, and no year of them is usable | Methodological | Closed; for the panel too since 2026-10-16, in D67 | No, and deliberately |
+| D46 | The two horizontal marking layers are flows with no inventory, and no year of them is usable | Methodological | Closed for the cross-sections; for the panel, reopened on 2026-10-27 by the D67 amendment, which takes the general layer accumulated from 2017 | No, and deliberately |
 | D47 | A series delivered as an inventory plus its movements, and why the stock is a method | Methodological and structural | Closed | Yes, the vertical signage over nine years |
 | D48 | The cross-sections are a first step, not the methodology, and the offset is declared rather than fixed | Methodological | Closed on scope and on the offsets | Pending: this is what the stage is written against |
 | D49 | The pandemic years are patched from an outside measure of how much the city moved | Methodological, supersedes D42 | Closed | Yes, on 2026-09-24 |
@@ -6026,6 +6026,12 @@ the two objections above. Whether the layers enter is Mateo's decision; what fol
 was measured to make it. The full argument, in Spanish, is
 `deliverables/informes/discusion-modelo-de-panel.md` section 2.
 
+**Reopened on 2026-10-27, by the D67 amendment.** At the next meeting the panel adviser asked
+again for the marking inside the panel. The general layer enters it, accumulated from 2017 and
+lagged a year, on the assumption that what was painted is new marking; the flow is reported as
+the alternative, and the school-zone layer stays out. The measurements below still stand, and the
+amendment says what each one costs. The cross-sections are unchanged.
+
 **What the panel changes.** If a unit's stock is its starting inventory plus what was added
 since, the starting inventory is one number per unit, and **a unit effect absorbs it**. In the
 within term of a within-between model, or in fixed effects, the missing inventory stops
@@ -8237,6 +8243,149 @@ measurement that decides it. Each entry keeps the measurement beside the decisio
    analysis, which is where the contract says zoning changes are resolved. The nearest-survey
    seed no longer exists as a variant: D64 removed the tie rule for 2013, 2017 and 2021, so
    recomputing it means deciding that tie again.
+
+### Amended on 2026-10-27: the first attempt, two models compared, declared before estimating
+
+**What prompted it.** At the meeting after the panel proposal, the panel adviser asked for two
+models compared rather than one: fixed effects with unit and year indicator variables beside the
+correlated random effects above, compared by how well each predicts the last year. She asked for
+the horizontal marking inside both, and for the ratio between the vertical and the horizontal
+signage coefficients. The tutor asked for a one-year delay on both signages. The request was
+verbal and reached this file through Mateo. Each translation below was put to him and closed one
+at a time on 2026-10-27. The working record, with every option weighed, is
+`deliverables/informes/panel-primer-intento.md`.
+
+**This section is written and committed before the first estimate on Bogotá's data.** The
+contract closes the covariate set before estimation, and a dated commit is the evidence that
+these choices were made blind to the results.
+
+**The two models.**
+
+| | Fixed effects | Correlated random effects |
+|---|---|---|
+| Year indicators | Yes | Yes, as above |
+| Unit indicators | Yes, one per unit | No: the unit means of the time-varying variables and the random intercept do that job |
+| What it estimates | The within effect of the time-varying variables only; the ten constants are collinear with the unit indicators | Within and between effects, and the ten constants as between associations |
+| Family and offset | Negative binomial, exposure of the affected mode | Negative binomial, exposure of the affected mode |
+| Its check | Poisson with unit fixed effects, which has no incidental-parameters problem | The pooled Mundlak version, estimated with statsmodels and errors clustered by unit |
+
+**Why the correlated model takes no unit indicators.** With them, the random intercept's variance
+is not identified, and the unit means and the ten constants become collinear with the indicators.
+The model would turn into the fixed-effects one, and there would be nothing left to compare. With
+the same year indicators in both, the only thing that separates them is how they treat the unit,
+and that difference is what the adviser asked to compare.
+
+**The estimator of the correlated model** is a negative binomial with a normal random intercept,
+written in `src/panel.py` (`RandomInterceptNB`), because statsmodels has none. Its likelihood is
+integrated by adaptive Gauss-Hermite quadrature, and `tools/verificar_estimador_panel.py` verified
+it on simulated panels of Bogotá's shape before any data was read:
+- the analytic gradient matches central differences to 2e-7;
+- with sigma held at 1e-6 it gives statsmodels' pooled negative binomial, with an identical
+  log-likelihood to six decimals;
+- the log-likelihood does not move between 20, 30 and 60 nodes;
+- over 300 panels the within slope is unbiased (−0.199 against −0.200) and covers at 0.93.
+
+Three things came out of that verification:
+- **Fixed nodes did not work.** They moved the log-likelihood by 2.5, and the quadrature became
+  adaptive.
+- **Convergence is judged on the gradient.** BFGS flagged as failed some fits whose gradient was
+  below 1e-5.
+- **With 29 units, a constant variable's interval covers at 0.913 and not 0.95**, because maximum
+  likelihood underestimates sigma on few groups. With 120 units it covers at 0.947, and sigma's
+  bias shrinks from −0.071 to −0.017. The thesis declares that the intervals of the ten constants
+  are somewhat narrow.
+
+**The random slope on the cycleway that this decision settled above is postponed.** It turns the
+integral two-dimensional. It returns once the random intercept has run.
+
+**The time-varying variables.**
+
+| Variable | How it enters | Years | Variance left with unit and year effects |
+|---|---|---|---|
+| Cycleway | Mean of the year and the previous one, as above; **2012 enters with its own value**, there being no 2011 | 2012–2024 | 14.8 % |
+| Vertical signage | **The stock at the close of the previous year** (D47 dates each year's value at its close), so a sign installed during a year counts from the next | 2016–2024 | 0.23 % |
+| Horizontal marking | **The general layer, accumulated from 2017 to the close of the previous year**, in kilometres painted per square kilometre | 2018–2024 | 13.2 % |
+
+**This reopens D67.3 and the D46 panel amendment.** Summed from 2017, the painted kilometres are
+the stock less the 2016 stock, and the unit effect absorbs that unknown constant. That holds if
+what was painted is new marking. If it was repainting, the sum measures maintenance, and the
+assumption is declared, not hidden.
+- The accumulated version is primary because the vertical signage is a stock: the ratio between
+  the two coefficients only compares like with like if the horizontal is one too.
+- The flow of the year is reported as the alternative.
+- The school-zone layer stays out of this attempt. It is a later robustness check, and only after
+  checking that the two layers do not overlap.
+- Measured on 2026-10-27 over the 29 units, through `demarcacion_por_unidad.measure` and
+  `variacion_para_el_panel.variance_shares`, reproducing D67's 37.1 % for the flow:
+  - the general layer keeps 12.6 % of its variance with unit and year effects accumulated, 13.2 %
+    accumulated and lagged, and 37.1 % as a flow;
+  - the school-zone layer keeps 12.7 % accumulated and 52.0 % as a flow;
+  - the two flows correlate at 0.70 in rank.
+
+The delays bring 2024 back to the signage models, and the panels are three:
+
+| Panel | Years | Rows per pair | Time-varying variables |
+|---|---|---|---|
+| Main | 2012–2024 | 377 | cycleway |
+| With the vertical signage | 2016–2024 | 261 | cycleway, vertical |
+| With both signages | 2018–2024 | 203 | cycleway, vertical, horizontal |
+
+**What else is fixed.**
+- **Pairs, family and offset.** The eight pairs, the negative binomial and the exposure of the
+  affected mode.
+- **Candidates.** All of them, with no selection, since the final exclusion is still open.
+- **Scale.** Every variable is standardised over the rows of its panel, because without that the
+  negative binomial did not converge (D65). Coefficients are reported as the percentage change of
+  the rate per standard deviation.
+- **Multiple comparisons.** Holm, per variable over the eight pairs, within each panel and each
+  model.
+- **A model that does not converge in a pair** is reported as not estimated, with the reason, and
+  never silently replaced by another estimator.
+- **The casualty set, amending D67.2.** The corrected set is the only result in the eight pairs, as
+  both advisers take for granted. The observed one is estimated only for car occupants against
+  motorcycles, as a sensitivity check that says whether that pair's result comes from the records
+  or from the correction:
+  - that pair holds 97.1 % of what the correction adds;
+  - in 2012, thirteen of every fourteen of its corrected parties are the correction's estimate;
+  - in the other seven pairs the observed set adds nothing.
+
+**The ratio between the two signages** is read in natural units, as an exchange rate: the
+kilometres of painted marking per square kilometre that match one more vertical sign per square
+kilometre in their association with casualties. It is computed from the standardised coefficients
+converted back to natural units, and reported with its Fieller interval. If that interval is not
+bounded, the ratio is said not to be readable, rather than given as a point.
+
+**The validation on the last year.** Every panel ends in 2024, and each model is fitted on the
+years before it and predicts it.
+- **The level of 2024.** The year indicator cannot supply it, so it is fixed by the observed city
+  total of the pair, one number per pair. What is evaluated is how each model shares that total
+  among the 29 units.
+- **The alternative, reported beside it.** Carry 2023's effect forward, which is the unaided
+  forecast and mixes model quality with how much the city changed. The rate per trip moved between
+  −12.3 % (car against car) and +11.4 % (pedestrian against motorcycle) from 2023 to 2024.
+- **Measures.** The primary one is the log-likelihood each model gives 2024's counts with its own
+  dispersion; beside it, the mean absolute error and the R-squared on counts.
+- **Reference.** A model with the unit and year effects and the exposure and no built-environment
+  variable.
+- **How the correlated model predicts.** With each unit's posterior intercept from the training
+  years, not with zero. Its unit means are computed on the training years only, so the held-out
+  year does not leak into the between term.
+- **Rolling validation**, with 2022, 2023 and 2024 left out in turn, waits for the first results.
+
+**The in-sample comparison.** AIC and BIC over the training years, reported as the difference,
+correlated minus fixed effects, because only which is lower matters and the difference sums over
+pairs. The Hausman test is computed inside the correlated model as above.
+
+**The spatial term, a numeric criterion fixed now.** Both advisers rule out a spatial term for
+now, for lack of time.
+- **What is measured.** For each pair and model, each unit's mean residual over the panel's
+  years. Over those 29 values, Moran's I with the cross-sections' queen contiguity, and its p-value
+  from 999 permutations of the units.
+- **When Moran asks for it.** In a pair whose p-value is below 0.05 after Holm over the eight
+  pairs.
+- **What is said if it does.** That the residuals hold a spatial structure the model does not
+  capture, as a fact of the data and not a suggestion of the study. The term is left as future work,
+  and the decision is the advisers'.
 
 Not decided here and not to be proposed: which of the twelve candidates are finally excluded,
 which Mateo settles with Olmos.
