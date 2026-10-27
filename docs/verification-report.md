@@ -162,6 +162,26 @@ located. 234,370 injured and 7,542 killed reach the matrix, 241,912 in total.
 
 Nothing is lost without a name anywhere in the chain.
 
+**The threshold by actor type.** It removes 28,867 of the 232,675 affected parties
+(12.41%), and not evenly. Measured by `tools/umbral_por_actor.py`, which builds the
+party universe with the pipeline's own `build_parties` and reproduces the 368,394 and
+203,808 of the table above before measuring anything:
+
+| Affected party | Affected | Removed | Share removed | Share before | Share after |
+|---|---:|---:|---:|---:|---:|
+| Motorcycle | 89,388 | 7,453 | 8.34% | 38.42% | 40.20% |
+| Pedestrian | 65,022 | 12,544 | 19.29% | 27.95% | 25.75% |
+| Car | 31,860 | 4,931 | 15.48% | 13.69% | 13.21% |
+| Bicycle | 24,593 | 1,474 | 5.99% | 10.57% | 11.34% |
+| Public transport | 17,240 | 876 | 5.08% | 7.41% | 8.03% |
+| Other | 4,572 | 1,589 | 34.76% | 1.96% | 1.46% |
+
+The order of the six types is the same before and after, so the threshold shrinks
+the matrix without reordering it. But it costs the pedestrian more than twice what it
+costs the motorcyclist, and 476 of the 1,007 deaths it removes are pedestrians: a
+pedestrian is more often caught in a crash of three or more parties. That is a
+limitation of D5 to declare, not a reason to revisit it.
+
 **Where the integration enters the funnel.** It does not: it happens before it.
 The `integrate` route rebuilds the layers, and the funnel above starts from what
 it wrote, which is why the first rows read 8,592 and 268,921 rather than 8,548

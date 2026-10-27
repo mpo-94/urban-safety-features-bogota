@@ -68,6 +68,7 @@ recomputed against the run it came from rather than against the newest one.
 | `duplicados_por_anio.py` | Are affected persons repeated in the casualty layers, and more so before 2021, as the approved anteproyecto states? | the question to my advisor about the pre-2021 duplication; no identical row in any year |
 | `campos_de_la_fuente.py` | What does every field of the two casualty layers and the vehicle table hold, measured rather than read off its name, and which of them does the pipeline read, read off the code? | the field inventory in the annex on the source and its processing, and the field description of the final report |
 | `parque_automotor.py` | What does the RUNT extract say about Bogotá's fleet, and do the four derived files beside it rebuild from it with the parameters their notebook declares? | `docs/vehicle-fleet-source.md`, and the fleet section of the annex on population and the vehicle fleet |
+| `umbral_por_actor.py` | What does the two-party threshold remove from each actor type of the affected party, and does it reorder them? It keeps the order but costs the pedestrian twice what it costs the motorcyclist | the paragraph on the threshold by actor type in §2 of `verification-report.md`, and the matrix section of the final report's results |
 
 `flujos_vs_stock.py` measures the three line layers that carry an annual series
 together, with the cycleway among them **as a control**. That is deliberate: the
