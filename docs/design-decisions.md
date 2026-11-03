@@ -8479,6 +8479,14 @@ the rule.
   the main and vertical panels. The final report presents it as future work and states why Moran's
   I is a sound criterion for suggesting it.
 
+**Status on 2026-11-03: run and verified, `run_20261103_020323`.** The rule chooses the correlated
+random effects model: all 48 within effects lie within one standard error of fixed effects (largest
+gap 0.20), and it predicts 2024 at least as well in all three panels. The three reported panels
+reproduce the first run exactly. The horizontal marking as a flow does not say what the stock says,
+so the horizontal result rests on the assumption that what was painted is new. Section 30 of
+`docs/verification-report.md` has the figures; the presentation is
+`deliverables/presentacion-panel-segunda/`.
+
 ---
 
 ## D68 — Completeness per unit, by empirical Bayes, and the placebo regression on it

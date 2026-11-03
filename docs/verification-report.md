@@ -5202,3 +5202,83 @@ the panel's unit-years, and significance is Holm over the eight pairs on errors 
 spatial term, the random slope on the cycleway and the school-zone layer are all left to the advisers,
 in the presentation `deliverables/presentacion-panel-resultados/`. The intervals of the ten
 constants are somewhat narrow with 29 units, as the estimator's verification measured.
+
+## 30. The panel's second run: significance as declared, the horizontal flow and the model choice
+
+**Run:** `run_20261103_020323`, route `panel`, on the same design as section 29. Declared before
+estimating in the D67 amendment of 2026-11-03 (commit `d3331dd`); the route is commit `ec95b18`.
+Section 29 stays as the record of the first attempt; this is the run to quote for the panel.
+
+**What changed, and what did not.** The estimation did not change. The run adds:
+- a fourth panel, the one with both signages with the horizontal marking as the lagged flow of the
+  year instead of the stock, marked as a variant;
+- the z statistic, the stars at 10, 5 and 1 % on the unadjusted p-value and the Holm dagger at 10 %
+  on every coefficient;
+- the two conditions of the rule that chooses between the models, and the choice, as run tables.
+
+The ratio between the signages leaves. **The three reported panels reproduce section 29 exactly**:
+every coefficient, clustered error, Holm p-value and 2024 log-likelihood is identical to the last
+decimal, so every figure section 29 gives for them stands.
+
+**Checks, `tools/verificar_panel.py`, all seven pass.** The six of section 29 hold, now over the four
+panels; the delay of the flow matches the raw layer exactly; the flow keeps 37.15 % of its variance
+with unit and year effects. The seventh recounts the stars and the daggers from the p-values with no
+difference, and recomputes the choice from the coefficient and validation tables by its own path,
+with the route's result.
+
+**The rule chooses the correlated random effects model.**
+1. All 48 within effects of the corrected set lie within one clustered standard error of the
+   fixed-effects estimate: the largest gap is 0.20 standard errors and the median 0.04.
+2. Its 2024 log-likelihood, summed over the eight pairs with the level fixed by the observed total,
+   is not below fixed effects' in any of the three panels:
+
+   | Panel | Fixed effects | Correlated | Difference |
+   |---|---:|---:|---:|
+   | Main | −925.3 | −918.8 | 6.4 |
+   | With the vertical | −898.5 | −889.8 | 8.8 |
+   | With both | −879.5 | −870.1 | 9.4 |
+
+   With 2024's level carried from 2023 the order is the same: −926.8 against −934.6, −898.7 against
+   −909.5 and −880.8 against −893.4. The AIC, which the rule does not use, still favours fixed
+   effects in 24 of 24 pair-panels, by 41 to 87 points.
+
+**Significance as the amendment declares it** (corrected set, reported panels, both models):
+- **Within effects, 96:** 23 have at least one star and 7 keep the dagger. The seven are:
+  - the cycleway in bicycle against motorcycle, in the vertical and the two-signage panels, with
+    both models;
+  - the horizontal marking in bicycle against car, with both models;
+  - the vertical signage in bicycle against motorcycle, correlated model, vertical panel. Its
+    variable keeps 0.23 % of its variance within, so it is not read.
+- **Cycleway, main panel:** negative in 7 of 8 pairs; pedestrian against car and bicycle against car
+  carry two stars and no dagger.
+- **The ten constants of the correlated model, 240:** 63 have a star and 24 keep the dagger, 6, 12
+  and 6 by panel. Speed cameras in pedestrian against car keep it in all three; 62 of the 80
+  constant-pair combinations have the same sign in the three panels.
+- **Hausman, 48 tests:** 2 have a star and 1 keeps the dagger, the vertical signage in bicycle
+  against motorcycle, as in section 29.
+
+**The horizontal marking as a flow does not say what the stock says.**
+
+| Pair | Stock, CRE | Flow, CRE |
+|---|---:|---:|
+| Bicycle against car | 0.189*** † | 0.005 |
+| Motorcycle against motorcycle | 0.151** | 0.015 |
+| Car against motorcycle | 0.089 | 0.061** † |
+| Bicycle against motorcycle | 0.080 | −0.064** |
+
+Standardised coefficients, each over its own variable's deviation. The stock is positive in 8 of 8
+pairs and the flow in 6. The dagger moves from bicycle against car to car against motorcycle, with
+both models in each case. Inside the correlated model, Hausman separates the flow's within effect
+from its between effect in four pairs after Holm (pedestrian and bicycle against both vehicles), and
+in none for the stock. On 2024 the flow variant predicts worse with fixed effects than the reference
+without the environment (−887.4 against −885.3), while the correlated model still beats both
+(−873.7). **The horizontal result depends on the assumption that what was painted is new marking**,
+which the amendment estimated the flow to test.
+
+**Moran**, as in section 29: motorcycle against motorcycle in the main and vertical panels with both
+models, and bicycle against motorcycle in the main panel with fixed effects. In the flow variant,
+motorcycle against motorcycle with fixed effects.
+
+**The presentation.** `deliverables/presentacion-panel-segunda/` draws every table and figure from
+this run through its generator; its `verificar_tablas.py` rereads 3 065 figures, stars and daggers
+against the run by its own path, and all agree.
