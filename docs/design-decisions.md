@@ -8401,6 +8401,84 @@ The model the thesis carries forward is the advisers' decision, from the present
 Not decided here and not to be proposed: which of the twelve candidates are finally excluded,
 which Mateo settles with Olmos.
 
+### Amended on 2026-11-03: the second run, declared before estimating
+
+**What prompted it.** Mateo presented the first attempt to the tutor and the panel adviser. They
+asked for:
+- significance thresholds of 10, 5 and 1 %;
+- coefficients presented as in the literature the panel adviser shared;
+- both models shown, with one of them chosen from a new run;
+- conclusions and a rigorous inference.
+
+Their answers, and each translation closed with Mateo one at a time on 2026-11-02 and 03, are in
+section 9 of `deliverables/informes/panel-primer-intento.md`. As before, **this section is
+committed before the second run is estimated**, so the rule that chooses the model is on record
+before its inputs exist.
+
+**What does not change.** The two models, their estimator, the three panels, the delays, the
+standardisation, the clustered errors, the validation on 2024 with the level fixed by the observed
+total, and Moran's criterion all stay as declared above. So does the observed set, estimated only
+for car occupants against motorcycles, which the presentation now shows as a contrast.
+
+**Significance.**
+- **Stars** at 10, 5 and 1 % on the unadjusted p-value of each coefficient, as in the articles.
+- **A dagger** on every coefficient that stays below 0.10 after Holm over the eight pairs, per
+  variable, within each panel and each model. The approved contract asks for a correction for
+  multiple comparisons, and the dagger keeps it without hiding the unadjusted reading.
+- **Coefficients** are reported standardised, with their clustered standard error below them; the
+  z statistic replaces the intervals in the backup. The percentage change per standard deviation
+  leaves the tables.
+
+**The rule that chooses the model, fixed before the run.** The correlated model is chosen if both
+conditions hold; if either fails, fixed effects.
+1. **Its within effects agree with those of fixed effects.** For every within effect of the
+   corrected set, in every panel and pair, the absolute difference between the two estimates is
+   smaller than one clustered standard error of the fixed-effects estimate.
+2. **It does not predict 2024 worse than fixed effects in most panels.** In each panel, the 2024
+   log-likelihood summed over the eight pairs, with the level fixed by the observed total; the
+   correlated model passes if its sum is not below fixed effects' in at least two of the three
+   panels.
+
+Why two conditions and not the prediction alone. The panel adviser proposed choosing by the 2024
+prediction, and that was agreed first. Mateo then said that, with similar results, he and the tutor
+would choose the correlated model for the ten constants, which fixed effects cannot estimate. That
+argument is written into the rule now so it cannot be used after the results are seen. Condition 1
+shows the correlated model loses nothing on the within effect; condition 2 keeps the prediction as
+a safeguard. The run computes both and writes the choice as a table, so no document decides it by
+hand.
+
+**The horizontal marking as a flow, estimated.** The first attempt declared the flow of the year
+as the reported alternative and did not estimate it. The second run does: the panel with both
+signages, both models, with the lagged flow of the year in place of the stock and nothing else
+changed. If the flow says what the stock says, the horizontal result does not rest on the
+assumption that what was painted is new marking. It is reported in the backup and does not enter
+the rule.
+
+**What leaves.**
+- **The BIC**, from the presentation; only the AIC remains, as the difference between the models.
+  The approved contract declares both, so the final report has to justify the change. The reason is
+  the advisers': the two criteria disagree over the training years (AIC with fixed effects in 24 of
+  24, BIC with the correlated model in 12, `run_20261027_052859`), and the choice is made by the rule
+  above, not by either criterion.
+- **The ratio between the two signages.** The vertical signage keeps 0.23 % of its variance with
+  unit and year effects, so its within effect is not identified, and a ratio with it as denominator
+  says nothing. The vertical signage stays in its two panels, declared not identified, because the
+  approved contract names it as one of the two series and it controls for the horizontal one, with
+  which it correlates at 0.55 in rank over the unit-years of the panel with both.
+- **Rolling validation** over 2022, 2023 and 2024 is dropped; 2024 is the only held-out year.
+- **The school-zone layer** does not enter.
+
+**Future work, not estimated.**
+- **The random slope on the cycleway**, amending what this decision settled above and the
+  postponement of 2026-10-27. Four reasons: the cycleway keeps 14.6 % of its variance within the
+  unit in the main panel and 3.55 % in the panel with both signages, so with 29 units the slope's
+  variance would be very imprecise; fixed effects cannot carry it, and it would break the comparison
+  between the two models; it needs a two-dimensional integral and a new verification; and the
+  dagger already guards the significance it was meant to protect.
+- **A spatial term for motorcycle against motorcycle**, where Moran asks for it in both models in
+  the main and vertical panels. The final report presents it as future work and states why Moran's
+  I is a sound criterion for suggesting it.
+
 ---
 
 ## D68 — Completeness per unit, by empirical Bayes, and the placebo regression on it
