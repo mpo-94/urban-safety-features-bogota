@@ -325,7 +325,8 @@ class RandomInterceptNB:
 # ---------------------------------------------------------------------------
 #
 # Everything below follows the D67 amendment of 2026-10-27, committed before the first
-# estimate. The design is the cross-sections' (the same rows, exposure and candidates, read
+# estimate, and the amendment of 2026-11-03, committed before the second: stars and a Holm dagger,
+# the horizontal marking also estimated as a flow, and the rule that chooses between the models. The design is the cross-sections' (the same rows, exposure and candidates, read
 # from the run that exported it), extended with the horizontal marking and with the delays;
 # nothing that decides what a cell counts is rebuilt here.
 
@@ -347,9 +348,15 @@ LEVEL_OBSERVED, LEVEL_CARRIED = "OBSERVED_TOTAL", "CARRIED_PREVIOUS_YEAR"
 Z = 1.959963984540054  # the two-sided 95 % normal quantile
 
 
+HORIZONTAL_FLOW = config.PANEL_HORIZONTAL_MARKING_FLOW
+
+
 def label_es(variable: str) -> str:
-    return (config.PANEL_HORIZONTAL_MARKING_LABEL_ES if variable == HORIZONTAL
-            else config.predictor_label_es(variable))
+    if variable == HORIZONTAL:
+        return config.PANEL_HORIZONTAL_MARKING_LABEL_ES
+    if variable == HORIZONTAL_FLOW:
+        return config.PANEL_HORIZONTAL_MARKING_FLOW_LABEL_ES
+    return config.predictor_label_es(variable)
 
 
 def read_design(log: RunLog) -> tuple[dict[str, pd.DataFrame], str]:
@@ -405,6 +412,7 @@ def unit_year_variables(design: pd.DataFrame, marking: pd.DataFrame) -> pd.DataF
       its year's close).
     - The horizontal marking of year t is what was painted from 2017 to the close of t - 1, the
       stock less the unknown 2016 stock that the unit effect absorbs, if what was painted is new.
+      Its flow, what was painted during t - 1 alone, is carried beside it for the variant panel.
     - The ten constants as they are.
     """
     columns = [config.AREA_CODE_COL, config.YEAR_COL, CYCLEWAY, VERTICAL, *CONSTANTS]
@@ -422,7 +430,7 @@ def unit_year_variables(design: pd.DataFrame, marking: pd.DataFrame) -> pd.DataF
     per_unit[VERTICAL] = grouped[VERTICAL].shift(1)
     lagged = marking[[config.AREA_CODE_COL, config.YEAR_COL, "CUMULATIVE", "FLOW"]].copy()
     lagged[config.YEAR_COL] = lagged[config.YEAR_COL] + 1  # the close of t - 1 accompanies year t
-    lagged = lagged.rename(columns={"CUMULATIVE": HORIZONTAL, "FLOW": HORIZONTAL + "_FLOW"})
+    lagged = lagged.rename(columns={"CUMULATIVE": HORIZONTAL, "FLOW": HORIZONTAL_FLOW})
     return per_unit.merge(lagged, on=[config.AREA_CODE_COL, config.YEAR_COL], how="left")
 
 
@@ -746,11 +754,12 @@ def coefficient_rows(panel: PanelData, fits: PairFits) -> list[dict]:
             b = float(fit.params[column])
             se = float(np.sqrt(max(fit.cov_clustered.loc[column, column], 0.0)))
             se_model = float(np.sqrt(max(fit.cov_model.loc[column, column], 0.0)))
-            p = float(2 * stats.norm.sf(abs(b / se))) if se > 0 else float("nan")
+            z = b / se if se > 0 else float("nan")
+            p = float(2 * stats.norm.sf(abs(z))) if se > 0 else float("nan")
             rows.append({
                 "DATASET": panel.dataset, "PANEL": panel.spec.key, "PAIR": fits.pair, "MODEL": fit.model,
                 "TERM": variable, "ROLE": role, "COEFFICIENT": b, "SE_CLUSTERED": se, "SE_MODEL": se_model,
-                "P_VALUE": p, "CI_LOW": b - Z * se, "CI_HIGH": b + Z * se,
+                "Z_STATISTIC": z, "P_VALUE": p, "STARS": stars(p), "CI_LOW": b - Z * se, "CI_HIGH": b + Z * se,
                 "PERCENT": 100 * np.expm1(b), "PERCENT_LOW": 100 * np.expm1(b - Z * se),
                 "PERCENT_HIGH": 100 * np.expm1(b + Z * se),
                 "SD_NATURAL": panel.sd.get(variable, float("nan")), "CONVERGED": fit.converged,
@@ -815,43 +824,9 @@ def validation_rows(panel: PanelData, fits: PairFits) -> list[dict]:
     return rows
 
 
-def fieller(a: float, b: float, var_a: float, var_b: float, cov_ab: float) -> tuple[float, float, bool]:
-    """The Fieller interval of a / b at 95 %, and whether it is bounded.
-
-    It is the set of r with (a - r b)^2 <= z^2 (var_a - 2 r cov_ab + r^2 var_b). Bounded only when
-    the denominator is itself distinguishable from zero, b^2 > z^2 var_b; otherwise the set is the
-    whole line or its complement and no interval can be given.
-    """
-    q = Z**2
-    A = b**2 - q * var_b
-    B = -2 * (a * b - q * cov_ab)
-    C = a**2 - q * var_a
-    if A <= 0:
-        return float("nan"), float("nan"), False
-    disc = B**2 - 4 * A * C
-    if disc < 0:
-        return float("nan"), float("nan"), False
-    root = np.sqrt(disc)
-    return float((-B - root) / (2 * A)), float((-B + root) / (2 * A)), True
-
-
-def ratio_rows(panel: PanelData, fits: PairFits) -> list[dict]:
-    """Vertical over horizontal in natural units: kilometres of marking per one sign, per km²."""
-    if not {VERTICAL, HORIZONTAL} <= set(panel.spec.varying):
-        return []
-    rows = []
-    for fit, prefix in ((fits.fe, ""), (fits.cre, "W")):
-        v = f"{prefix}[{VERTICAL}]" if prefix else VERTICAL
-        h = f"{prefix}[{HORIZONTAL}]" if prefix else HORIZONTAL
-        # A standardised coefficient divided by its deviation is the coefficient per natural unit.
-        sv, sh = panel.sd[VERTICAL], panel.sd[HORIZONTAL]
-        a, b = float(fit.params[v]) / sv, float(fit.params[h]) / sh
-        cov = fit.cov_clustered
-        low, high, bounded = fieller(a, b, cov.loc[v, v] / sv**2, cov.loc[h, h] / sh**2, cov.loc[v, h] / (sv * sh))
-        rows.append({"DATASET": panel.dataset, "PANEL": panel.spec.key, "PAIR": fits.pair, "MODEL": fit.model,
-                     "VERTICAL_PER_SIGN": a, "HORIZONTAL_PER_KM": b, "RATIO": a / b if b != 0 else float("nan"),
-                     "LOW": low, "HIGH": high, "BOUNDED": bounded, "CONVERGED": fit.converged})
-    return rows
+def stars(p: float) -> int:
+    """How many of the declared levels (10, 5 and 1 %) the unadjusted p-value is below."""
+    return int(sum(p < level for level in config.PANEL_STAR_LEVELS)) if np.isfinite(p) else 0
 
 
 def holm(table: pd.DataFrame, keys: list[str], column: str = "P_VALUE") -> pd.Series:
@@ -862,6 +837,67 @@ def holm(table: pd.DataFrame, keys: list[str], column: str = "P_VALUE") -> pd.Se
         if valid.any():
             adjusted.loc[block.index[valid]] = multipletests(block.loc[valid, column], method="holm")[1]
     return adjusted
+
+
+# -- the rule that chooses the model (amendment of 2026-11-03) ---------------------------------
+
+def rule_within(coefficients: pd.DataFrame) -> pd.DataFrame:
+    """Condition 1, effect by effect: how far the correlated model's within effect lies from the
+    fixed-effects estimate, in clustered standard errors of the latter.
+
+    Over the reported panels and the corrected set only, the ones the rule speaks about. A pair
+    where either model did not converge cannot show agreement, so it fails the condition.
+    """
+    reported = [spec.key for spec in config.PANEL_SPECS]
+    within = coefficients[(coefficients["ROLE"] == WITHIN) & (coefficients["DATASET"] == config.CORRECTED_DATASET)
+                          & coefficients["PANEL"].isin(reported)]
+    keys = ["PANEL", "PAIR", "TERM"]
+    fe = within[within["MODEL"] == FE_NB].set_index(keys)
+    cre = within[within["MODEL"] == CRE].set_index(keys).reindex(fe.index)
+    table = pd.DataFrame({
+        "COEFFICIENT_FE": fe["COEFFICIENT"], "SE_FE": fe["SE_CLUSTERED"],
+        "COEFFICIENT_CRE": cre["COEFFICIENT"],
+        "CONVERGED": fe["CONVERGED"].astype(bool) & cre["CONVERGED"].fillna(False).astype(bool),
+    })
+    table["DIFFERENCE_IN_SE"] = (table["COEFFICIENT_CRE"] - table["COEFFICIENT_FE"]).abs() / table["SE_FE"]
+    table["AGREES"] = table["CONVERGED"] & (table["DIFFERENCE_IN_SE"] < config.PANEL_RULE_WITHIN_SE)
+    return table.reset_index()
+
+
+def rule_prediction(validation: pd.DataFrame) -> pd.DataFrame:
+    """Condition 2, panel by panel: the 2024 log-likelihood of each model summed over the pairs,
+    with the level fixed by the observed total."""
+    reported = [spec.key for spec in config.PANEL_SPECS]
+    held = validation[(validation["DATASET"] == config.CORRECTED_DATASET)
+                      & (validation["LEVEL"] == LEVEL_OBSERVED)
+                      & validation["PANEL"].isin(reported) & validation["MODEL"].isin([FE_NB, CRE])]
+    grouped = held.groupby(["PANEL", "MODEL"])
+    summed = grouped["LOG_LIKELIHOOD"].sum().unstack()
+    pairs = grouped["PAIR"].count().unstack()
+    converged = grouped["CONVERGED"].all().unstack()
+    table = pd.DataFrame({
+        "LOG_LIKELIHOOD_FE": summed[FE_NB], "LOG_LIKELIHOOD_CRE": summed[CRE],
+        "PAIRS": pairs[CRE], "CONVERGED": converged[FE_NB] & converged[CRE],
+    })
+    table["CRE_MINUS_FE"] = table["LOG_LIKELIHOOD_CRE"] - table["LOG_LIKELIHOOD_FE"]
+    table["CRE_NOT_WORSE"] = table["CONVERGED"] & (table["CRE_MINUS_FE"] >= 0)
+    return table.reindex(reported).rename_axis("PANEL").reset_index()
+
+
+def model_choice(within: pd.DataFrame, prediction: pd.DataFrame) -> pd.DataFrame:
+    """The rule applied: the correlated model if both conditions hold, fixed effects otherwise."""
+    first = bool(within["AGREES"].all())
+    panels_not_worse = int(prediction["CRE_NOT_WORSE"].sum())
+    second = panels_not_worse >= config.PANEL_RULE_PANELS_NEEDED
+    return pd.DataFrame([{
+        "WITHIN_EFFECTS": len(within), "WITHIN_AGREE": int(within["AGREES"].sum()),
+        "LARGEST_DIFFERENCE_IN_SE": float(within["DIFFERENCE_IN_SE"].max()),
+        "MEDIAN_DIFFERENCE_IN_SE": float(within["DIFFERENCE_IN_SE"].median()),
+        "CONDITION_WITHIN": first,
+        "PANELS": len(prediction), "PANELS_CRE_NOT_WORSE": panels_not_worse,
+        "PANELS_NEEDED": config.PANEL_RULE_PANELS_NEEDED, "CONDITION_PREDICTION": second,
+        "CHOSEN_MODEL": CRE if first and second else FE_NB,
+    }])
 
 
 def variables_rows(panel: PanelData) -> list[dict]:
@@ -878,10 +914,10 @@ def run(log: RunLog) -> dict[str, pd.DataFrame]:
     marking = horizontal_marking(units, log)
     out: dict[str, list] = {name: [] for name in
                             ("coefficients", "models", "hausman", "moran", "validation", "predictions",
-                             "ratio", "variables", "panel_rows")}
+                             "variables", "panel_rows")}
     jobs = [(config.CORRECTED_DATASET, pair.name) for pair in config.REGRESSION_PAIRS]
     jobs.append((config.OBSERVED_DATASET, config.PANEL_SENSITIVITY_PAIR))
-    for spec in config.PANEL_SPECS:
+    for spec in config.PANEL_ESTIMATED_SPECS:
         panels = {}
         for dataset in sorted({d for d, _ in jobs}):
             variables = unit_year_variables(designs[dataset], marking)
@@ -897,7 +933,6 @@ def run(log: RunLog) -> dict[str, pd.DataFrame]:
             out["moran"] += moran_rows(panel, fits, weights, codes)
             out["validation"] += validation_rows(panel, fits)
             out["predictions"].append(fits.predictions.assign(DATASET=dataset, PANEL=spec.key, PAIR=pair))
-            out["ratio"] += ratio_rows(panel, fits)
             log.info("%s %s %s: FE %s, CRE %s", dataset, spec.key, pair,
                      "converged" if fits.fe.converged else "NOT converged",
                      "converged" if fits.cre.converged else "NOT converged")
@@ -905,9 +940,16 @@ def run(log: RunLog) -> dict[str, pd.DataFrame]:
                      else pd.DataFrame(rows)) for name, rows in out.items()}
     coefficients = tables["coefficients"]
     coefficients["P_HOLM"] = holm(coefficients, ["DATASET", "PANEL", "MODEL", "TERM", "ROLE"])
+    coefficients["HOLM_DAGGER"] = coefficients["P_HOLM"] < config.PANEL_HOLM_ALPHA
     tables["hausman"]["P_HOLM"] = holm(tables["hausman"], ["DATASET", "PANEL", "TERM"])
     tables["moran"]["P_HOLM"] = holm(tables["moran"], ["DATASET", "PANEL", "MODEL"])
     tables["moran"]["ASKS_FOR_SPATIAL_TERM"] = tables["moran"]["P_HOLM"] < config.PANEL_MORAN_ALPHA
+    for table in tables.values():
+        if "PANEL" in table:
+            table["VARIANT"] = table["PANEL"].map(lambda key: config.PANEL_SPECS_BY_KEY[key].variant)
+    tables["rule_within"] = rule_within(coefficients)
+    tables["rule_prediction"] = rule_prediction(tables["validation"])
+    tables["choice"] = model_choice(tables["rule_within"], tables["rule_prediction"])
     tables["marking"] = marking
     for table in tables.values():
         table.attrs["source_run"] = source_run
@@ -928,9 +970,21 @@ def verify(tables: dict[str, pd.DataFrame], log: RunLog) -> list[str]:
     gap = (observed_level["PREDICTED_TOTAL"] - observed_level["OBSERVED_TOTAL"]).abs().max()
     if gap > 1e-6:
         failures.append(f"with the level fixed by the observed total the totals differ by {gap}")
-    ratio = tables["ratio"]
-    if len(ratio) and ((ratio["RATIO"] - ratio["VERTICAL_PER_SIGN"] / ratio["HORIZONTAL_PER_KM"]).abs() > 1e-9).any():
-        failures.append("the ratio does not equal the quotient of its two coefficients")
+    # The rule must have read every within effect and every panel it speaks about.
+    expected_within = len(config.REGRESSION_PAIRS) * sum(len(spec.varying) for spec in config.PANEL_SPECS)
+    if len(tables["rule_within"]) != expected_within:
+        failures.append(f"condition 1 read {len(tables['rule_within'])} within effects, not {expected_within}")
+    prediction = tables["rule_prediction"]
+    if len(prediction) != len(config.PANEL_SPECS) or (prediction["PAIRS"] != len(config.REGRESSION_PAIRS)).any():
+        failures.append("condition 2 did not sum the eight pairs of each reported panel")
+    coefficients = tables["coefficients"]
+    if (coefficients["P_VALUE"].apply(stars) != coefficients["STARS"]).any():
+        failures.append("the stars do not follow the declared levels")
+    choice = tables["choice"].iloc[0]
+    log.info("model chosen by the rule: %s (condition 1 %s, %d of %d within effects agree; "
+             "condition 2 %s, %d of %d panels)", choice["CHOSEN_MODEL"], choice["CONDITION_WITHIN"],
+             choice["WITHIN_AGREE"], choice["WITHIN_EFFECTS"], choice["CONDITION_PREDICTION"],
+             choice["PANELS_CRE_NOT_WORSE"], choice["PANELS"])
     return failures
 
 

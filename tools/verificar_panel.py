@@ -11,7 +11,8 @@ numbers to be judged.
      `demarcacion_por_unidad.measure`, which measures the same layer independently.
   2. **The delays.** Every unit-year of the panel against the raw design: the cycleway as the
      mean of the year and the previous one, the vertical signage as the previous year's value, the
-     horizontal as the sum painted up to the previous year.
+     horizontal as the sum painted up to the previous year, and its flow as what was painted in
+     the previous year alone.
   3. **What is left to each variable.** The route's share of variance left by unit and year
      effects against `variacion_para_el_panel.variance_shares` on the same rows.
   4. **Holm.** Recomputed per variable over the eight pairs with statsmodels.
@@ -22,6 +23,9 @@ numbers to be judged.
      pair by pair. Not required to be equal with a log link (D67); reported, and failed only if a
      sign flips between fixed effects and the correlated model on an effect that either declares
      significant.
+  7. **Significance and the rule** (amendment of 2026-11-03). The stars and the dagger recounted
+     from the p-values, and the model choice recomputed from the coefficient and validation tables
+     by a path of its own, against the route's rule tables.
 """
 
 from __future__ import annotations
@@ -84,7 +88,7 @@ def main() -> int:
                                         (raw[panel.CYCLEWAY] + raw["PREV_CYCLEWAY"]) / 2, raw[panel.CYCLEWAY])
     raw["EXPECTED_VERTICAL"] = raw.groupby(config.AREA_CODE_COL)[panel.VERTICAL].shift(1)
     cumulative = marking.sort_values([config.AREA_CODE_COL, "YEAR"]).assign(YEAR=lambda t: t["YEAR"] + 1)
-    expected = raw.merge(cumulative[[config.AREA_CODE_COL, "YEAR", "CUMULATIVE"]],
+    expected = raw.merge(cumulative[[config.AREA_CODE_COL, "YEAR", "CUMULATIVE", "FLOW"]],
                          on=[config.AREA_CODE_COL, "YEAR"], how="left")
     corrected = rows[rows["DATASET"] == config.CORRECTED_DATASET].drop_duplicates(["PANEL", config.AREA_CODE_COL, "YEAR"])
     checked = corrected.merge(expected, on=[config.AREA_CODE_COL, "YEAR"], suffixes=("", "_RAW"))
@@ -92,6 +96,7 @@ def main() -> int:
         "cycleway": float((checked[panel.CYCLEWAY] - checked["EXPECTED_CYCLEWAY"]).abs().max()),
         "vertical": float((checked[panel.VERTICAL] - checked["EXPECTED_VERTICAL"]).abs().max(skipna=True)),
         "horizontal": float((checked[panel.HORIZONTAL] - checked["CUMULATIVE"]).abs().max(skipna=True)),
+        "horizontal flow": float((checked[panel.HORIZONTAL_FLOW] - checked["FLOW"]).abs().max(skipna=True)),
     }
     print(f"2. delays, over {len(checked)} panel unit-years: largest gaps " +
           ", ".join(f"{k} {v:.2e}" for k, v in worst.items()))
@@ -100,7 +105,7 @@ def main() -> int:
 
     variables = read(run, "variables")
     print("3. variance left by unit and year effects, route against variance_shares:")
-    for spec in config.PANEL_SPECS:
+    for spec in config.PANEL_ESTIMATED_SPECS:
         unit_years = corrected[corrected["PANEL"] == spec.key]
         shares = variacion.variance_shares(unit_years, spec.varying).set_index("variable")["two_way_share"]
         ours = variables[(variables["PANEL"] == spec.key) & (variables["DATASET"] == config.CORRECTED_DATASET)] \
@@ -141,10 +146,41 @@ def main() -> int:
         print(flips.to_string())
         failures.append("fixed effects and the correlated model disagree in sign on a significant within effect")
 
+    # The levels are typed here rather than read from config, so a change there shows as a failure.
+    recounted = sum((coefficients["P_VALUE"] < level).astype(int) for level in (0.10, 0.05, 0.01))
+    dagger = coefficients["P_HOLM"] < 0.10
+    print(f"7. stars recounted at 10, 5 and 1 %: {int((recounted != coefficients['STARS']).sum())} differ; "
+          f"daggers at 10 % after Holm: {int((dagger != coefficients['HOLM_DAGGER']).sum())} differ")
+    if (recounted != coefficients["STARS"]).any() or (dagger != coefficients["HOLM_DAGGER"]).any():
+        failures.append("the stars or the dagger do not follow the declared levels")
+    reported = [spec.key for spec in config.PANEL_SPECS]
+    mine = within[within["PANEL"].isin(reported)]
+    by_model = {m: mine[mine["MODEL"] == m].set_index(["PANEL", "PAIR", "TERM"]) for m in (panel.FE_NB, panel.CRE)}
+    gap_se = ((by_model[panel.CRE]["COEFFICIENT"] - by_model[panel.FE_NB]["COEFFICIENT"]).abs()
+              / by_model[panel.FE_NB]["SE_CLUSTERED"])
+    converged = by_model[panel.CRE]["CONVERGED"] & by_model[panel.FE_NB]["CONVERGED"]
+    first = bool(((gap_se < 1.0) & converged).all())
+    held = validation[(validation["DATASET"] == config.CORRECTED_DATASET)
+                      & (validation["LEVEL"] == panel.LEVEL_OBSERVED) & validation["PANEL"].isin(reported)]
+    sums = held.pivot_table(index="PANEL", columns="MODEL", values="LOG_LIKELIHOOD", aggfunc="sum")
+    not_worse = int((sums[panel.CRE] >= sums[panel.FE_NB]).sum())
+    chosen = panel.CRE if first and not_worse >= 2 else panel.FE_NB
+    choice = read(run, "choice").iloc[0]
+    rule_within = read(run, "rule_within")
+    print(f"   condition 1: {len(gap_se)} within effects, largest gap {gap_se.max():.3f} SE, holds: {first} "
+          f"(route: {bool(choice['CONDITION_WITHIN'])}, {len(rule_within)} rows)")
+    print(f"   condition 2: correlated not worse in {not_worse} of {len(sums)} panels "
+          f"(route: {int(choice['PANELS_CRE_NOT_WORSE'])})")
+    print(f"   chosen: {chosen} (route: {choice['CHOSEN_MODEL']})")
+    if (chosen != choice["CHOSEN_MODEL"] or first != bool(choice["CONDITION_WITHIN"])
+            or not_worse != int(choice["PANELS_CRE_NOT_WORSE"]) or len(rule_within) != len(gap_se)
+            or abs(float(gap_se.max()) - float(choice["LARGEST_DIFFERENCE_IN_SE"])) > 1e-12):
+        failures.append("the rule recomputed does not give the route's choice")
+
     if failures:
         print("\nFAILED: " + "; ".join(failures))
         return 1
-    print("\nall six checks pass")
+    print("\nall seven checks pass")
     return 0
 
 

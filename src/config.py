@@ -2135,6 +2135,9 @@ class PanelSpec:
     first_year: int
     last_year: int
     varying: tuple[str, ...]
+    # Whether the panel is one of the three the study reports or a variant of one of them, which
+    # the backup shows and the rule that chooses the model never reads (amendment of 2026-11-03).
+    variant: str = "PRIMARY"
 
     @property
     def years(self) -> tuple[int, ...]:
@@ -2171,7 +2174,22 @@ PANEL_SPECS: tuple[PanelSpec, ...] = (
     PanelSpec("DOS", "Panel con las dos señalizaciones", 2018, 2024,
               ("CYCLEWAY_LENGTH_DENSITY", "VERTICAL_SIGNAGE_DENSITY", PANEL_HORIZONTAL_MARKING)),
 )
-PANEL_SPECS_BY_KEY = {spec.key: spec for spec in PANEL_SPECS}
+PANEL_PRIMARY = "PRIMARY"
+
+# The horizontal marking as the flow of the year, lagged the same way: what was painted during
+# t - 1 alone. Estimated in the panel with both signages in place of the stock and nothing else
+# changed (amendment of 2026-11-03), because the stock rests on the assumption that what was
+# painted is new marking; if the flow says the same, the result does not rest on it.
+PANEL_HORIZONTAL_MARKING_FLOW = "HORIZONTAL_MARKING_FLOW"
+PANEL_HORIZONTAL_MARKING_FLOW_LABEL_ES = "Señalización horizontal, flujo"
+PANEL_FLOW_VARIANT = "HORIZONTAL_FLOW"
+PANEL_VARIANT_SPECS: tuple[PanelSpec, ...] = (
+    PanelSpec("DOS_FLUJO", "Panel con las dos señalizaciones, horizontal como flujo", 2018, 2024,
+              ("CYCLEWAY_LENGTH_DENSITY", "VERTICAL_SIGNAGE_DENSITY", PANEL_HORIZONTAL_MARKING_FLOW),
+              variant=PANEL_FLOW_VARIANT),
+)
+PANEL_ESTIMATED_SPECS = PANEL_SPECS + PANEL_VARIANT_SPECS
+PANEL_SPECS_BY_KEY = {spec.key: spec for spec in PANEL_ESTIMATED_SPECS}
 
 # The year every model is fitted without and asked to predict. All three panels end
 # in it, because the signage delays bring 2024 back to the two that carry signage.
@@ -2185,6 +2203,17 @@ PANEL_SENSITIVITY_PAIR = "CAR__MOTORCYCLE"
 PANEL_MORAN_PERMUTATIONS = 999
 PANEL_MORAN_ALPHA = 0.05
 PANEL_RANDOM_SEED = 20261027
+# Significance as the second run reports it (amendment of 2026-11-03): stars at these levels on
+# the unadjusted p-value, as the articles the panel adviser shared do, and a dagger on what stays
+# below PANEL_HOLM_ALPHA after Holm over the eight pairs, which keeps the approved correction.
+PANEL_STAR_LEVELS = (0.10, 0.05, 0.01)
+PANEL_HOLM_ALPHA = 0.10
+# The rule that chooses between the two models, fixed before the second run. Condition 1: every
+# within effect of the correlated model lies within this many clustered standard errors of the
+# fixed-effects estimate. Condition 2: its 2024 log-likelihood, summed over the eight pairs, is not
+# below fixed effects' in at least this many of the three reported panels.
+PANEL_RULE_WITHIN_SE = 1.0
+PANEL_RULE_PANELS_NEEDED = 2
 
 
 # -- the unit that does not enter the models --------------------------------
