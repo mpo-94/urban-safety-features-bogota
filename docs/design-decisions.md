@@ -8460,6 +8460,11 @@ the rule.
   the advisers': the two criteria disagree over the training years (AIC with fixed effects in 24 of
   24, BIC with the correlated model in 12, `run_20261027_052859`), and the choice is made by the rule
   above, not by either criterion.
+  *Corrected on 2026-11-04:* the approved project does not declare the BIC. The sentence comparing AIC
+  and BIC in `deliverables/anteproyecto/texto_corregido_v2/main.tex` is on a commented line (284)
+  and does not appear in the document; the text in force mentions neither criterion. The BIC is
+  this decision's, and the final report's own section 4.8.4, which promises both are reported
+  together, is what has to change.
 - **The ratio between the two signages.** The vertical signage keeps 0.23 % of its variance with
   unit and year effects, so its within effect is not identified, and a ratio with it as denominator
   says nothing. The vertical signage stays in its two panels, declared not identified, because the
