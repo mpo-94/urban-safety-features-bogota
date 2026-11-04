@@ -8536,6 +8536,16 @@ and the tutor asked for this test in its place.
 
 The test does not enter the rule, which was applied before it existed.
 
+**Status on 2026-11-04: run and verified, `run_20261104_002829`**, which reproduces every table of
+the previous run and is now the one to quote.
+- The cycleway adds nothing to predicting 2018: over the seven estimated pairs the correlated model
+  scores −728.5 with it and −728.6 without it. Both beat the reference, at −749.5.
+- None of the cycleway effects learned on 2012–2017 is significant.
+- Car occupants against motorcycles is not estimated: its dispersion goes to zero on those years.
+
+Section 31 of `docs/verification-report.md`; the presentation is
+`deliverables/presentacion-prueba-2018/`.
+
 ---
 
 ## D68 — Completeness per unit, by empirical Bayes, and the placebo regression on it

@@ -5282,3 +5282,69 @@ motorcycle against motorcycle with fixed effects.
 **The presentation.** `deliverables/presentacion-panel-segunda/` draws every table and figure from
 this run through its generator; its `verificar_tablas.py` rereads 3 065 figures, stars and daggers
 against the run by its own path, and all agree.
+
+## 31. The growth-year prediction test
+
+**Run:** `run_20261104_002829`, route `panel`. Declared before estimating in the D67 amendment of
+2026-11-04 (commit `156b0b6`); the route is commit `6d04deb`. **This is now the run to quote for the
+panel**: every table of section 30's run is reproduced exactly, including every coefficient, Holm
+p-value, 2024 log-likelihood and the choice. The run adds the test.
+
+**What it fits.** The correlated model of the main panel, fitted on 2012–2017, predicts 2018, the last
+year of the cycleway network's jump. It is compared against the same model without the cycleway and
+against the reference with unit and year effects and no built-environment variable. Eight pairs,
+corrected set. The level of 2018 is fixed by the observed total of each pair, the affected parties of
+the corrected set over the 29 units; the effect of 2017 carried forward is the alternative.
+
+**Convergence.** Every fit converges except car occupants against motorcycles, where both correlated
+models stop short:
+- with the cycleway, gradient 1.8e-3 and dispersion 1.6e-8;
+- without it, gradient 1.2e-2 and dispersion 2.3e-9.
+
+The dispersion goes to zero and the fit sits at the Poisson limit. On 2012–2017 that pair's corrected
+counts are mostly the correction's estimate, smoother than counts. As D67 requires, the pair is
+reported as not estimated and not replaced by another estimator. The sums run over the other seven,
+and Holm excludes it.
+
+**Checks.** `tools/verificar_panel.py` passes its eight checks. The eighth reproduces the test:
+- the 2018 totals against the panel's rows (gap 0);
+- the fixed level (1e-12);
+- the error and R² recomputed from the unit predictions (gap 0);
+- the training and test years;
+- Holm and the stars.
+
+**What it found.** With the level fixed by the observed total, the 2018 log-likelihood (higher is
+better):
+
+| Pair | With the cycleway | Without it | Reference |
+|---|---:|---:|---:|
+| Pedestrian against motorcycle | −113.3 | −113.4 | −118.3 |
+| Pedestrian against car | −106.6 | −106.6 | −111.1 |
+| Bicycle against motorcycle | −93.1 | −91.8 | −98.9 |
+| Bicycle against car | −107.1 | −107.2 | −109.1 |
+| Motorcycle against motorcycle | −88.6 | −90.6 | −90.7 |
+| Motorcycle against car | −117.3 | −117.7 | −120.1 |
+| Car against motorcycle | not estimated | not estimated | −100.1 |
+| Car against car | −102.5 | −101.2 | −101.4 |
+| **The seven** | **−728.5** | **−728.6** | **−749.5** |
+
+- **The cycleway adds nothing to predicting 2018.** Over the seven pairs the two correlated models
+  differ by 0.05. The model with it is not worse in 5 of 7 pairs; it is worse in bicycle against
+  motorcycle and in car against car.
+- **Both correlated models beat the reference**, by 21 points over the seven.
+- **With 2017's effect carried forward**, the model with the cycleway is worse than the one without
+  (−814.5 against −798.4) and is not worse in 4 of 7 pairs. The reference trails at −838.4.
+
+**What the model learned on 2012–2017.**
+- The cycleway's within effect is significant in none of the seven estimated pairs, with or without
+  Holm.
+- It is negative in four and positive in three: bicycle against motorcycle 0.090, bicycle against
+  car 0.016, motorcycle against motorcycle 0.188.
+- In those years the averaged cycleway keeps 4.36 % of its variance after unit and year effects,
+  against 14.60 % over the whole panel. The effect is learned on little change and is imprecise, and
+  it is then asked to predict the year of largest change: the unit mean of the averaged cycleway goes
+  from 0.690 to 0.918 between 2017 and 2018.
+
+**The presentation.** `deliverables/presentacion-prueba-2018/` draws its tables and figure from this
+run, and its `verificar_tablas.py` rereads 112 figures, stars and daggers against the run, all
+agreeing.
