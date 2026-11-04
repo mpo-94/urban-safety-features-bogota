@@ -8480,6 +8480,12 @@ the rule.
   variance would be very imprecise; fixed effects cannot carry it, and it would break the comparison
   between the two models; it needs a two-dimensional integral and a new verification; and the
   dagger already guards the significance it was meant to protect.
+  *Added on 2026-11-04, the reason the final report gives:* the concern that motivates a random slope
+  is standard errors that come out too small when the effect varies between units (Bell et al.
+  2019, Mannering et al. 2016). The panel's errors are clustered by unit, and the cluster sandwich
+  stays valid under any correlation among a unit's years, including the one a unit-specific slope
+  would induce. What is lost without the slope is how much the effect varies between units, not the
+  validity of the errors.
 - **A spatial term for motorcycle against motorcycle**, where Moran asks for it in both models in
   the main and vertical panels. The final report presents it as future work and states why Moran's
   I is a sound criterion for suggesting it.
