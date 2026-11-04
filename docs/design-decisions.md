@@ -8485,7 +8485,56 @@ gap 0.20), and it predicts 2024 at least as well in all three panels. The three 
 reproduce the first run exactly. The horizontal marking as a flow does not say what the stock says,
 so the horizontal result rests on the assumption that what was painted is new. Section 30 of
 `docs/verification-report.md` has the figures; the presentation is
-`deliverables/presentacion-panel-segunda/`.
+`deliverables/presentacion-panel-segunda/`. Both advisers agreed with the choice.
+
+### Amended on 2026-11-04: the growth-year prediction test, declared before estimating
+
+**What prompted it.** After the second run, the tutor asked for a prediction test of the chosen
+model on the years in which the cycleway grows. The validation on 2024 falls in a year when the
+cycleway barely moved: it grew in 3 of the 29 units, so that test says little about it. Each
+translation below was closed with Mateo one at a time on 2026-11-03 and 04; the record is section 8
+of `deliverables/informes/panel-segunda-corrida.md`.
+
+**The strict exogeneity test is dropped.** The lead test this decision declared for the cycleway is
+not estimated and the thesis does not mention it. It is not a commitment of the approved project,
+and the tutor asked for this test in its place.
+
+**What is estimated.**
+- **Panel and model.** The main panel and the correlated random effects model, the one the rule
+  chose.
+- **Years.** Fitted on 2012–2017 and predicting 2018, the last year of the network's jump.
+  - The city cycleway is flat at 0.42 km per km² from 2012 to 2015.
+  - It rises 22.1 %, 57.9 % and 14.7 % in 2016, 2017 and 2018, growing in 24 to 28 of the 29 units.
+  - It grows between 2.1 % and 9.2 % a year after that, and stalls in 2024.
+
+  These figures come from the series behind the report's figure of the two time-varying candidates,
+  `run_20261009_084114`.
+- **Three models, all on the same training rows.**
+  - The correlated model with the cycleway.
+  - The same correlated model without it, which isolates what the cycleway adds to predicting 2018.
+  - The reference of the 2024 validation, with unit and year effects and no built-environment
+    variable.
+- **What stays as in the 2024 validation.** The unit means are computed on the training years. The
+  correlated models predict with each unit's posterior intercept from those years. Every variable
+  keeps the standardisation of the full main panel, so the cycleway coefficient learned on
+  2012–2017 is per the same standard deviation as the full panel's.
+- **The level of 2018.** It is fixed by the observed total of the pair in 2018: the affected parties
+  of the corrected set summed over the 29 units. The effect of 2017 carried forward is reported in
+  the backup. 2018 is the year of the recording break. The fixed-effects year effect jumps by 0.18
+  to 0.30 from 2017 to 2018 in seven pairs, so carrying 2017 would leave all three models short by
+  the same amount.
+- **Pairs and set.** The eight pairs, corrected set only.
+
+**What is read.**
+- For each pair and in total over the eight: the 2018 log-likelihood, the mean absolute error and
+  the R², with the correlated model against the same model without the cycleway.
+- The cycleway's within effect learned on 2012–2017, with its clustered error, stars and Holm
+  dagger over the eight pairs, beside the full panel's.
+- In 2012–2017 the averaged cycleway keeps 4.36 % of its variance after unit and year effects,
+  against 14.60 % over the whole panel. The test asks the model to predict the year of largest
+  change with an effect learned on little change, and it is read that way.
+
+The test does not enter the rule, which was applied before it existed.
 
 ---
 
