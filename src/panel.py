@@ -900,6 +900,88 @@ def model_choice(within: pd.DataFrame, prediction: pd.DataFrame) -> pd.DataFrame
     }])
 
 
+# -- the growth-year prediction test (amendment of 2026-11-04) -----------------------------------
+
+CRE_WITHOUT_CYCLEWAY = "CRE_WITHOUT_CYCLEWAY"
+
+
+def growth_test(panel: PanelData, pair: str) -> tuple[pd.DataFrame, list[dict]]:
+    """The chosen model fitted on the years before the test year, predicting it, against the same
+    model without the cycleway and the reference.
+
+    The rows are the main panel's, so every variable keeps its standardisation over the full panel
+    and the cycleway coefficient learned here is per the same deviation as the panel's. As in
+    `validate`, the unit means come from the training years, the correlated models predict with each
+    unit's posterior intercept from them, and the level of the test year is fixed by the observed
+    total or carried from the year before. Returns the predictions and the cycleway's within and
+    between effects as learned on the training years.
+    """
+    test_year = config.PANEL_GROWTH_TEST_YEAR
+    rows = panel.rows[(panel.rows["PAIR"] == pair) & (panel.rows[config.YEAR_COL] <= test_year)]
+    train = rows[rows[config.YEAR_COL] < test_year].reset_index(drop=True)
+    test = rows[rows[config.YEAR_COL] == test_year].reset_index(drop=True)
+    units = sorted(train[config.AREA_CODE_COL].unique())
+    years = sorted(train[config.YEAR_COL].unique())
+    y_train = train[RESPONSE].to_numpy(dtype=float)
+    off_train = np.log(train[EXPOSURE].to_numpy(dtype=float))
+    g_train = train[config.AREA_CODE_COL].to_numpy()
+    off_test = np.log(test[EXPOSURE].to_numpy(dtype=float))
+    observed = test[RESPONSE].to_numpy(dtype=float)
+    total = float(observed.sum())
+    previous = f"YEAR[{test_year - 1}]"
+    out, learned = [], []
+
+    def record(model: str, base: np.ndarray, carried: float, alpha: float, converged: bool):
+        for level, shift in ((LEVEL_OBSERVED, _level(base, total)), (LEVEL_CARRIED, carried)):
+            out.append(pd.DataFrame({
+                config.AREA_CODE_COL: test[config.AREA_CODE_COL], config.YEAR_COL: test_year,
+                "MODEL": model, "LEVEL": level, "OBSERVED": observed, "PREDICTED": np.exp(base + shift),
+                "ALPHA": alpha, "CONVERGED": converged}))
+
+    for model, varying in ((CRE, panel.spec.varying), (CRE_WITHOUT_CYCLEWAY, ())):
+        means = unit_means(train, varying)
+        X = cre_design(train, varying, means, years)
+        mundlak = fit_negative_binomial(y_train, X, off_train, g_train, MUNDLAK)
+        fit = fit_cre(y_train, X, off_train, g_train, mundlak)
+        X_test = cre_design(test, varying, means, years)
+        scale = fit.unit_scale.reindex(test[config.AREA_CODE_COL]).to_numpy()
+        base = off_test + X_test.to_numpy() @ fit.params.reindex(X_test.columns).fillna(0.0).to_numpy() + np.log(scale)
+        record(model, base, float(fit.params.get(previous, 0.0)), fit.alpha, fit.converged)
+        for column, variable, role in _terms(fit):
+            if role not in (WITHIN, BETWEEN):
+                continue
+            b = float(fit.params[column])
+            se = float(np.sqrt(max(fit.cov_clustered.loc[column, column], 0.0)))
+            p = float(2 * stats.norm.sf(abs(b / se))) if se > 0 else float("nan")
+            learned.append({"DATASET": panel.dataset, "PANEL": panel.spec.key, "PAIR": pair, "MODEL": model,
+                            "TERM": variable, "ROLE": role, "FIRST_YEAR": years[0], "LAST_YEAR": years[-1],
+                            "COEFFICIENT": b, "SE_CLUSTERED": se, "Z_STATISTIC": b / se if se > 0 else float("nan"),
+                            "P_VALUE": p, "STARS": stars(p), "SIGMA": fit.sigma, "ALPHA": fit.alpha,
+                            "CONVERGED": fit.converged})
+
+    X_ref = fe_design(train, (), units, years)
+    ref = fit_negative_binomial(y_train, X_ref, off_train, g_train, REFERENCE)
+    X_ref_test = fe_design(test, (), units, years)
+    base = off_test + X_ref_test.to_numpy() @ ref.params.reindex(X_ref_test.columns).fillna(0.0).to_numpy()
+    record(REFERENCE, base, float(ref.params.get(previous, 0.0)), ref.alpha, ref.converged)
+    return pd.concat(out, ignore_index=True).assign(PAIR=pair), learned
+
+
+def prediction_measures(predictions: pd.DataFrame) -> pd.DataFrame:
+    """Log-likelihood, mean absolute error and R² of a held-out year, per pair, model and level."""
+    rows = []
+    for (pair, model, level), block in predictions.groupby(["PAIR", "MODEL", "LEVEL"]):
+        observed, predicted = block["OBSERVED"].to_numpy(), block["PREDICTED"].to_numpy()
+        total = float(((observed - observed.mean()) ** 2).sum())
+        rows.append({"PAIR": pair, "MODEL": model, "LEVEL": level,
+                     "LOG_LIKELIHOOD": nb_log_likelihood(observed, predicted, float(block["ALPHA"].iloc[0])),
+                     "MEAN_ABSOLUTE_ERROR": float(np.abs(observed - predicted).mean()),
+                     "R2": 1 - float(((observed - predicted) ** 2).sum()) / total if total > 0 else float("nan"),
+                     "PREDICTED_TOTAL": float(predicted.sum()), "OBSERVED_TOTAL": float(observed.sum()),
+                     "UNITS": len(block), "CONVERGED": bool(block["CONVERGED"].iloc[0])})
+    return pd.DataFrame(rows)
+
+
 def variables_rows(panel: PanelData) -> list[dict]:
     return [{"DATASET": panel.dataset, "PANEL": panel.spec.key, "TERM": v, "MEAN": panel.mean[v],
              "SD_NATURAL": panel.sd[v], "REMAINING_SHARE": panel.remaining_share.get(v, 0.0),
@@ -924,6 +1006,8 @@ def run(log: RunLog) -> dict[str, pd.DataFrame]:
             panels[dataset] = build_panel(designs[dataset], variables, spec, dataset, log)
             out["variables"] += variables_rows(panels[dataset])
             out["panel_rows"].append(panels[dataset].rows.assign(DATASET=dataset, PANEL=spec.key))
+        if spec.key == config.PANEL_GROWTH_TEST_PANEL:
+            growth_panel = panels[config.CORRECTED_DATASET]
         for dataset, pair in jobs:
             panel = panels[dataset]
             fits = fit_pair(panel, pair, log)
@@ -950,6 +1034,26 @@ def run(log: RunLog) -> dict[str, pd.DataFrame]:
     tables["rule_within"] = rule_within(coefficients)
     tables["rule_prediction"] = rule_prediction(tables["validation"])
     tables["choice"] = model_choice(tables["rule_within"], tables["rule_prediction"])
+    # The growth-year test: the eight pairs of the corrected set, outside the rule.
+    predictions, learned = [], []
+    for pair in config.REGRESSION_PAIRS:
+        pair_predictions, pair_learned = growth_test(growth_panel, pair.name)
+        predictions.append(pair_predictions)
+        learned += pair_learned
+        log.info("growth test %s: %s", pair.name, ", ".join(
+            f"{model} {'converged' if block['CONVERGED'].iloc[0] else 'NOT converged'}"
+            for model, block in pair_predictions.groupby("MODEL")))
+    tag = {"DATASET": config.CORRECTED_DATASET, "PANEL": config.PANEL_GROWTH_TEST_PANEL}
+    tables["growth_predictions"] = pd.concat(predictions, ignore_index=True).assign(**tag)
+    tables["growth_validation"] = prediction_measures(tables["growth_predictions"]).assign(**tag)
+    growth_coefficients = pd.DataFrame(learned)
+    # A pair whose fit did not converge is reported as not estimated (D67), so it does not enter
+    # Holm: the correction runs over the pairs that were estimated.
+    growth_coefficients["P_HOLM"] = holm(
+        growth_coefficients.assign(P_VALUE=growth_coefficients["P_VALUE"].where(growth_coefficients["CONVERGED"])),
+        ["MODEL", "TERM", "ROLE"])
+    growth_coefficients["HOLM_DAGGER"] = growth_coefficients["P_HOLM"] < config.PANEL_HOLM_ALPHA
+    tables["growth_coefficients"] = growth_coefficients
     tables["marking"] = marking
     for table in tables.values():
         table.attrs["source_run"] = source_run
@@ -980,6 +1084,19 @@ def verify(tables: dict[str, pd.DataFrame], log: RunLog) -> list[str]:
     coefficients = tables["coefficients"]
     if (coefficients["P_VALUE"].apply(stars) != coefficients["STARS"]).any():
         failures.append("the stars do not follow the declared levels")
+    # The growth-year test: every pair, model and level, all 29 units, the level reproduced.
+    growth = tables["growth_validation"]
+    pairs, units = len(config.REGRESSION_PAIRS), tables["growth_predictions"][config.AREA_CODE_COL].nunique()
+    if len(growth) != pairs * 3 * 2 or (growth["UNITS"] != units).any():
+        failures.append(f"the growth test has {len(growth)} pair-model-level rows, not {pairs * 6}")
+    fixed = growth[growth["LEVEL"] == LEVEL_OBSERVED]
+    if (fixed["PREDICTED_TOTAL"] - fixed["OBSERVED_TOTAL"]).abs().max() > 1e-6:
+        failures.append("in the growth test the level fixed by the observed total does not reproduce it")
+    failed = int((~growth.drop_duplicates(["PAIR", "MODEL"])["CONVERGED"]).sum())
+    if failed:
+        log.warn("growth test: %d pair-model fits did not converge", failed)
+    if failed > pairs * 3 / 2:
+        failures.append("the growth test fails to converge in more than half its fits")
     choice = tables["choice"].iloc[0]
     log.info("model chosen by the rule: %s (condition 1 %s, %d of %d within effects agree; "
              "condition 2 %s, %d of %d panels)", choice["CHOSEN_MODEL"], choice["CONDITION_WITHIN"],

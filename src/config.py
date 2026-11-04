@@ -2214,6 +2214,11 @@ PANEL_HOLM_ALPHA = 0.10
 # below fixed effects' in at least this many of the three reported panels.
 PANEL_RULE_WITHIN_SE = 1.0
 PANEL_RULE_PANELS_NEEDED = 2
+# The growth-year prediction test (D67, amendment of 2026-11-04): the chosen model, on the main
+# panel, fitted up to the year before the last of the cycleway network's jump and predicting that
+# year. The city cycleway is flat to 2015 and jumps in 2016, 2017 and 2018; it grows far less after.
+PANEL_GROWTH_TEST_PANEL = "PRINCIPAL"
+PANEL_GROWTH_TEST_YEAR = 2018
 
 
 # -- the unit that does not enter the models --------------------------------

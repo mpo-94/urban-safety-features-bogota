@@ -26,6 +26,10 @@ numbers to be judged.
   7. **Significance and the rule** (amendment of 2026-11-03). The stars and the dagger recounted
      from the p-values, and the model choice recomputed from the coefficient and validation tables
      by a path of its own, against the route's rule tables.
+  8. **The growth-year test** (amendment of 2026-11-04). The observed total of 2018 against the
+     affected parties of the main panel's rows; the level fixed by it reproduced; the error and the
+     R² recomputed from the unit predictions; the training years; Holm and the stars recounted on
+     the cycleway effect learned in them.
 """
 
 from __future__ import annotations
@@ -177,10 +181,42 @@ def main() -> int:
             or abs(float(gap_se.max()) - float(choice["LARGEST_DIFFERENCE_IN_SE"])) > 1e-12):
         failures.append("the rule recomputed does not give the route's choice")
 
+    # 8. The growth-year test, with the test year and the training years typed here rather than read.
+    gp, gv, gc = read(run, "growth_predictions"), read(run, "growth_validation"), read(run, "growth_coefficients")
+    main_rows = rows[(rows["DATASET"] == config.CORRECTED_DATASET) & (rows["PANEL"] == "PRINCIPAL")
+                     & (rows["YEAR"] == 2018)]
+    totals = main_rows.groupby("PAIR")["AFFECTED_PARTIES"].sum()
+    gap_total = float((gv.set_index("PAIR")["OBSERVED_TOTAL"] - totals.reindex(gv["PAIR"]).to_numpy()).abs().max())
+    fixed_growth = gv[gv["LEVEL"] == panel.LEVEL_OBSERVED]
+    gap_level = float((fixed_growth["PREDICTED_TOTAL"] - fixed_growth["OBSERVED_TOTAL"]).abs().max())
+    worst_measure = 0.0
+    for (pair, model, level), block in gp.groupby(["PAIR", "MODEL", "LEVEL"]):
+        o, p = block["OBSERVED"].to_numpy(), block["PREDICTED"].to_numpy()
+        mine = gv[(gv["PAIR"] == pair) & (gv["MODEL"] == model) & (gv["LEVEL"] == level)].iloc[0]
+        r2 = 1 - ((o - p) ** 2).sum() / ((o - o.mean()) ** 2).sum()
+        worst_measure = max(worst_measure, abs(np.abs(o - p).mean() - mine["MEAN_ABSOLUTE_ERROR"]),
+                            abs(r2 - mine["R2"]))
+    years_ok = bool((gc["FIRST_YEAR"] == 2012).all() and (gc["LAST_YEAR"] == 2017).all()
+                    and (gp["YEAR"] == 2018).all())
+    worst_growth_holm = 0.0
+    for _, block in gc[gc["CONVERGED"]].groupby(["MODEL", "TERM", "ROLE"]):
+        again = multipletests(block["P_VALUE"], method="holm")[1]
+        worst_growth_holm = max(worst_growth_holm, float(np.max(np.abs(again - block["P_HOLM"]))))
+    if gc.loc[~gc["CONVERGED"], "P_HOLM"].notna().any():
+        failures.append("a growth-test fit that did not converge entered Holm")
+    recounted_growth = sum((gc["P_VALUE"] < level).astype(int) for level in (0.10, 0.05, 0.01))
+    print(f"8. growth test: {gp['PAIR'].nunique()} pairs, models {sorted(gp['MODEL'].unique())}; "
+          f"2018 totals against the panel rows, largest gap {gap_total:.2e}; level reproduced to {gap_level:.2e}; "
+          f"error and R² recomputed to {worst_measure:.2e}; years 2012-2017 -> 2018: {years_ok}; "
+          f"Holm to {worst_growth_holm:.2e}; stars differ in {int((recounted_growth != gc['STARS']).sum())}")
+    if (gap_total > 1e-9 or gap_level > 1e-6 or worst_measure > 1e-9 or not years_ok or worst_growth_holm > 1e-12
+            or (recounted_growth != gc["STARS"]).any() or gp["PAIR"].nunique() != 8):
+        failures.append("the growth-year test does not reproduce")
+
     if failures:
         print("\nFAILED: " + "; ".join(failures))
         return 1
-    print("\nall seven checks pass")
+    print("\nall eight checks pass")
     return 0
 
 
