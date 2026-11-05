@@ -44,6 +44,7 @@ recomputed against the run it came from rather than against the newest one.
 | `vigencia.py` | What date is each static layer actually from, read off its own columns rather than its file name? | `regression-inventory.md` §4 |
 | `redigitalizacion_ciclorruta.py` | How much of the cycleway's year-to-year change is network, and how much is the same segments re-drawn? | `verification-report.md` §23 |
 | `comparar_candidatas.py` | Does the ranking of the urban variables survive when the offset leftovers do not compete against them? | `verification-report.md` §25, D50 |
+| `elasticidades_del_volumen.py` | How do casualties grow with travel, read inside the specification the panel inherits in the run where the offset leftovers compete? | `verification-report.md` §32, D52 |
 | `seleccion_por_aic.py` | Does minimising a negative AIC select the model the fit figure then shows as the best one? | **D59** |
 | `exclusion_de_una_unidad.py` | What would break if one unit left the regressions, before the pipeline is touched? | **D56** |
 | `efecto_de_la_exclusion.py` | What actually moved once it did? | **D56**, `verification-report.md` §27 |

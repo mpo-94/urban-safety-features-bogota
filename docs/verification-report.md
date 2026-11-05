@@ -5348,3 +5348,57 @@ better):
 **The presentation.** `deliverables/presentacion-prueba-2018/` draws its tables and figure from this
 run, and its `verificar_tablas.py` rereads 112 figures, stars and daggers against the run, all
 agreeing.
+
+---
+
+## 32. The robustness run on the fitted exposure, and the volume elasticities
+
+Route `regressions --candidates with-leftovers`, 2026-11-05, **`run_20261105_060136`**, 61.8
+minutes, exposure read from `run_20261009_043126`, **26 checks and every one passing**.
+
+**Why it was rebuilt.** The robustness run of section 27, `run_20261002_145959`, predates the fitted
+exposure (D60 to D64): it divides by the interpolated panel, while the reported run,
+`run_20261009_084114`, divides by the fitted one. Quoting its elasticities beside the reported run
+would have mixed two denominators. This run is the same route on the same exposure as the reported
+one, so the two differ only in the candidate set.
+
+| | |
+|---|---:|
+| Units entering the models | 29 |
+| Models | 3,534 (1,870 exhaustive search, 1,664 backward elimination) |
+| Exhaustive search | 744,484 specifications declared, 733,886 fitted |
+| Coefficient rows | 16,285 |
+| Poisson models overdispersed above 1.25 | 1,193 of 1,248, median 3.35 |
+
+**The elasticities**, measured by `tools/elasticidades_del_volumen.py` inside one specification —
+negative binomial on the corrected set — and separately for each procedure (D53). Each figure is
+the median over the years in which the procedure selected the quantity, and the count of those
+years is part of it: a coefficient exists only where the quantity entered.
+
+1. **Counterpart exposure, under the affected mode's exposure, in pairs of two different modes.**
+   Positive and below one in every pair it enters: pedestrian against car 0.209 (5 of 13 years,
+   exhaustive) and 0.257 (5 of 10, elimination); pedestrian against motorcycle 0.392 (8) and 0.366
+   (3); bicycle against motorcycle 0.377 (4) and 0.435 (3); bicycle against car 0.238 (4) and 0.216
+   (4); motorcycle against car 0.362 (3) and 0.179 (8, one negative year); car against motorcycle
+   never in the search and 0.680 (5) in the elimination.
+2. **Same-mode pairs.** The tool checks first, on the data table, that the counterpart exposure
+   equals the affected exposure in every row of car against car and motorcycle against motorcycle,
+   so the competing coefficient frees the offset's restriction. The exponent the data support on
+   the own exposure, one plus the coefficient: **car against car 0.522 (11 of 13 years) and 0.576
+   (5 of 7); motorcycle against motorcycle 0.669 (7 of 13) and 0.773 (3 of 9).** Sublinear in both,
+   inside the 0.14 to 0.74 range of the safety-in-numbers literature or just above it.
+3. **Affected mode's exposure under the population offset.** Entered in the vehicle and bicycle
+   pairs and seldom in the pedestrian ones: bicycle against car 0.428 (13 of 13) and 0.388 (5 of 6);
+   bicycle against motorcycle 0.534 (12) and 0.653 (5); motorcycle against car 0.496 (13) and 0.593
+   (12); motorcycle against motorcycle 0.598 (10) and 0.631 (2); car against car 0.367 (7);
+   pedestrian against car 0.398 (2) and pedestrian against motorcycle 0.310 (1).
+
+**What the leftovers take inside this specification:** 17.3 % of the selected terms with the search
+and 20.1 % with the elimination under the affected mode's exposure; 31.7 % and 27.0 % under the
+population offset.
+
+**What it means for the reported run.** The offset fixes the exponent of the affected mode's
+exposure at one. Where the data support a smaller one, the rate per trip falls where more is
+travelled, and a candidate that grows with travel can carry part of that fall in its coefficient.
+This is the reading the thesis gives the cycleway's within effect in bicycle against motorcycle,
+where the population offset puts the cyclists' own exponent at 0.534 and 0.653.
