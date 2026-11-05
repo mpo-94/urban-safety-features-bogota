@@ -339,6 +339,18 @@ and tables of chapter 3 use to justify the three exclusions it records — and t
 regression stage reads its own list, which is longer. **The two must not be
 conflated**, and the day the exclusion is decided, it is that list that changes.
 
+**Closed on 2026-11-05: nothing more is excluded.** Mateo settled the deferred exclusion with
+the advisor, and the twelve of `config.REGRESSION_URBAN_CANDIDATES` are the final set.
+- **What stays out.** Only the carriageway, excluded on 2026-09-22 because it correlates with the
+  sidewalk at 0.969 (section 3 and D48). Neither the urban park nor the bridge deck leaves, which is the one difference between
+  that list and `config.MODEL_PREDICTOR_NAMES`.
+- **The panel** estimates with the same twelve (`src/panel.py`, `CONSTANTS` plus the cycleway and
+  the vertical signage), and adds the horizontal marking, which only the panel reads (D46 and the
+  D67 amendment of 2026-10-27).
+- **No run changes**, because the regressions and the panel already used this set.
+- **`MODEL_PREDICTOR_NAMES` stays** as the record of the earlier proposal, which the figures of
+  chapter 3 still cite. It is not the set the models use.
+
 Eleven layers, plus the two survivors of section 4, plus the two quantities
 section 3 keeps out of the offset. **Fifteen candidates.**
 
@@ -1741,7 +1753,8 @@ describen los datos y no la estimación.
   por si se retoma, está al final de 14.2.
 - **Excluir las tres predictoras que `MODEL_PREDICTOR_NAMES` deja fuera.** Olmos aplazó
   la exclusión en la sesión de panel; la constante existe y las regresiones no la leen.
-  Sección 5.
+  Sección 5. **Cerrado el 2026-11-05:** no se excluye nada más, y las doce son el conjunto
+  final.
 - **IPF.** D54, declarada y sin implementar.
 - **Cualquier cambio en la selección por AIC.** Decidido el 2026-10-02: se declara y no
   se cambia el mecanismo. Lo que sí entra es la frase, en el pie de las figuras de ajuste
