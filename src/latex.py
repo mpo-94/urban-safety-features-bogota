@@ -17,8 +17,10 @@ has; the pipeline knows the numbers. Each file is `\\input` inside whatever
 `table` environment the document sets up.
 
 What the document has to provide is the template's own preamble: `tabularray`,
-`siunitx`, `fontawesome5`, and the colours ColorEnfasis, ColorAlrt and ColorNav.
-Every one of those is already there in the presentation and in the report.
+`siunitx`, `fontawesome5`, and the colours ColorEnfasis, ColorAlrt and ColorNav, plus
+ColorAfectada and ColorContraparte for the two sides of a matrix. The report defines
+all of them; a document that lacks the last two only has to alias them, to ColorNav if
+it wants the old single colour back.
 """
 
 from __future__ import annotations
@@ -129,8 +131,9 @@ def matrix_table(counts: pd.DataFrame) -> str:
             "\\begin{tblr}{",
             f"    colspec = {{{column_spec}}},",
             "    cells = {font=\\tiny},",
-            f"    row{{1}} = {{font=\\scriptsize, fg={config.LATEX_LABEL_COLOR}}},",
-            f"    column{{1}} = {{font=\\scriptsize, fg={config.LATEX_LABEL_COLOR}}},",
+            # The header row is the counterpart and the stub column the affected party.
+            f"    row{{1}} = {{font=\\scriptsize, fg={config.LATEX_COUNTERPART_COLOR}}},",
+            f"    column{{1}} = {{font=\\scriptsize, fg={config.LATEX_AFFECTED_COLOR}}},",
             "    rowsep = 0.7pt,",
             "    colsep = 4pt,",
             "    hline{2} = {-}{0.4pt, black!40},",

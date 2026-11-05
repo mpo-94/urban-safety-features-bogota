@@ -6909,7 +6909,13 @@ LATEX_SHADE_CEILING = 70
 
 LATEX_POSITIVE_COLOR = "ColorEnfasis"  # the accent of the template
 LATEX_NEGATIVE_COLOR = "ColorAlrt"  # its counterpart, for the negative half
-LATEX_LABEL_COLOR = "ColorNav"  # headers and stubs
+LATEX_LABEL_COLOR = "ColorNav"  # headers and stubs of tables that are not matrices
+# A matrix's stub column names the affected party and its header row the counterpart,
+# and the two get colours of their own so a pictogram says which role it plays wherever it
+# appears: the matrices, the panel tables and the figure that introduces the pictograms all
+# use the same pair. The document maps them onto its palette.
+LATEX_AFFECTED_COLOR = "ColorAfectada"
+LATEX_COUNTERPART_COLOR = "ColorContraparte"
 LATEX_DIAGONAL_COLOR = "black!35"  # the diagonal, which says nothing and should not draw the eye
 
 # Counts span four orders of magnitude, so shading them in proportion would leave
