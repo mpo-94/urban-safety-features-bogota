@@ -1272,3 +1272,45 @@ different places in the history of casualty recording: 2011 and 2015 before the
 change, 2019 in the middle of the ramp, 2023 inside the reference window. That
 does not invalidate an interpolation, and the final report will have to address
 it. Noted here so it is not discovered during the interpolation session.
+
+## 8. The scale each survey was designed for — added 2026-11-05
+
+Every figure the exposure stage produces is a figure per UPL. Whether a survey's sample can carry
+that is a property of how the survey was designed, and each delivery states it. This section is
+what each one says, read from its own documents rather than inferred from the zoning it was
+delivered on: a survey keyed on ZAT is not thereby designed for ZAT.
+
+| Survey | Designed for | Against the UPL | Where it says so |
+|---|---|---|---|
+| 2011 | UPZ | finer | `120927_InformeFinal_TomoIII.pdf`, the weekday analysed *"a nivel de UPZ"* (§4); and the 2019 report below |
+| **2015** | **locality** | **coarser** | `Tomo IV_Indicadores_Fe de erratas_enero 2017.pdf`: *"el diseño del ejercicio se realizó a nivel de la población por localidad y área urbana de municipios. Por tanto, desagregaciones a unidades menores […] tendrán implícito un error mayor de representatividad que el calculado para las variables de diseño"*. `CARTILLA FINAL OCTUBRE.pdf` repeats it and calls the locality *"la unidad de diseño"*. Its technical sheet gives a 0.73 % margin for the whole study area and a relative standard error of up to 6 % *"por dominio de estudio"* |
+| 2019 | UTAM, *"asociada a UPZ"* | finer | `200109_Etapa_V_v3_Caracterización de la Movilidad.pdf`, §7.3, which compares the three: *"En la encuesta 2011 se tiene representatividad a nivel de UPZ, mientras que en la Encuesta 2015 a nivel de localidades y para la Encuesta 2019 a nivel de UTAM (asociada a UPZ)"* |
+| 2023 | the 143 UTAM, 7 % margin of error at 95 % confidence | finer | `EODH/01_Datos tecnicos de la Encuesta/a. Ficha tecnica .pdf`, §4.1 |
+
+**2015 is the one survey designed above the scale of the study.** There are thirty UPL and nineteen
+urban localities (D10), so a UPL figure from 2015 is a disaggregation below its design and carries more
+error than the survey declares. The field report adds that the sample reached 90 % of the ZAT
+*"pese a haber partido de un diseño a nivel de localidad"* (`Tomo III_Informe de Campo_EODH_V6.pdf`).
+
+**What is measured about it, and what that does and does not show.** §6b ranks the thirty units by
+exposure in consecutive years, and 2015 sits in two low pairs:
+- from 2015 to 2019, Spearman 0.554 for walking and 0.726 for cycling;
+- from 2011 to 2015, 0.474 for cycling.
+
+The pair 2019–2023, both designed below the UPL, also falls under the 0.70 floor for walking, at
+0.662. §6b traced every one of these to the city and not to the reading. So the ranks do not single
+2015 out, and they are the only measurement there is; nothing counts the records behind each unit.
+
+**Decided 2026-11-05: declared, not marked and not measured.**
+- **Not marked.** `SAMPLE_SUPPORT = CITY_LEVEL_ONLY` says a figure is good only for the city, and
+  2015 reaches the locality, so marking it would overstate the problem and change what the run
+  exports.
+- **Not measured.** Counting weekday records per unit was weighed and not done: every survey states
+  its design scale, so the statement answers the question.
+- **Where it is declared.** The final report says so in its survey subsection, and carries it among
+  the limitations together with the fact that no survey's sampling error reaches the standard errors
+  of the models.
+
+2005 is left out of this table, and its design scale was not looked up. It anchors only the
+weekday years before 2011 (`src/interpolation.py`, `series_window`), and no model uses a year
+before 2012.
