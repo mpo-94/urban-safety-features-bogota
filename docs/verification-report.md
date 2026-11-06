@@ -5402,3 +5402,78 @@ exposure at one. Where the data support a smaller one, the rate per trip falls w
 travelled, and a candidate that grows with travel can carry part of that fall in its coefficient.
 This is the reading the thesis gives the cycleway's within effect in bicycle against motorcycle,
 where the population offset puts the cyclists' own exponent at 0.534 and 0.653.
+
+## 33. The Hodge route: who takes the damage, and whether units differ
+
+Route `hodge`, 2026-11-06, **`run_20261106_091921`**. It reads the matrix of `run_20261006_203551`
+and the rho table of `run_20261016_031817`, and runs **18 checks, every one passing**. The decisions
+are D69.
+
+| | |
+|---|---:|
+| Potential rows | 37,851 (4 levels, 2 sets, 2 layers, 3 counts) |
+| Two-party cells read, observed / corrected | 19,440 / 18,360 |
+| Parties in the city matrices, observed / corrected | 175,935 / 191,613 |
+| Unit-year graphs connected | 540 of 540 observed, 510 of 510 corrected |
+| Unit-year graphs complete, all actor types | 185 of 540, 185 of 510 |
+
+**The checks.**
+- **Synthetic.** A known potential built as the Bradley-Terry expectation of a symmetric exposure of
+  10^7 is recovered to 3.5e-07. A cycle of 0.3 injected on one triangle under equal weights moves no
+  potential (0.0) and adds 0.900000000000 to that triangle's curl. A one-sided edge enters with flow
+  log(7.5 / 0.5), and an empty one stays out.
+- **Orthogonality.** Gradient and residual are orthogonal to 5.9e-15 in every connected unit graph.
+- **The identity.** H_ij + H_ji − K_ij − n_ij = 0 in all nine rho pairs, city, 2007–2024.
+- **The balance.** The city matrices hold every two-party count read, in both sets and three counts:
+  175,935, 201,569 and 6,446 observed, and 191,613, 221,881 and 6,284 corrected.
+
+The first run of the route, `run_20261106_091659`, failed the injected-cycle check. It compared the
+total curl with the injected one, and the continuity correction leaves the base flow a gradient
+only to about 1e-8. The check now measures the curl the cycle adds, net of the base. The second run,
+`run_20261106_091728`, passed everything and declared only the corrected test; the third added the
+reference-year test (D69). The first two are kept as the record of that change.
+
+**The city potential, against the car, in parties.**
+
+| | Observed, all | Observed, no pedestrian | Corrected, all | Corrected, no pedestrian |
+|---|---:|---:|---:|---:|
+| Pedestrian | +2.713 (0.015) | — | +1.283 (0.010) | — |
+| Bicycle | +2.170 (0.018) | +2.195 (0.019) | +1.147 (0.014) | +1.179 (0.015) |
+| Motorcycle | +1.846 (0.012) | +1.796 (0.012) | +1.014 (0.008) | +0.972 (0.009) |
+| Public transport | −0.636 (0.024) | −0.644 (0.025) | −0.803 (0.020) | −0.755 (0.022) |
+| Other | −0.706 (0.031) | −0.669 (0.032) | −1.470 (0.034) | −1.362 (0.035) |
+| Gradient share | 98.84 % | 99.67 % | 96.38 % | 97.90 % |
+| Residual over Poisson | 53.5 | 16.2 | 115.6 | 70.2 |
+
+The standard errors in brackets assume Poisson counts. Scaled by the square root of the dispersion,
+as a quasi-Poisson fit would, they grow by a factor of 4 to 11.
+Measured on the contrasts with the fit's covariance by `tools/heterogeneidad_de_hodge.py`, the
+scaled z:
+- **The motorcycle against the car survives that** in every set and layer: z from 11.4 to 35.7.
+- **The gaps between the three least protected types on the corrected set do not:**
+  - pedestrian against bicycle, 0.136 (z = 0.8);
+  - bicycle against motorcycle, 0.133 (z = 0.9);
+  - bicycle against motorcycle without the pedestrian, 0.207 (z = 1.7).
+- **On the observed set the same gaps are 0.32 to 0.54**, with z from 2.6 to 5.7.
+
+On the corrected set, the order among pedestrian, bicycle and motorcycle is a point estimate and not a
+separation.
+
+**The test of whether units differ**, vehicle layer, parties:
+
+| Set and window | χ² | df | p | F | df | p (F) | within-unit dispersion |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| Corrected, 2008–2024 (declared) | 113.1 | 116 | 0.56 | 0.38 | 116, 180 | 1.00 | 2.59 |
+| Observed, 2023–2024 (declared) | 81.1 | 116 | 0.99 | 1.23 | 116, 170 | 0.11 | 0.57 |
+| Observed, 2007–2024 | 251.1 | 116 | <0.001 | 1.97 | 116, 180 | <0.001 | 1.10 |
+
+Verdict of the route: the units do not differ beyond sampling in either declared test, and the
+unit potential stays descriptive.
+
+By five-year window, from `tools/heterogeneidad_de_hodge.py`, which calls this module:
+
+| Window | χ²/df, corrected | χ²/df, observed |
+|---|---:|---:|
+| 2008–2012 | 0.45 | 1.32 |
+| 2013–2017 | 0.44 | 1.11 |
+| 2018–2022 | 0.60 | 1.10 |

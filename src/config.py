@@ -2865,6 +2865,88 @@ PLACEBO_P_HOLM_COL = "P_VALUE_HOLM"
 PLACEBO_CELLS_COL = "CELLS"
 PLACEBO_UNITS_COL = "UNITS"
 
+# ---------------------------------------------------------------------------
+# HodgeRank on the casualty matrix (D69)
+# ---------------------------------------------------------------------------
+# The matrix is not symmetric: a pedestrian hurt by a car is far more common than
+# the reverse. For each pair of actor types the two cells count the same crashes
+# from opposite sides, so their log-ratio cancels everything the pair shares (how
+# often, where, at what speed they meet) and leaves who takes the damage. Hodge
+# theory splits those log-ratios into a gradient, one potential per actor type, and
+# what no potential can explain. See D69 for the decisions below and what was
+# rejected.
+
+# The run whose exported matrix this route reads. Pinned, because the report quotes
+# this run; run_20261020_040736 holds the same tables and was measured to agree cell
+# by cell (2026-11-06), so pinning changes no figure.
+HODGE_MATRIX_SOURCE_RUN: str | None = "run_20261006_203551"
+# The rho run, read only for the identity check against the matrix.
+HODGE_RHO_SOURCE_RUN: str | None = "run_20261016_031817"
+
+# Haldane-Anscombe continuity correction, added to both cells of an edge before the
+# log-ratio and in its variance. Without it an edge with a zero on one side has no
+# logarithm and drops out, and at unit-year scale that breaks graphs apart. An edge
+# with no crash on either side carries no comparison at all and stays out.
+HODGE_CONTINUITY = 0.5
+
+# The two layers of D69. The full one keeps the pedestrian, whose potential the
+# source inflates (an unhurt pedestrian is almost never recorded, so the vehicle
+# side of a pedestrian edge counts a subset of the crashes). Everything that is
+# interpreted is read on the vehicle layer.
+HODGE_LAYER_ALL = "ALL_ACTORS"
+HODGE_LAYER_VEHICLES = "WITHOUT_PEDESTRIAN"
+HODGE_LAYERS: dict[str, tuple[str, ...]] = {
+    HODGE_LAYER_ALL: MATRIX_ROW_ORDER,
+    HODGE_LAYER_VEHICLES: tuple(actor for actor in MATRIX_ROW_ORDER if actor != PEDESTRIAN),
+}
+
+# The counts decomposed. Parties are the unit of the matrix; persons are carried so
+# the severity of the outcome can be compared, which is what the mass exponent of
+# D69 is read against.
+HODGE_COUNTS: tuple[str, ...] = (AFFECTED_PARTIES_COL, PERSONS_INJURED_COL, PERSONS_KILLED_COL)
+
+# The aggregation levels of the potential table. ALL_YEARS rows pool the window and
+# carry a null year; the two levels below them reuse the unit and city codes of the
+# rho table so the tables join.
+HODGE_LEVEL_COL = "HODGE_LEVEL"
+HODGE_CITY_ALL_YEARS = "CITY_ALL_YEARS"
+HODGE_CITY_YEAR = "CITY_YEAR"
+HODGE_UNIT_ALL_YEARS = "UNIT_ALL_YEARS"
+HODGE_UNIT_YEAR = "UNIT_YEAR"
+
+# The test of D69 that decides whether the potential varies between units beyond
+# sampling, run on the vehicle layer and parties. The threshold was declared before
+# the first run: below this p-value of the dispersion-robust F test the units differ
+# and the unit potential becomes a candidate response; above it the potential stays
+# descriptive and the finding is that the asymmetry belongs to the city.
+HODGE_HETEROGENEITY_ALPHA = 0.05
+HODGE_HETEROGENEITY_LAYER = HODGE_LAYER_VEHICLES
+# Two windows. ALL_YEARS pools each set over its whole period; REFERENCE pools the
+# reference years of the correction, where the two sets coincide.
+HODGE_WINDOW_ALL_YEARS = "ALL_YEARS"
+HODGE_WINDOW_REFERENCE = "REFERENCE"
+# The two tests that decide, and they must agree. The first is the set the study
+# reports. The second was added after the first run (2026-11-06) showed that the
+# correction pulls the units toward the city: on the corrected set the between-unit
+# statistic falls far below its degrees of freedom in every five-year window, which
+# sampling alone does not produce. The observed set in the reference years is the
+# same question asked where the correction changes no cell. D69 records both runs.
+HODGE_HETEROGENEITY_TESTS: tuple[tuple[str, str], ...] = (
+    (CORRECTED_DATASET, HODGE_WINDOW_ALL_YEARS),
+    (OBSERVED_DATASET, HODGE_WINDOW_REFERENCE),
+)
+# The potential is read as a difference against this actor, which removes the free
+# constant and is the reference the mass line is drawn against.
+HODGE_REFERENCE_ACTOR = CAR
+
+HODGE_POTENTIAL_FILENAME = f"{ANALYSIS_PREFIX}__hodge_potential"
+HODGE_EDGES_FILENAME = f"{ANALYSIS_PREFIX}__hodge_edges"
+HODGE_TRIANGLES_FILENAME = f"{ANALYSIS_PREFIX}__hodge_triangles"
+HODGE_HETEROGENEITY_FILENAME = f"{ANALYSIS_PREFIX}__hodge_heterogeneity"
+HODGE_LAYER_COL = "LAYER"
+HODGE_COUNT_COL = "COUNT"
+ROAD_USER_TYPE_COL = "ROAD_USER_TYPE"
+
 # The candidates that enter the design in logarithms rather than raw.
 #
 # These are the same three quantities an offset is built from, and the reason is

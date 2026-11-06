@@ -13,6 +13,7 @@ resolution should not have to rebuild fifty-seven figures first.
     python -m src.run_pipeline rho             # the rho(t) diagnostic
     python -m src.run_pipeline placebo         # completeness against the urban candidates
     python -m src.run_pipeline panel           # fixed effects against correlated random effects (D67)
+    python -m src.run_pipeline hodge           # who takes the damage: HodgeRank on the matrix (D69)
     python -m src.run_pipeline predictors      # the static urban predictors
     python -m src.run_pipeline population      # the denominator, per unit and per year
     python -m src.run_pipeline exposure        # travel exposure from the mobility surveys
@@ -40,6 +41,7 @@ from src import (
     config,
     correction,
     exposure,
+    hodge,
     integration,
     interpolation,
     interpolation_figures,
@@ -352,6 +354,21 @@ def run_panel(log: RunLog) -> None:
     failures = panel.verify(tables, log)
     if failures:
         raise RouteFailed("the panel failed its checks: " + "; ".join(failures))
+
+
+def run_hodge(log: RunLog) -> None:
+    """HodgeRank on the casualty matrix: one potential per actor type, and what it leaves (D69).
+
+    It reads the matrix and rho tables of the runs config names and rebuilds neither, for
+    the reason `regressions` gives for the same choice, and fails loudly on any check.
+    """
+    frames = hodge.read_inputs(log)
+    tables = hodge.compute(frames, log)
+    hodge.export(tables, log)
+    log.table("record funnel:", log.funnel())
+    if not hodge.verify(tables, frames, log):
+        raise RouteFailed("the Hodge decomposition failed its checks")
+    hodge.report(tables, log)
 
 
 def run_predictors(log: RunLog) -> None:
@@ -779,6 +796,8 @@ ROUTES: tuple[Route, ...] = (
         "the panel's first attempt: fixed effects against correlated random effects, three panels (D67)",
         run_panel,
     ),
+    Route("hodge", "who takes the damage: HodgeRank potentials of the matrix, and whether units differ (D69)",
+          run_hodge),
     Route("map", "the reference map of the territorial units, with and without a scale bar", run_map),
     Route("completeness", "month-by-month coverage of the casualty layers", run_completeness),
     Route("integrate", f"rebuild the layers with {config.REPLACED_YEAR} from the updated extract", run_integrate),

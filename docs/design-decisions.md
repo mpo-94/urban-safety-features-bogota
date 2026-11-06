@@ -8648,3 +8648,145 @@ whether the second party was recorded, and an affected pedestrian always is. Und
 effects, the part of the difference that does not change in time is absorbed; what is left changes
 with the regime and touches the between effects of the constants, not the within effect of the
 cycleway.
+
+## D69 — Who takes the damage: HodgeRank on the matrix, as an addition to the study
+
+**Decided by Mateo on 2026-11-06. Built the same day.** The approved plan of the study binds in
+one direction only: what it promises is delivered, and the final report may carry more. This line
+is one of those additions.
+
+It was removed from the documents on 2026-09-18, measured on a September run and kept aside. On
+2026-11-06 Mateo settled the six choices below, which had been open since then. The discussion and
+the options are in the convergence plan, `deliverables/hodge/plan-de-convergencia.md`, in Spanish.
+
+### The question
+
+For two actor types i and j, the matrix holds H_ij, the parties of type i hurt in two-party crashes
+whose other party was j, and H_ji, the same crashes seen from the other side. Both cells count the
+same crashes: H_ij + H_ji − K_ij = n_ij, with n the crashes with at least one party hurt and K
+those with both. This is the identity the `rho` route counts.
+
+So whatever the pair shares (how often the two meet, where, how fast) cancels in the ratio, and
+log(H_ij / H_ji) says only who takes the damage. Combinatorial Hodge theory (Jiang et al. 2011)
+splits those log-ratios into a gradient, one potential per actor type, and a remainder no potential
+explains.
+
+### What was decided
+
+1. **The corrected set is the one reported.** The observed set stays beside it, because its yearly
+   potentials are independent evidence of the recording drift that ρ measures.
+2. **Inverse-variance weights**, w = 1 / (1/(H_ij + c) + 1/(H_ji + c)).
+   - This is the variance of the log-ratio of two Poisson counts, the weight Evans and Frick (1993)
+     use.
+   - With it, the least-squares potential is the large-sample Bradley-Terry estimate, and it has a
+     covariance.
+   - Rejected: weighting by the number of comparisons, the September choice, which gives no
+     standard error.
+3. **A continuity correction of 1/2 at every scale.**
+   - In the city it changes no flow by more than 0.008, because no cell is below 62.
+   - At unit-year scale it keeps edges with a zero on one side. All 540 unit-year graphs stay
+     connected, though only 185 are complete: many pairs have no crash at all in a year, and a
+     pair with no crash is not an edge.
+   - Rejected: dropping one-sided edges, which breaks the graphs and adds a harmonic part to
+     interpret.
+4. **The potential is never a predictor of casualties.** It is built from the same matrix, so that
+   would be circular.
+5. **A route of the pipeline**, `python -m src.run_pipeline hodge`, so the result comes out of a run
+   with its checks and not by hand.
+6. **Two layers, because the source does not see an unhurt pedestrian.** `actor_vial` records 121
+   unhurt pedestrians out of 113,090, against 1,196,757 unhurt drivers. On a pedestrian edge the
+   vehicle side therefore counts a subset of the crashes, and the pedestrian potential comes out
+   inflated. Everything interpreted is read on the layer without the pedestrian. The pedestrian is
+   reported from the full layer, as an upper bound.
+   - Rejected: rebuilding the pedestrian edges. Among the crashes where a pedestrian appears, the
+     pedestrian was always hurt, so the crashes that would be needed are not in the source.
+   - The only trace is 834 crashes classed as hitting a pedestrian, with one vehicle hurt and no
+     pedestrian recorded. They cannot tell an unhurt pedestrian from a lost record: they fall from
+     about 90 a year before 2015 to about 15 after.
+   - Even counting them all as unhurt pedestrians moves the pedestrian potential by 0.04.
+
+   The three measurements are `tools/rastro_del_peaton.py`.
+
+### What was built
+
+`src/hodge.py` reads the matrix tables of `run_20261006_203551`, pinned in
+`config.HODGE_MATRIX_SOURCE_RUN` because the report quotes that run. `run_20261020_040736` holds
+the same tables, cell by cell. The module writes four tables:
+- `analysis__hodge_potential`: the potential at four levels (city pooled, city-year, unit pooled,
+  unit-year), for both sets, both layers and three counts (parties, injured, killed). Each row
+  carries its standard error against the car, the gradient share and the dispersion.
+- `analysis__hodge_edges`: the edges of the city.
+- `analysis__hodge_triangles`: the curl of every city triangle.
+- `analysis__hodge_heterogeneity`: the test below.
+
+The tables reuse the unit, year and pair columns of the rho table, so they join.
+
+The route runs eighteen checks:
+- **Three synthetic ones:**
+  - a known potential is recovered to 3.5e-07;
+  - an injected cycle leaves the potential untouched and appears whole in the curl;
+  - a one-sided edge enters and an empty one does not.
+- **Orthogonality** of gradient and residual in every connected unit graph.
+- **The identity of the two sides** against rho, in all nine pairs, to zero.
+- **The record balance**, for both sets and three counts.
+- **The row count, the gauge and the connectivity** of the city graph.
+- **That both declared tests ran.**
+
+Run `run_20261106_091921`, all green.
+
+### The test of whether units differ
+
+D-A4 of the plan asked whether the unit potential should become a response, regressed on the urban
+candidates in a second stage (Aoki et al. 2025). That only makes sense if the potential varies
+between units beyond sampling.
+
+The test compares two fits over the edges of every unit pooled over its period: one potential per
+unit, and one common to all.
+- **Under the Poisson variance**, the difference of their weighted residuals is chi-squared, with
+  (units − 1) × (free potentials) degrees of freedom.
+- **Crash counts are more variable than Poisson**, so the test that decides divides that difference
+  by the within-unit residual and reads it as an F.
+- **It runs on the vehicle layer and on parties**, at a threshold of 0.05 declared before the first
+  run.
+
+**The first run showed that the corrected set cannot carry the test alone.** There the
+between-unit statistic was 113.1 on 116 degrees of freedom. Pooled within each five-year window,
+its ratio to the degrees of freedom is 0.44 to 0.60 (`tools/heterogeneidad_de_hodge.py`), and
+sampling alone keeps it near one. That is
+the correction at work: it brings each unit toward the city's reference completeness, which pulls
+the potentials together.
+
+So a second test was declared: the observed set in the reference years 2023-2024, where the
+correction changes no cell. The decision requires the two tests to agree, and the route warns if
+they do not. The second test was added after the first run, and is recorded here as such.
+
+| Test | χ² | df | p | F | p (F) |
+|---|---:|---:|---:|---:|---:|
+| Corrected, whole period | 113.1 | 116 | 0.56 | 0.38 | 1.00 |
+| Observed, reference years | 81.1 | 116 | 0.99 | 1.23 | 0.11 |
+
+**The units do not differ beyond sampling.** The unit potential is reported, and it enters no model.
+
+The observed set over the whole period does differ (χ² = 251.1 on 116). Within each five-year window
+the ratio falls to 1.10–1.32. What separates units there is how their crashes are spread across
+years of a recording that drifts, not their streets.
+
+### What it found
+
+On the corrected set, in parties, against the car:
+- **All actor types:** the gradient explains 96.4 % of the flow. Pedestrian +1.283, bicycle +1.147,
+  motorcycle +1.014, public transport −0.803, other −1.470.
+- **Without the pedestrian:** the gradient explains 97.9 %.
+- **On the observed set:** 98.8 % and 99.7 %.
+
+The city residual is 16 to 116 times its Poisson variance. With this many crashes, even a small
+curl is a real one.
+
+Nothing in the casualty matrix, the regressions or the panel changes.
+
+The interpretation of the potential is not pipeline logic, and it is not here. It covers the mass of
+each vehicle and the external checks against Evans and Frick and against the 24 European cities of
+Klanjčić et al. It lives in the development notebook `deliverables/hodge/cuaderno/`, whose
+computations call this module instead of repeating it.
+
+Section 33 of the verification report is the run.
