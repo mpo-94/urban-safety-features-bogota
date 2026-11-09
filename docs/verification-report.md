@@ -5406,7 +5406,8 @@ where the population offset puts the cyclists' own exponent at 0.534 and 0.653.
 ## 33. The Hodge route: who takes the damage, and whether units differ
 
 Route `hodge`, 2026-11-06, **`run_20261106_091921`**. It reads the matrix of `run_20261006_203551`
-and the rho table of `run_20261016_031817`, and runs **18 checks, every one passing**. The decisions
+and the rho table of `run_20261016_031817`, and runs **16 checks, every one passing** (an earlier version of this section said 18; recounted
+2026-11-09). The decisions
 are D69.
 
 | | |

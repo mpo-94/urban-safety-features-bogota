@@ -8721,7 +8721,8 @@ the same tables, cell by cell. The module writes four tables:
 
 The tables reuse the unit, year and pair columns of the rho table, so they join.
 
-The route runs eighteen checks:
+The route runs sixteen checks, eleven distinct statements once the balance check is counted once
+for its six sets and counts (corrected 2026-11-09: the first version of this entry said eighteen):
 - **Three synthetic ones:**
   - a known potential is recovered to 3.5e-07;
   - an injected cycle leaves the potential untouched and appears whole in the curl;
