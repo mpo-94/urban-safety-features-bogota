@@ -76,6 +76,28 @@ def main() -> None:
                 parts.append(f"{first.lower()}-{second.lower()} {value:.3f} (z {value / (error * np.sqrt(dispersion)):.1f})")
             print(f"   {dataset:<14} {layer:<19} dispersion {dispersion:6.1f}  " + "; ".join(parts))
 
+    # 3. Whether every unit keeps the city's order of the types that are interpreted. «Other» is left
+    # out: it groups vehicles with nothing in common and its potential is not read.
+    print("\n3. Units whose order of the interpreted types is the city's, parties, whole window:")
+    for dataset, long_table in tables.items():
+        cells = hodge.matrices(long_table, config.AFFECTED_PARTIES_COL)
+        pooled: dict[str, np.ndarray] = {}
+        for (unit, _), matrix in cells.items():
+            pooled[unit] = pooled.get(unit, 0) + matrix
+        city_matrix = sum(pooled.values())
+        for layer, actors in config.HODGE_LAYERS.items():
+            vertices = tuple(hodge.INDEX[a] for a in actors)
+            read = [hodge.INDEX[a] for a in actors if a != config.OTHER]
+
+            def order(matrix: np.ndarray) -> tuple[int, ...]:
+                potential = hodge.fit(hodge.edge_flow(matrix, vertices, config.HODGE_CONTINUITY)).potential
+                return tuple(sorted(read, key=lambda v: -potential[v]))
+
+            city_order = order(city_matrix)
+            same = sum(order(m) == city_order for m in pooled.values())
+            names = " > ".join(hodge.ACTORS[v].lower() for v in city_order)
+            print(f"   {dataset:<14} {layer:<19} {same} of {len(pooled)} units: {names}")
+
 
 if __name__ == "__main__":
     main()
