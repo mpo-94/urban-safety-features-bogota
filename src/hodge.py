@@ -12,11 +12,20 @@ splits a flow on a graph into a gradient, Y_ij = phi_i - phi_j with one potentia
 per actor type, and a remainder no potential can explain. A high potential is an
 actor type that takes the damage.
 
-The fit is weighted least squares with the inverse-variance weight of the
-log-ratio of two Poisson counts, w = 1 / (1/(H_ij + c) + 1/(H_ji + c)). That
-weight makes the least-squares potential the large-sample Bradley-Terry estimate
-and gives it a covariance, the pseudo-inverse of the weighted Laplacian, so every
-potential carries a standard error.
+The fit is weighted least squares with the inverse of the delta-method variance
+of the log-ratio (D69, amended 2026-11-10). The two cells of a pair share their
+crashes: one in which both parties were hurt adds to both. With x_i the hurt on
+side i of a crash, summed over the crashes of the pair into H_ij, S_ii = sum x_i^2
+and S_ij = sum x_i x_j,
+
+    Var = (S_ii + c)/(H_ij + c)^2 + (S_jj + c)/(H_ji + c)^2 - 2 S_ij/((H_ij + c)(H_ji + c)).
+
+For parties x is 0 or 1, so S_ii = H_ij and S_ij counts the crashes with both
+hurt; with none shared it is the variance of two independent Poisson counts, the
+weight of the first version. The moments are counted crash by crash from the party
+universe of each set (crash_moments). The covariance of the potential is the
+pseudo-inverse of the weighted Laplacian, so every potential carries a standard
+error.
 
 The route reads the matrix another route exported and writes four tables:
 potentials at four aggregation levels, the edges and the triangles of the city,
@@ -76,13 +85,35 @@ class Fit:
     components: int
 
 
-def edge_flow(matrix: np.ndarray, vertices: tuple[int, ...], continuity: float) -> Flow:
+def edge_variance(h_ij: float, h_ji: float, s_ii: float, s_jj: float, s_ij: float, continuity: float) -> float:
+    """The delta-method variance of log(H_ij + c) - log(H_ji + c) for crash counts (D69, amended).
+
+    The continuity correction goes on the cells and on the sums of squares, not on the
+    cross term, so with one hurt per crash and no crash shared (s_ii = h_ij, s_ij = 0) this
+    is exactly 1/(h_ij + c) + 1/(h_ji + c), and a cell at zero keeps its variance of 1/c.
+    """
+    a, b = h_ij + continuity, h_ji + continuity
+    return (s_ii + continuity) / a ** 2 + (s_jj + continuity) / b ** 2 - 2.0 * s_ij / (a * b)
+
+
+def edge_flow(matrix: np.ndarray, vertices: tuple[int, ...], continuity: float,
+              squares: np.ndarray | None = None, cross: np.ndarray | None = None) -> Flow:
     """The flow on every edge between two vertices that has at least one crash.
 
     An edge with a zero on one side keeps its comparison thanks to the correction; an
     edge with no crash on either side has nothing to compare and is left out rather
     than entered as a tie.
+
+    squares[i, j] is the sum over the pair's crashes of the hurt on side i squared, and
+    cross[i, j] the sum of the product of the two sides. Without them the weight is the
+    one of two independent Poisson counts of one hurt per crash, which is all an external
+    matrix with no crash-level record allows (the tools that read Evans and Frick and the
+    European cities call it that way).
     """
+    if squares is None:
+        squares = matrix
+    if cross is None:
+        cross = np.zeros_like(matrix)
     edges, flow, weight, forward, backward = [], [], [], [], []
     for position, i in enumerate(vertices):
         for j in vertices[position + 1:]:
@@ -91,7 +122,7 @@ def edge_flow(matrix: np.ndarray, vertices: tuple[int, ...], continuity: float) 
                 continue
             edges.append((i, j))
             flow.append(np.log(h_ij + continuity) - np.log(h_ji + continuity))
-            weight.append(1.0 / (1.0 / (h_ij + continuity) + 1.0 / (h_ji + continuity)))
+            weight.append(1.0 / edge_variance(h_ij, h_ji, squares[i, j], squares[j, i], cross[i, j], continuity))
             forward.append(h_ij)
             backward.append(h_ji)
     return Flow(tuple(edges), np.array(flow), np.array(weight), np.array(forward), np.array(backward))
@@ -244,6 +275,86 @@ def matrices(long_table: pd.DataFrame, count: str, log: RunLog | None = None) ->
     return out
 
 
+@dataclass(frozen=True)
+class Moments:
+    """The crash-level sums of one count, per unit and year, as 6 x 6 matrices.
+
+    cells[i, j] is H_ij, the hurt of type i summed over the two-party crashes with j;
+    squares[i, j] sums their squares over the same crashes; cross[i, j] = cross[j, i]
+    sums the product of the two sides. For parties the hurt is 0 or 1, so squares equals
+    cells and cross counts the crashes with both parties hurt.
+    """
+
+    cells: dict[tuple[str, int], np.ndarray]
+    squares: dict[tuple[str, int], np.ndarray]
+    cross: dict[tuple[str, int], np.ndarray]
+
+
+def crash_moments(universe: pd.DataFrame, crash_attrs: pd.DataFrame, years) -> dict[str, Moments]:
+    """The moments of every count, crash by crash, from one party universe (D69, amended).
+
+    The matrix holds only the sums H. The variance of a log-ratio also needs how the hurt
+    are spread over crashes and how the two sides of a crash go together, which only the
+    crashes themselves know. Crashes are placed in a unit and a year by the same crash
+    attributes as the matrix, and the cells rebuilt here are checked against the pinned
+    matrix before anything is fitted on these moments.
+    """
+    size = universe.groupby(config.CRASH_ID_COL)[config.PARTY_ID_COL].transform("size")
+    two_party = universe[size == 2].merge(
+        crash_attrs[[config.CRASH_ID_COL, config.YEAR_COL, config.AREA_CODE_COL]],
+        on=config.CRASH_ID_COL, how="left")
+    two_party = two_party[two_party[config.AREA_CODE_COL].notna()
+                          & two_party[config.YEAR_COL].astype(int).isin(list(years))].copy()
+    two_party["_type"] = two_party[config.PARTY_TYPE_COL].map(INDEX)
+    if two_party["_type"].isna().any():
+        raise RuntimeError("a party type outside the matrix reached the Hodge moments")
+    two_party["_type"] = two_party["_type"].astype(int)
+    hurt = {
+        config.AFFECTED_PARTIES_COL: ((two_party[config.PERSONS_INJURED_COL]
+                                       + two_party[config.PERSONS_KILLED_COL]) > 0).astype(float),
+        config.PERSONS_INJURED_COL: two_party[config.PERSONS_INJURED_COL].astype(float),
+        config.PERSONS_KILLED_COL: two_party[config.PERSONS_KILLED_COL].astype(float),
+    }
+    for count, values in hurt.items():
+        two_party[count] = values
+    # Each crash once, its two sides ordered by actor type so the pair has one orientation.
+    two_party = two_party.sort_values([config.CRASH_ID_COL, "_type", config.PARTY_ID_COL], kind="stable")
+    side = two_party.groupby(config.CRASH_ID_COL).cumcount()
+    first = two_party[side == 0].set_index(config.CRASH_ID_COL)
+    second = two_party[side == 1].set_index(config.CRASH_ID_COL).reindex(first.index)
+    crashes = pd.DataFrame({"area": first[config.AREA_CODE_COL], "year": first[config.YEAR_COL].astype(int),
+                            "i": first["_type"], "j": second["_type"]})
+    for count in hurt:
+        x_i, x_j = first[count], second[count]
+        crashes[f"{count}|h_i"], crashes[f"{count}|h_j"] = x_i, x_j
+        crashes[f"{count}|s_i"], crashes[f"{count}|s_j"] = x_i ** 2, x_j ** 2
+        crashes[f"{count}|s_ij"] = x_i * x_j
+    # Two parties of one type make no edge.
+    crashes = crashes[crashes["i"] != crashes["j"]]
+    summed = crashes.groupby(["area", "year", "i", "j"]).sum()
+
+    size = len(ACTORS)
+    out = {count: Moments({}, {}, {}) for count in hurt}
+    for (area, year, i, j), row in summed.iterrows():
+        key = (area, int(year))
+        for count in hurt:
+            moments = out[count]
+            for store in (moments.cells, moments.squares, moments.cross):
+                store.setdefault(key, np.zeros((size, size)))
+            moments.cells[key][i, j] = row[f"{count}|h_i"]
+            moments.cells[key][j, i] = row[f"{count}|h_j"]
+            moments.squares[key][i, j] = row[f"{count}|s_i"]
+            moments.squares[key][j, i] = row[f"{count}|s_j"]
+            moments.cross[key][i, j] = moments.cross[key][j, i] = row[f"{count}|s_ij"]
+    return out
+
+
+def _on_keys(store: dict[tuple[str, int], np.ndarray], keys) -> dict[tuple[str, int], np.ndarray]:
+    """The moments on the unit-years of the matrix, with a zero where no crash was counted."""
+    zero = np.zeros((len(ACTORS), len(ACTORS)))
+    return {key: store.get(key, zero) for key in keys}
+
+
 def aggregate(cells: dict[tuple[str, int], np.ndarray]) -> dict[tuple[str, str, int | None], np.ndarray]:
     """The four levels: every unit-year, every city-year, every unit pooled, the city pooled."""
     out: dict[tuple[str, str, int | None], np.ndarray] = {}
@@ -274,7 +385,7 @@ class Tables:
     unit_flows: dict[tuple[str, str, str], dict[str, Flow]]
 
 
-def compute(frames: dict[str, pd.DataFrame], log: RunLog) -> Tables:
+def compute(frames: dict[str, pd.DataFrame], moments: dict[str, dict[str, Moments]], log: RunLog) -> Tables:
     reference = INDEX[config.HODGE_REFERENCE_ACTOR]
     potential_rows, edge_rows, triangle_rows = [], [], []
     city_matrices: dict[tuple[str, str], np.ndarray] = {}
@@ -289,24 +400,31 @@ def compute(frames: dict[str, pd.DataFrame], log: RunLog) -> Tables:
         for count in config.HODGE_COUNTS:
             cells = matrices(long_table, count, log if count == config.AFFECTED_PARTIES_COL else None)
             levels = aggregate(cells)
+            # The crash-level sums on the same unit-years, aggregated the same way. The cells
+            # themselves come from the pinned matrix; verify checks the crashes rebuild them.
+            squares = aggregate(_on_keys(moments[dataset][count].squares, cells))
+            cross = aggregate(_on_keys(moments[dataset][count].cross, cells))
             # The reference window, where the correction changes nothing, pooled per unit for
             # the second heterogeneity test (D69). Only the observed set needs it: there the two
             # sets coincide.
             if dataset == config.OBSERVED_DATASET:
-                reference_cells: dict[str, np.ndarray] = {}
+                reference_cells: dict[str, list[np.ndarray]] = {}
                 for (area, year), matrix in cells.items():
                     if year in config.CORRECTION_REFERENCE_YEARS:
-                        reference_cells[area] = reference_cells.get(area, 0) + matrix
+                        key = (config.HODGE_UNIT_YEAR, area, year)
+                        sums = reference_cells.setdefault(area, [0, 0, 0])
+                        reference_cells[area] = [sums[0] + matrix, sums[1] + squares[key], sums[2] + cross[key]]
             city_matrices[(dataset, count)] = levels[(config.HODGE_CITY_ALL_YEARS, config.CITY_AREA_CODE, None)]
             for layer, actors in config.HODGE_LAYERS.items():
                 vertices = tuple(INDEX[a] for a in actors)
                 unit_flows[(dataset, count, layer)] = {}
                 if dataset == config.OBSERVED_DATASET:
                     reference_flows[(dataset, count, layer)] = {
-                        area: edge_flow(matrix, vertices, config.HODGE_CONTINUITY)
-                        for area, matrix in reference_cells.items()}
+                        area: edge_flow(sums[0], vertices, config.HODGE_CONTINUITY, sums[1], sums[2])
+                        for area, sums in reference_cells.items()}
                 for (level, area, year), matrix in levels.items():
-                    flow = edge_flow(matrix, vertices, config.HODGE_CONTINUITY)
+                    level_squares, level_cross = squares[(level, area, year)], cross[(level, area, year)]
+                    flow = edge_flow(matrix, vertices, config.HODGE_CONTINUITY, level_squares, level_cross)
                     if level == config.HODGE_UNIT_ALL_YEARS:
                         unit_flows[(dataset, count, layer)][area] = flow
                     result = fit(flow)
@@ -336,7 +454,9 @@ def compute(frames: dict[str, pd.DataFrame], log: RunLog) -> Tables:
                                                            flow.backward, result.gradient, result.residual):
                             edge_rows.append({
                                 **common, config.PAIR_FIRST_COL: ACTORS[i], config.PAIR_SECOND_COL: ACTORS[j],
-                                "COUNT_FIRST_HURT": f, "COUNT_SECOND_HURT": b, "FLOW": y, "WEIGHT": w,
+                                "COUNT_FIRST_HURT": f, "COUNT_SECOND_HURT": b,
+                                "SQUARES_FIRST": level_squares[i, j], "SQUARES_SECOND": level_squares[j, i],
+                                "CROSS": level_cross[i, j], "FLOW": y, "WEIGHT": w,
                                 "GRADIENT": g, "RESIDUAL": r,
                             })
                     if level == config.HODGE_CITY_ALL_YEARS:
@@ -365,7 +485,7 @@ def heterogeneity_test(flows: dict[str, Flow], dataset: str, count: str, layer: 
 
     Two nested fits on the edges of every unit pooled over the window: one potential
     per unit, and one potential common to all units. The weighted residual each adds
-    is chi-squared under the Poisson variance, so their difference tests the common
+    is chi-squared under the variance of the weights, so their difference tests the common
     potential with (units - 1) x (free potentials) degrees of freedom. Crash counts
     are often more variable than Poisson, which would inflate that statistic, so the
     test that decides divides it by the within-unit residual, the cycles no potential
@@ -463,7 +583,8 @@ NOTES = {
     config.HODGE_POTENTIAL_FILENAME: (
         "# HodgeRank potentials of the casualty matrix (D69). POTENTIAL has zero mean over the actor "
         "types of its graph; POTENTIAL_VS_REFERENCE is the difference against CAR and does not depend "
-        "on that choice. STD_ERROR_VS_REFERENCE assumes Poisson counts: multiply it by the square root "
+        "on that choice. STD_ERROR_VS_REFERENCE comes from the delta-method variance of crash counts, "
+        "with the crashes the two cells share (D69, amended 2026-11-10): multiply it by the square root "
         "of DISPERSION where that exceeds 1. In the ALL_ACTORS layer the pedestrian potential is an "
         "upper bound, because an unhurt pedestrian is almost never recorded; read WITHOUT_PEDESTRIAN "
         "for anything interpreted. Continuity correction 0.5 on every edge with a crash.\n"
@@ -471,7 +592,9 @@ NOTES = {
     config.HODGE_EDGES_FILENAME: (
         "# One row per edge with a crash. FLOW = log(COUNT_FIRST_HURT + 0.5) - log(COUNT_SECOND_HURT + "
         "0.5), positive when the first type takes the damage; GRADIENT is the part the potential "
-        "explains and RESIDUAL the rest (D69).\n"
+        "explains and RESIDUAL the rest (D69). SQUARES_FIRST and SQUARES_SECOND sum the squared hurt of "
+        "each side over the crashes of the pair, CROSS the product of the two sides; WEIGHT is the "
+        "inverse of the variance they give (D69, amended 2026-11-10).\n"
     ),
     config.HODGE_TRIANGLES_FILENAME: (
         "# The curl Y_AB + Y_BC + Y_CA of every triangle of the city graph; zero for a pure gradient (D69).\n"
@@ -555,11 +678,60 @@ def _synthetic_checks() -> list[tuple[str, bool, str]]:
     finite = bool(np.isfinite(small.flow).all()) and abs(small.flow[0] - np.log(7.5 / 0.5)) < 1e-12
     checks.append(("a one-sided edge enters with a finite flow and an empty one stays out", kept and finite,
                    f"edges {small.edges}, flow {small.flow}"))
+
+    # The amended variance reduces to the first one when no crash is shared and every crash
+    # leaves one hurt, so the amendment changes nothing where the old weight was right.
+    rng = np.random.default_rng(20261110)
+    counts = rng.integers(0, 400, size=(size, size)).astype(float)
+    np.fill_diagonal(counts, 0)
+    old = edge_flow(counts, vertices, config.HODGE_CONTINUITY)
+    reduced = edge_flow(counts, vertices, config.HODGE_CONTINUITY, counts, np.zeros_like(counts))
+    expected = np.array([1.0 / (1.0 / (counts[i, j] + config.HODGE_CONTINUITY)
+                                + 1.0 / (counts[j, i] + config.HODGE_CONTINUITY)) for i, j in old.edges])
+    gap = float(np.max(np.abs(reduced.weight - expected) / expected))
+    checks.append(("with no crash shared and one hurt per crash the weight is the independent one",
+                   gap < 1e-12, f"worst relative gap {gap:.1e}"))
+
+    # The variance against a simulation. Crashes of a pair are a Poisson process and each
+    # leaves (x_i, x_j) hurt from a small distribution with shared crashes and crashes with
+    # several hurt; by thinning, each outcome's count is an independent Poisson.
+    outcomes = np.array([[1, 0], [0, 1], [1, 1], [2, 1], [1, 3], [4, 0]], dtype=float)
+    rates = np.array([900.0, 150.0, 400.0, 60.0, 25.0, 15.0])
+    draws = rng.poisson(rates, size=(100_000, len(rates))).astype(float)
+    side_i, side_j = draws @ outcomes[:, 0], draws @ outcomes[:, 1]
+    c = config.HODGE_CONTINUITY
+    simulated = float(np.var(np.log(side_i + c) - np.log(side_j + c)))
+    formula = edge_variance(rates @ outcomes[:, 0], rates @ outcomes[:, 1], rates @ outcomes[:, 0] ** 2,
+                            rates @ outcomes[:, 1] ** 2, rates @ (outcomes[:, 0] * outcomes[:, 1]), c)
+    checks.append(("the delta-method variance matches a simulation of shared crashes with several hurt",
+                   abs(simulated / formula - 1) < 0.03, f"simulated {simulated:.3e}, formula {formula:.3e}"))
     return checks
 
 
-def verify(tables: Tables, frames: dict[str, pd.DataFrame], log: RunLog) -> bool:
+def verify(tables: Tables, frames: dict[str, pd.DataFrame], moments: dict[str, dict[str, Moments]],
+           log: RunLog) -> bool:
     checks = _synthetic_checks()
+
+    # The moments describe the crashes of the pinned matrix: rebuilt from the crashes, every
+    # cell of every unit-year equals the one the report quotes. If not, the weights would
+    # belong to other crashes and nothing fitted on them would hold.
+    for dataset in MATRIX_FILES:
+        for count in config.HODGE_COUNTS:
+            pinned = matrices(frames[dataset], count)
+            rebuilt = moments[dataset][count].cells
+            zero = np.zeros((len(ACTORS), len(ACTORS)))
+            off = ~np.eye(len(ACTORS), dtype=bool)
+            worst = max(float(np.max(np.abs((pinned.get(key, zero) - rebuilt.get(key, zero))[off])))
+                        for key in set(pinned) | set(rebuilt))
+            checks.append((f"the crashes rebuild every pinned cell, {dataset} {count}", worst == 0,
+                           f"{len(rebuilt)} unit-years with crashes, worst gap {worst:g}"))
+
+    # Every weight is the inverse of a positive variance.
+    weights = [flow.weight for flows in tables.unit_flows.values() for flow in flows.values()]
+    weights.append(tables.edges["WEIGHT"].to_numpy(dtype=float))
+    every = np.concatenate(weights)
+    checks.append(("every edge variance is positive and finite",
+                   bool(np.isfinite(every).all() and (every > 0).all()), f"{len(every)} weights"))
 
     # The decomposition is orthogonal: gradient and residual are perpendicular in the
     # weighted inner product, which is what makes the gradient share a share.
@@ -590,6 +762,14 @@ def verify(tables: Tables, frames: dict[str, pd.DataFrame], log: RunLog) -> bool
     checks.append(("both sides of every pair count the same crashes as rho does",
                    len(gaps) == len(config.RHO_PAIRS) and all(g == 0 for g in gaps),
                    f"{len(gaps)} pairs, gaps {sorted(set(gaps))}"))
+
+    # The shared crashes the variance subtracts are the rho route's numerator, counted apart.
+    shared = sum(moments[config.OBSERVED_DATASET][config.AFFECTED_PARTIES_COL].cross.values())
+    shared_gaps = [shared[INDEX[first], INDEX[second]] - row[config.RHO_NUMERATOR_COL]
+                   for (first, second), row in pairs.iterrows()]
+    checks.append(("the crashes with both parties hurt are rho's numerator in its nine pairs",
+                   len(shared_gaps) == len(config.RHO_PAIRS) and all(g == 0 for g in shared_gaps),
+                   f"{len(shared_gaps)} pairs, gaps {sorted(set(shared_gaps))}"))
 
     # The record balance: the city matrices hold every two-party cell that was read.
     for dataset in MATRIX_FILES:

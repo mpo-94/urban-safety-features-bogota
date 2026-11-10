@@ -387,12 +387,28 @@ def run_hodge(log: RunLog) -> None:
 
     It reads the matrix and rho tables of the runs config names and rebuilds neither, for
     the reason `regressions` gives for the same choice, and fails loudly on any check.
+
+    The variance of each edge needs what the matrix does not keep, how the hurt are
+    spread over the crashes of a pair and how its two sides go together (D69, amended
+    2026-11-10). So the route also reads the sources and builds both party universes,
+    the corrected one with the correction itself, and counts those sums crash by crash;
+    a check fails the run unless those crashes rebuild every pinned cell.
     """
     frames = hodge.read_inputs(log)
-    tables = hodge.compute(frames, log)
+    units, casualties, vehicles = load_sources(log)
+    universe = parties.party_universe(casualties, vehicles, log)
+    crash_attrs = parties.crash_attributes(casualties)
+    corrected_universe, _ = correction.apply(universe, crash_attrs, log)
+    moments = {
+        dataset: hodge.crash_moments(
+            source, crash_attrs, sorted(int(y) for y in frames[dataset][config.YEAR_COL].unique()))
+        for dataset, source in ((config.OBSERVED_DATASET, universe),
+                                (config.CORRECTED_DATASET, corrected_universe))
+    }
+    tables = hodge.compute(frames, moments, log)
     hodge.export(tables, log)
     log.table("record funnel:", log.funnel())
-    if not hodge.verify(tables, frames, log):
+    if not hodge.verify(tables, frames, moments, log):
         raise RouteFailed("the Hodge decomposition failed its checks")
     hodge.report(tables, log)
 
