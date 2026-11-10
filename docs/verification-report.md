@@ -5541,6 +5541,24 @@ Read by the declared rule, the association is a finding of its own. Its size is 
 motorcycle's distance to the car per standard deviation of stations, and about a third of the spread
 across units.
 
+**What the report reads off this run**, from `tools/lectura_de_hodge.py`:
+- **Gaps on the corrected set, all six types**, over their errors scaled by the dispersion:
+  - pedestrian–bicycle 1.0;
+  - bicycle–motorcycle 1.9;
+  - pedestrian–motorcycle 4.7.
+
+  On the observed set they run from 4.5 to 13.1.
+- **Units that keep the city's order:**
+  - on the corrected set, 27 of 30 keep the full order without the pedestrian and all 30 keep its
+    blocks (bicycle and motorcycle above the car, the rest below);
+  - on the observed set, 11 and 29.
+
+  The first version's "all thirty keep the city's order" does not hold under the amended weights.
+- **The yearly series.** The smallest yearly gradient share is 95.2 % observed and 96.2 % corrected.
+  The corrected bicycle stays between 1.05 and 1.12 against the car.
+- **The pedestrian's death bound** is 5.66, against 2.84 predicted, with a scaled error of 0.48: 5.8
+  errors.
+
 ## 34. Phase 4: the contrast with the European determinants
 
 Route `contrast`, 2026-11-09, **`run_20261109_221331`**. It reads the matrix of `run_20261006_203551`,

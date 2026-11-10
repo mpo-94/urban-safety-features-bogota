@@ -13,6 +13,12 @@ of D69 and section 33 of the verification report:
 2. **The Poisson standard errors overstate the precision.** The city residual is many times its
    Poisson variance; scaled by it, as a quasi-Poisson fit would, the gaps between pedestrian,
    bicycle and motorcycle on the corrected set stop being separations.
+
+**It measures the first version of D69.** It builds its flows with `hodge.edge_flow` and no crash
+moments, so its weights are the independent ones the amendment of 2026-11-10 replaced; its figures
+are the record that D69 and section 33 quote for that version. What the report reads off the
+amended run is `tools/lectura_de_hodge.py`, and `tools/dependencia_de_las_celdas.py` measures what the
+amendment changed.
 """
 
 from __future__ import annotations
