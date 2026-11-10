@@ -77,6 +77,7 @@ recomputed against the run it came from rather than against the newest one.
 | `rastro_del_peaton.py` | Does the source record an unhurt pedestrian, is there any trace of one, and how far would the most favourable rebuilding of the pedestrian edges move the potential? 121 unhurt pedestrians of 113,090, 834 crashes as the only trace, and 0.04 | the two layers of **D69** |
 | `heterogeneidad_de_hodge.py` | What does the correction do to the test of whether units differ, and how precise is the city potential once its dispersion is counted? The corrected set falls to 0.44–0.60 of its degrees of freedom; pedestrian, bicycle and motorcycle stop being separated; all thirty units keep the city's order | **D69**, §33 of `verification-report.md`, and the results of the decomposition in the final report |
 | `recta_de_masa.py` | How far does the Hodge potential of each vehicle follow its mass, how much does the slope depend on the assumed masses, and where does the pedestrian's upper bound fall against the vehicles' line? | the mass line of **D69**, and the method and results of the decomposition in the final report |
+| `hodge_evans_frick.py` | Does the method of the hodge route recover a mass exponent someone else published, on their own matrix? On the driver-death table of Evans and Frick it gives 3.16 against their 3.53 | the comparison with the literature of the decomposition in the final report |
 
 `flujos_vs_stock.py` measures the three line layers that carry an annual series
 together, with the cycleway among them **as a control**. That is deliberate: the
