@@ -8791,3 +8791,101 @@ Klanjčić et al. It lives in the development notebook `deliverables/hodge/cuade
 computations call this module instead of repeating it.
 
 Section 33 of the verification report is the run.
+
+## D70 — Phase 4: the contrast with the European determinants, declared before estimating
+
+**Decided by Mateo on 2026-11-09, and committed before the first estimate on Bogotá's data.** The
+approved plan of the study promises a Phase 4: Bogotá's results set against those of the European
+study it replicates (`klanjcicIdentifyingUrbanFeatures2022`) for the covariates with an equivalent
+in both, on coefficients on a comparable scale. The comparison is in level only on the deaths
+stratum, because the source cannot rebuild the KSI indicator; for the injured, only direction and
+relative magnitude are compared. The result is a classification of each association as reproduced
+or divergent, by pair of road users and severity stratum. D67.4 fixed the base, the accumulated
+cross-section. This entry fixes everything else, and it is written and committed before any model
+of this phase is fitted on Bogotá, so the dated commit is the evidence that the rules were chosen
+blind to the results.
+
+### What the European study did, read from the paper
+
+- **Its coefficients are standardised betas of ordinary least squares.** The covariates were
+  standardised to mean zero and variance one. The response, the KSI count of a collision type per
+  million inhabitants, was standardised the same way. Models with every combination of two and of
+  three covariates were compared by AIC (section 4.3).
+- **Its eight selected associations**, from the models of two covariates, with 95 % intervals
+  (pp. 6–7):
+  - walking share against pedestrian–car −0.49 [−0.80, −0.17], cyclist–car −0.38 [−0.74, −0.01],
+    car–car −0.58 [−0.93, −0.23] and single car −0.37 [−0.71, −0.02];
+  - cycling share against car–car −0.23 [−0.58, 0.12];
+  - low-speed area against single car −0.49 [−0.83, −0.14];
+  - protected cycleway against pedestrian–car −0.44 [−0.75, −0.12];
+  - mean temperature against cyclist–car −0.42 [−0.78, −0.12].
+
+### The nine decisions
+
+1. **The comparison is made on the same scale as theirs.** Their scale is the standardised beta of
+   ordinary least squares on the rate per population. The count model D67.4 specifies, with the
+   population as offset, is fitted beside it and reported as a check of direction. Its coefficient
+   is a log rate ratio per standard deviation, which is not their scale, so it does not classify.
+   This amends D67.4 and section 4.9.2 of the report, which named only the count model.
+2. **Six of the eight associations are compared**: every one whose variable has an equivalent here.
+   The low-speed area is not measured, and the temperature does not vary within a city. They fall
+   on four Bogotá series, accumulated over 2012–2024 on the 29 estimating units (D56):
+   - pedestrian against car: 783 deaths, no unit at zero;
+   - bicycle against car: 158 deaths, one unit at zero;
+   - car against car: 64 deaths, six units at zero;
+   - **the single car**: 111 deaths, three units at zero.
+
+   All four pass D67's threshold of fewer than half the units at zero. The single car is the column
+   without counterpart of the matrix, which none of the study's models has read until now; it is
+   included because it is in their table and because the reach of the walking result is what the
+   phase tests.
+3. **The second stratum is persons injured**, as the approved plan words it ("lesionados"), and
+   because the European indicator counts persons. D67.4 had said affected parties.
+4. **A unit's modal share counts the trips that begin in it.** That is how a share describes a
+   place's own travel, and it closes the choice D67.4 left open. It is computed:
+   - on the weekday, the day type every survey measured (`config.MODEL_EXPOSURE_DAY_TYPE`);
+   - over every mode of each survey, public transport and taxi included, as D67.4 fixed, using every
+     weighted record of that day type;
+   - with each origin zone given to the units by the share of its area, the same rule the exposure
+     uses for a trip's endpoint (`exposure.zone_area_shares`);
+   - averaged over the three surveys of the window, 2015, 2019 and 2023.
+
+   Walking counts every walking trip, not the fifteen-minute definition of D39. A modal share counts
+   trips by their main mode, and D39 is a choice about exposure, not about what a share is.
+5. **The coefficient compared is the one in the model AIC selects.** The selection runs, as theirs
+   did, over the models of two and three covariates. With three candidates, that is four models per
+   series. If the selected model leaves the variable out, the association is classified as not
+   selected, and its coefficient in the three-covariate model is reported for direction only.
+6. **The classification rule.**
+   - **Deaths, in level:**
+     - reproduced, if the signs agree and the two 95 % intervals overlap;
+     - divergent, if the signs are opposite and Bogotá's coefficient is significant at 5 %, or if
+       the intervals do not overlap;
+     - inconclusive, if the signs are opposite and Bogotá's is not significant.
+   - **Injured, in direction:** the same rule without the interval condition: reproduced if the
+     signs agree, divergent if they are opposite and Bogotá's is significant, inconclusive if they
+     are opposite and it is not. The ratio of the two magnitudes is reported beside it.
+   - **The third category is added to the plan's two**, because calling noise a divergence would
+     assert something the data do not show.
+7. **Both casualty sets**, observed and corrected, as the approved plan requires of every result.
+   The deaths barely differ between them.
+8. **The European Hodge potential** goes beside Bogotá's in the report's section 5.5, with no
+   classification. Its transcription is published as a tool.
+9. **Where it lives.** A route of its own, `contrast`, which reads the matrix, the regression design
+   and the surveys and rebuilds none of the routes it reads. The full models go in a new last section
+   of the annex book's chapter G; a section, not a chapter, so no letter moves.
+
+### Details fixed with them
+
+- **The response.** The rate is the casualties of the series summed over 2012–2024, over the
+  population summed over the same years, per million. It is the accumulated analogue of their rate
+  for one year.
+- **The covariates.**
+  - The cycleway is the mean over the window of `CYCLEWAY_LENGTH_DENSITY` in the regression design
+    table of `run_20261009_084114`, the reported run. Its population column is the denominator.
+  - The two shares come from the surveys as in decision 4.
+  - Everything is standardised over the 29 units, as theirs were over their 24 cities.
+- **The count model** is Poisson or negative binomial by the Pearson dispersion threshold of the
+  cross-sections (1.25), with the logarithm of the summed population as offset.
+- **The intervals** of ordinary least squares are the usual t intervals. With 29 units and at most
+  three covariates there are 25 or more residual degrees of freedom.
