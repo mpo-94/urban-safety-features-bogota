@@ -2947,6 +2947,100 @@ HODGE_LAYER_COL = "LAYER"
 HODGE_COUNT_COL = "COUNT"
 ROAD_USER_TYPE_COL = "ROAD_USER_TYPE"
 
+# ---------------------------------------------------------------------------
+# Phase 4: the contrast with the European determinants (D70)
+# ---------------------------------------------------------------------------
+# Bogota set against the study it replicates, on the covariates with an
+# equivalent in both and on the scale its coefficients are on. Every choice below
+# was declared in D70 and committed before the first estimate.
+
+# The runs this phase reads: the matrix the report quotes, and the reported
+# regression run, whose design table holds the population and the cycleway of the
+# 29 estimating units in every year of the window.
+CONTRAST_MATRIX_RUN = "run_20261006_203551"
+CONTRAST_DESIGN_RUN = "run_20261009_084114"
+# The surveys of the window, whose shares are averaged (D70.4).
+CONTRAST_SURVEY_YEARS: tuple[int, ...] = (2015, 2019, 2023)
+
+# The covariates with a European equivalent. The two shares are built by this
+# phase; the cycleway is the regression design's column, averaged over the window.
+WALKING_SHARE = "WALKING_SHARE"
+CYCLING_SHARE = "CYCLING_SHARE"
+CONTRAST_CANDIDATES: tuple[str, ...] = (WALKING_SHARE, CYCLING_SHARE, "CYCLEWAY_LENGTH_DENSITY")
+
+
+@dataclass(frozen=True)
+class ContrastSeries:
+    """One series of the contrast: the affected type and its counterpart in the matrix."""
+
+    affected: str
+    counterpart: str  # SELF_COUNTERPART for the single-vehicle crash
+
+    @property
+    def label(self) -> str:
+        return f"{self.affected}__{self.counterpart}"
+
+
+CONTRAST_SERIES: tuple[ContrastSeries, ...] = (
+    ContrastSeries(PEDESTRIAN, CAR),
+    ContrastSeries(BICYCLE, CAR),
+    ContrastSeries(CAR, CAR),
+    ContrastSeries(CAR, SELF_COUNTERPART),
+)
+
+# The two strata (D70.3, D70.6): deaths compared in level, the injured in direction.
+CONTRAST_LEVEL_STRATUM = PERSONS_KILLED_COL
+CONTRAST_DIRECTION_STRATUM = PERSONS_INJURED_COL
+CONTRAST_STRATA: tuple[str, ...] = (CONTRAST_LEVEL_STRATUM, CONTRAST_DIRECTION_STRATUM)
+# The rate is per million inhabitants, as theirs.
+CONTRAST_RATE_PER = 1_000_000
+CONTRAST_SIGNIFICANCE = 0.05
+
+
+@dataclass(frozen=True)
+class EuropeanAssociation:
+    """One selected association of the European study, with its 95 % interval.
+
+    Standardised betas of ordinary least squares on the KSI rate per million,
+    from its models of two covariates (klanjcicIdentifyingUrbanFeatures2022,
+    pp. 6-7).
+    """
+
+    candidate: str
+    series: ContrastSeries
+    beta: float
+    low: float
+    high: float
+
+
+# The six of its eight associations whose variable has an equivalent here (D70.2).
+# The other two, low-speed area against the single car and temperature against
+# cyclist-car, have none: the first is not measured and the second does not vary
+# inside a city. The protected cycleway is matched, approximately, to the cycleway,
+# which does not tell segregated from painted.
+EUROPEAN_ASSOCIATIONS: tuple[EuropeanAssociation, ...] = (
+    EuropeanAssociation(WALKING_SHARE, CONTRAST_SERIES[0], -0.49, -0.80, -0.17),
+    EuropeanAssociation(WALKING_SHARE, CONTRAST_SERIES[1], -0.38, -0.74, -0.01),
+    EuropeanAssociation(WALKING_SHARE, CONTRAST_SERIES[2], -0.58, -0.93, -0.23),
+    EuropeanAssociation(WALKING_SHARE, CONTRAST_SERIES[3], -0.37, -0.71, -0.02),
+    EuropeanAssociation(CYCLING_SHARE, CONTRAST_SERIES[2], -0.23, -0.58, 0.12),
+    EuropeanAssociation("CYCLEWAY_LENGTH_DENSITY", CONTRAST_SERIES[0], -0.44, -0.75, -0.12),
+)
+
+# The labels of D70.6.
+CONTRAST_REPRODUCED = "REPRODUCED"
+CONTRAST_DIVERGENT = "DIVERGENT"
+CONTRAST_INCONCLUSIVE = "INCONCLUSIVE"
+CONTRAST_NOT_SELECTED = "NOT_SELECTED"
+
+# The scale of the comparison and the family of the direction check (D70.1).
+CONTRAST_OLS_STANDARDISED = "OLS_STANDARDISED"
+
+CONTRAST_SHARES_FILENAME = f"{ANALYSIS_PREFIX}__contrast_shares"
+CONTRAST_DESIGN_FILENAME = f"{ANALYSIS_PREFIX}__contrast_design"
+CONTRAST_MODELS_FILENAME = f"{ANALYSIS_PREFIX}__contrast_models"
+CONTRAST_CLASSIFICATION_FILENAME = f"{ANALYSIS_PREFIX}__contrast_classification"
+
 # The candidates that enter the design in logarithms rather than raw.
 #
 # These are the same three quantities an offset is built from, and the reason is

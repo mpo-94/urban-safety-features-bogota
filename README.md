@@ -105,6 +105,7 @@ python -m src.run_pipeline exposure   # travel exposure per unit, and its chorop
 python -m src.run_pipeline interpolation  # the same, carried across the years no survey covers
 python -m src.run_pipeline rho        # the ρ(t) diagnostic, beside the pipeline
 python -m src.run_pipeline hodge      # who takes the damage: HodgeRank on the matrix (D69)
+python -m src.run_pipeline contrast   # Phase 4: Bogota against the European determinants (D70)
 python -m src.run_pipeline completeness   # does every month of every year have data?
 python -m src.run_pipeline integrate  # rebuild the layers from the updated extract
 ```

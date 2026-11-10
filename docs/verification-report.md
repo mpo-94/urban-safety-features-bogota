@@ -5478,3 +5478,80 @@ By five-year window, from `tools/heterogeneidad_de_hodge.py`, which calls this m
 | 2008–2012 | 0.45 | 1.32 |
 | 2013–2017 | 0.44 | 1.11 |
 | 2018–2022 | 0.60 | 1.10 |
+
+## 34. Phase 4: the contrast with the European determinants
+
+Route `contrast`, 2026-11-09, **`run_20261109_221331`**. It reads the matrix of `run_20261006_203551`,
+the regression design of `run_20261009_084114` and the surveys of 2015, 2019 and 2023, and runs
+**15 checks, every one passing**. Every rule was declared in D70 and committed in `d43a6f0` before
+the first estimate.
+
+Two choices of implementation that D70 leaves to the code:
+- **The standardised least squares has no intercept**, as the European equation y = βX on centred
+  variables, so its residual degrees of freedom are 29 minus the covariates.
+- **The count model is fitted on the subset the standardised search selected**, not searched again,
+  because it is a check of direction on the same model.
+
+**The checks.**
+- A known standardised beta is recovered to 0.018.
+- The classification rule gives each of six declared cases its label.
+- The shares:
+  - every share lies in [0, 1];
+  - every survey of the window gives all 30 units a share.
+- The design:
+  - it holds the 29 estimating units and not UPL07;
+  - it holds every casualty of the matrix in the window and the units, gap zero;
+  - its summed population is the design table's, 96,624,956 person-years;
+  - every series passes D67's threshold on deaths, at most 6 of 29 units at zero;
+  - every standardised variable has mean zero and deviation one.
+- The models:
+  - every set, stratum and series fits its four models;
+  - the selected model is the smallest AIC;
+  - every selected model has its count check;
+  - there are 24 classifications.
+
+**The shares.** In the units, the weekday share of walking at the origin is 0.309 in 2015, 0.359 in
+2019 and 0.372 in 2023, and of cycling 0.043, 0.057 and 0.060. They count every walking trip.
+In 2019, 43 % of walking lasts under fifteen minutes (`mobility-surveys-inventory.md`), which puts
+the share of walks over fifteen minutes near 24 %, the published figure for that definition.
+
+Averaged over the window, across the 29 estimating units, walking goes from 0.178 to 0.531 and
+cycling from 0.012 to 0.104. Across the units, walking correlates −0.47 with the cycleway and 0.17
+with cycling, and cycling 0.38 with the cycleway.
+
+**The selected models**, corrected set, standardised least squares:
+
+| Series | Deaths: covariates, R² | Injured: covariates, R² |
+|---|---|---|
+| Pedestrian–car | cycling, cycleway; 0.35 | walking, cycling; 0.40 |
+| Bicycle–car | walking, cycleway; 0.28 | walking, cycleway; 0.55 |
+| Car–car | walking, cycling; 0.23 | all three; 0.64 |
+| Single car | all three; 0.52 | all three; 0.66 |
+
+**The classification**, corrected set; the observed one is identical, its betas within 0.001:
+
+| European association | Europe | Deaths, Bogotá | Injured, Bogotá |
+|---|---:|---|---|
+| Walking, pedestrian–car | −0.49 | −0.20, not selected | −0.52 (p 0.002), reproduced |
+| Walking, bicycle–car | −0.38 | −0.03 (p 0.88), reproduced | −0.46 (p 0.004), reproduced |
+| Walking, car–car | −0.58 | −0.40 (p 0.03), reproduced | −0.44 (p 0.006), reproduced |
+| Walking, single car | −0.37 | −0.40 (p 0.03), reproduced | −0.43 (p 0.006), reproduced |
+| Cycling, car–car | −0.23 | −0.20 (p 0.26), reproduced | −0.36 (p 0.02), reproduced |
+| Cycleway, pedestrian–car | −0.44 | +0.54 (p 0.003), divergent | +0.23, not selected |
+
+Of the six associations, in deaths four are reproduced, one diverges and one is not selected. In
+the injured, five are reproduced and one is not selected.
+
+Two of the four reproductions in deaths are not significant: bicycle–car at −0.03, and cycling in
+car–car at −0.20. Under the declared rule they are reproductions because the signs agree and the
+intervals overlap.
+
+In every one of the ten associations that the selected model holds, the count model with the
+population as offset agrees in sign with the standardised beta.
+
+**The European Hodge potential** (`tools/hodge_klanjcic.py`).
+- **Europe.** The 24 cities summed, KSI 2018, vehicles only: the gradient explains 94.9 % over 15
+  edges. Against the car, the bicycle is +4.89, the motorcycle +3.96, the bus +0.60 and the truck
+  −1.41. The mass slope is 1.06, 0.99 to 1.13 with the masses moved.
+- **Bogotá**, corrected deaths without the pedestrian: the bicycle is +2.71, the motorcycle +3.34
+  and public transport −1.41, with a mass slope of 0.97.

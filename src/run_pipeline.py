@@ -14,6 +14,7 @@ resolution should not have to rebuild fifty-seven figures first.
     python -m src.run_pipeline placebo         # completeness against the urban candidates
     python -m src.run_pipeline panel           # fixed effects against correlated random effects (D67)
     python -m src.run_pipeline hodge           # who takes the damage: HodgeRank on the matrix (D69)
+    python -m src.run_pipeline contrast        # Phase 4: Bogota against the European determinants (D70)
     python -m src.run_pipeline predictors      # the static urban predictors
     python -m src.run_pipeline population      # the denominator, per unit and per year
     python -m src.run_pipeline exposure        # travel exposure from the mobility surveys
@@ -39,6 +40,7 @@ from src import (
     casualty_maps,
     completeness,
     config,
+    contrast,
     correction,
     exposure,
     hodge,
@@ -354,6 +356,30 @@ def run_panel(log: RunLog) -> None:
     failures = panel.verify(tables, log)
     if failures:
         raise RouteFailed("the panel failed its checks: " + "; ".join(failures))
+
+
+def run_contrast(log: RunLog) -> None:
+    """Phase 4: the accumulated cross-section set against the European study (D70).
+
+    It builds the modal shares from the surveys, reads the matrix and the regression
+    design of the runs config names, and classifies each European association with an
+    equivalent here by the rule D70 declared before the first estimate.
+    """
+    shares = contrast.modal_shares(log)
+    frames = contrast.read_inputs(log)
+    design = contrast.accumulated_design(frames, shares, log)
+    models = contrast.model_rows(design, log)
+    tables = {
+        config.CONTRAST_SHARES_FILENAME: shares,
+        config.CONTRAST_DESIGN_FILENAME: design,
+        config.CONTRAST_MODELS_FILENAME: models,
+        config.CONTRAST_CLASSIFICATION_FILENAME: contrast.classification(models),
+    }
+    contrast.export(tables, log)
+    log.table("record funnel:", log.funnel())
+    if not contrast.verify(tables, frames, log):
+        raise RouteFailed("Phase 4 failed its checks")
+    contrast.report(tables, log)
 
 
 def run_hodge(log: RunLog) -> None:
@@ -798,6 +824,8 @@ ROUTES: tuple[Route, ...] = (
     ),
     Route("hodge", "who takes the damage: HodgeRank potentials of the matrix, and whether units differ (D69)",
           run_hodge),
+    Route("contrast", "Phase 4: the accumulated cross-section against the European determinants (D70)",
+          run_contrast),
     Route("map", "the reference map of the territorial units, with and without a scale bar", run_map),
     Route("completeness", "month-by-month coverage of the casualty layers", run_completeness),
     Route("integrate", f"rebuild the layers with {config.REPLACED_YEAR} from the updated extract", run_integrate),
