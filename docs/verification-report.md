@@ -5541,6 +5541,17 @@ Read by the declared rule, the association is a finding of its own. Its size is 
 motorcycle's distance to the car per standard deviation of stations, and about a third of the spread
 across units.
 
+**`run_20261110_045446` replaces it as the run to quote (2026-11-10).** The route also exports each
+observed unit pooled over the reference years, as the level `UNIT_REFERENCE` of
+`analysis__hodge_potential`: 990 rows, which are the potentials the second declared test compares,
+exported so their distribution across units can be drawn.
+- All thirty checks pass, and the row count check now includes the new level.
+- Every other row of the five tables is identical, to zero tolerance, to `run_20261110_005818` and
+  `run_20261110_010654`.
+- The spread across units of the new rows equals the heterogeneity table's to the last digit:
+  0.172 for the bicycle, 0.152 for the motorcycle, 0.205 for public transport and 0.245 for the
+  other vehicles.
+
 **What the report reads off this run**, from `tools/lectura_de_hodge.py`:
 - **Gaps on the corrected set, all six types**, over their errors scaled by the dispersion:
   - pedestrian–bicycle 1.0;

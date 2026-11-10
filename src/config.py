@@ -2913,6 +2913,11 @@ HODGE_CITY_ALL_YEARS = "CITY_ALL_YEARS"
 HODGE_CITY_YEAR = "CITY_YEAR"
 HODGE_UNIT_ALL_YEARS = "UNIT_ALL_YEARS"
 HODGE_UNIT_YEAR = "UNIT_YEAR"
+# Each unit pooled over the reference years of the correction, observed set only, where
+# the two sets coincide. It is the potential the second declared test compares and the
+# environment test regresses; exported since 2026-11-10 so its distribution across units
+# can be drawn. Its year is null and its first and last years are the reference ones.
+HODGE_UNIT_REFERENCE = "UNIT_REFERENCE"
 
 # The test of D69 that decides whether the potential varies between units beyond
 # sampling, run on the vehicle layer and parties. The threshold was declared before

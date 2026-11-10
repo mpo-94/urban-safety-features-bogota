@@ -428,7 +428,15 @@ def compute(frames: dict[str, pd.DataFrame], moments: dict[str, dict[str, Moment
                     reference_flows[(dataset, count, layer)] = {
                         area: edge_flow(sums[0], vertices, config.HODGE_CONTINUITY, sums[1], sums[2])
                         for area, sums in reference_cells.items()}
-                for (level, area, year), matrix in levels.items():
+                # The reference-window unit graphs also get potential rows, so the potential the
+                # second test compares can be read and drawn, not only tested.
+                exported = dict(levels)
+                if dataset == config.OBSERVED_DATASET:
+                    for area, sums in reference_cells.items():
+                        key = (config.HODGE_UNIT_REFERENCE, area, None)
+                        exported[key] = sums[0]
+                        squares[key], cross[key] = sums[1], sums[2]
+                for (level, area, year), matrix in exported.items():
                     level_squares, level_cross = squares[(level, area, year)], cross[(level, area, year)]
                     flow = edge_flow(matrix, vertices, config.HODGE_CONTINUITY, level_squares, level_cross)
                     if level == config.HODGE_UNIT_ALL_YEARS:
@@ -440,8 +448,10 @@ def compute(frames: dict[str, pd.DataFrame], moments: dict[str, dict[str, Moment
                         config.AREA_CODE_COL: area,
                         config.AREA_NAME_COL: config.CITY_AREA_NAME if area == config.CITY_AREA_CODE else names[area],
                         config.YEAR_COL: year,
-                        "FIRST_YEAR": year if year is not None else years[0],
-                        "LAST_YEAR": year if year is not None else years[-1],
+                        "FIRST_YEAR": year if year is not None else (
+                            config.CORRECTION_REFERENCE_YEARS[0] if level == config.HODGE_UNIT_REFERENCE else years[0]),
+                        "LAST_YEAR": year if year is not None else (
+                            config.CORRECTION_REFERENCE_YEARS[-1] if level == config.HODGE_UNIT_REFERENCE else years[-1]),
                         config.HODGE_LAYER_COL: layer, config.HODGE_COUNT_COL: count,
                     }
                     for actor in actors:
@@ -640,7 +650,9 @@ NOTES = {
         "with the crashes the two cells share (D69, amended 2026-11-10): multiply it by the square root "
         "of DISPERSION where that exceeds 1. In the ALL_ACTORS layer the pedestrian potential is an "
         "upper bound, because an unhurt pedestrian is almost never recorded; read WITHOUT_PEDESTRIAN "
-        "for anything interpreted. Continuity correction 0.5 on every edge with a crash.\n"
+        "for anything interpreted. Continuity correction 0.5 on every edge with a crash. UNIT_REFERENCE "
+        "rows are each observed unit pooled over the reference years 2023-2024, the potential the second "
+        "declared test compares.\n"
     ),
     config.HODGE_EDGES_FILENAME: (
         "# One row per edge with a crash. FLOW = log(COUNT_FIRST_HURT + 0.5) - log(COUNT_SECOND_HURT + "
@@ -849,6 +861,8 @@ def verify(tables: Tables, frames: dict[str, pd.DataFrame], moments: dict[str, d
     actors_per_layer = sum(len(a) for a in config.HODGE_LAYERS.values())
     expected_rows = sum((1 + expected_years[d] + expected_units[d] + expected_units[d] * expected_years[d])
                         for d in MATRIX_FILES) * len(config.HODGE_COUNTS) * actors_per_layer
+    # Plus each observed unit pooled over the reference years.
+    expected_rows += expected_units[config.OBSERVED_DATASET] * len(config.HODGE_COUNTS) * actors_per_layer
     checks.append(("one potential row per level, place, year, layer, count and actor type",
                    len(potential) == expected_rows, f"{len(potential)} of {expected_rows}"))
 
