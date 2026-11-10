@@ -8792,6 +8792,83 @@ computations call this module instead of repeating it.
 
 Section 33 of the verification report is the run.
 
+### Amendment of 2026-11-10: the variance counts the crashes the two cells share
+
+**Decided by Mateo on 2026-11-10, after a measurement and before any rerun.** The amendment is
+committed before the route changes and runs, so the history shows the rule fixed first.
+
+**The defect.** The weight of decision 2 is the inverse variance of the log-ratio of two
+*independent* Poisson counts. The two cells of a pair are not independent: a crash in which both
+parties were hurt adds to both, which is the identity of the two sides quoted above.
+
+Model the crashes of a pair as a Poisson process, each crash leaving x_i persons (or parties) hurt
+on side i and x_j on side j. The delta method then gives
+
+    Var(log H_ij − log H_ji) ≈ S_ii / H_ij² + S_jj / H_ji² − 2 S_ij / (H_ij H_ji),
+
+with S_ii = Σ x_i², S_jj = Σ x_j² and S_ij = Σ x_i x_j over the crashes of the pair.
+- **For parties**, x is 0 or 1, so S_ii = H_ij, S_jj = H_ji and S_ij = K_ij. The formula becomes
+  1/H_ij + 1/H_ji − 2K_ij/(H_ij H_ji).
+- **For persons** it also corrects the first two terms. A crash with eight hurt in one party adds 64
+  to S_ii, not 8, so the Poisson variance 1/H understates them.
+
+**What the measurement found** (`tools/dependencia_de_las_celdas.py`, 2026-11-10, on parties):
+- **The formula holds.** A simulation of three independent Poisson counts reproduces it to the third
+  decimal.
+- **The independent formula overstates the variance, and by an amount that depends on the pair.**
+  In the reference years it is 14 times in bicycle-motorcycle, where 86 % of crashes have both
+  parties hurt, 2.3 times in motorcycle-car and 1.2 times in bicycle-public transport. Since it
+  differs by pair, it is not a common factor that the dispersion scaling absorbs; it changes the
+  relative weights.
+- **The city potentials barely move.** On the corrected set, without the pedestrian:
+  - bicycle +1.18 → +1.10, motorcycle +0.97 → +0.97, public transport −0.76 → −0.70;
+  - gradient share 97.9 % → 98.3 %.
+- **The test of whether units differ changes.**
+  - On the corrected set over the whole period it stays at p(F) = 1.000.
+  - On the observed reference years it goes from F = 1.23, p = 0.113, to F = 2.01, p < 0.0001.
+- **What differs between units is almost entirely ρ.** Per unit, the motorcycle contrast against the
+  car correlates −0.98 with the unit's share of crashes with both hurt, and the bicycle −0.66.
+
+These figures were seen before this amendment was written. The amendment fixes the variance, not the
+reading of the test.
+
+**What changes:**
+1. **One variance for every edge, every level, both sets and the three counts**: the formula above,
+   with the continuity correction c added to H_ij, H_ji, S_ii and S_jj (not to S_ij):
+
+       (S_ii + c) / (H_ij + c)² + (S_jj + c) / (H_ji + c)² − 2 S_ij / ((H_ij + c)(H_ji + c)).
+
+   It reduces exactly to decision 2 when no crash is shared and every crash leaves one hurt, since
+   then S_ii = H_ij, and a cell at zero keeps decision 2's variance of 1/c. The weight is its inverse. Everything else in
+   decision 2 stands: the least-squares fit, the covariance from the pseudo-inverse, the dispersion
+   scaling.
+2. **The route counts the moments itself, from the party universe, crash by crash.**
+   - The `rho` table holds K for nine pairs only, and no table holds the moments of persons.
+   - The route therefore reads the sources, as the `rho` and `corrected` routes do. It builds the
+     observed universe, and the corrected one with `correction.apply`.
+   - From the two-party crashes of each set, it adds up H, S_ii, S_jj and S_ij per unit, year and
+     pair, for parties, persons injured and persons killed.
+   - The corrected set needs no approximation. The correction promotes named parties in named
+     crashes, so its universe has crash-level outcomes like the observed one.
+3. **The matrix stays the pinned one.** The route still reads its cells from `run_20261006_203551`,
+   because the report quotes that run. A new check fails the run unless the cells rebuilt from the
+   crashes equal the pinned cells exactly, in both sets and three counts. If they differ, the moments
+   describe other crashes and nothing downstream is valid.
+4. **New checks:**
+   - every variance is positive;
+   - with no shared crash and one hurt per crash, the weight equals decision 2's;
+   - the identity H_ij + H_ji − K_ij = n_ij holds against the `rho` table in its nine pairs, as
+     before.
+5. **The heterogeneity test is unchanged in design**: the same two declared tests, the same
+   threshold and the same requirement that they agree. It runs with the new weights. What the study
+   concludes if they disagree is not decided here. Mateo settles it after the run, knowing the
+   preliminary figures above, and that decision will be recorded as taken after seeing them.
+
+**What is withdrawn.** Decision 2 said the least-squares potential is the large-sample Bradley-Terry
+estimate. That holds only when one side of each comparison loses. Here both sides can be hurt in the
+same crash, so the potential is a weighted least-squares estimate with a delta-method variance, and
+the report says so.
+
 ## D70 — Phase 4: the contrast with the European determinants, declared before estimating
 
 **Decided by Mateo on 2026-11-09, and committed before the first estimate on Bogotá's data.** The
