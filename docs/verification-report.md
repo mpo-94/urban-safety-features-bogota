@@ -5555,3 +5555,17 @@ population as offset agrees in sign with the standardised beta.
   −1.41. The mass slope is 1.06, 0.99 to 1.13 with the masses moved.
 - **Bogotá**, corrected deaths without the pedestrian: the bicycle is +2.71, the motorcycle +3.34
   and public transport −1.41, with a mass slope of 0.97.
+
+**How the divergence of the cycleway is read** (2026-11-09).
+
+Phase 4's +0.54 for the cycleway against pedestrian deaths is a between-unit association. The panel's
+within-unit effect of the cycleway on pedestrian–car parties is −0.157 (`run_20261104_002829`): it
+has stars and no dagger, and goes in the European direction.
+
+Across the 29 units, the window-mean cycleway correlates +0.60 with the arterial road share, +0.57
+with the sidewalk share, +0.40 with the TransMilenio stations, −0.40 with the population and −0.47
+with the walking share (`tools/ciclorruta_entre_unidades.py`). The cycleway is where the large roads
+are and where people walk least.
+
+The final report reads the divergence as one of place and not of the works, alongside the difference
+between protected and all cycleway.
