@@ -8869,6 +8869,60 @@ estimate. That holds only when one side of each comparison loses. Here both side
 same crash, so the potential is a weighted least-squares estimate with a delta-method variance, and
 the report says so.
 
+**The run.** The route was changed in commit `3cab3e7` and run as `run_20261110_005818`; all 26
+checks pass, and the crashes rebuild every pinned cell with no gap. The two declared tests disagree:
+
+| Test | χ² | df | p | F | p (F) |
+|---|---:|---:|---:|---:|---:|
+| Corrected, whole period | 189.2 | 116 | 2e-5 | 0.41 | 1.00 |
+| Observed, reference years | 199.2 | 116 | 2e-6 | 1.95 | 3e-5 |
+
+In the reference years the units differ in bicycle and motorcycle against the car:
+- I² is 0.68 and 0.73;
+- the spread across units is 0.17 and 0.15, against unit errors of 0.11 and 0.09;
+- the city contrasts are 1.05 and 0.92.
+
+Public transport and the other vehicles do not differ.
+
+### Second amendment of 2026-11-10: does the environment explain what differs?
+
+**Decided by Mateo on 2026-11-10, after seeing the run above, and committed before the regressions
+it declares are run.** The rule of this decision answers what the study concludes when the two
+declared tests disagree. Three options were considered:
+1. **The rule as first written: the unit potential as a candidate response for the selection of the
+   regressions.** Rejected as out of scale: a full model search for a variation about an eighth of
+   the gaps it would rank.
+2. **Letting D68's placebo answer, since what differs tracks ρ.** Rejected as indirect: the placebo
+   measures ρ, not the potential, and the two are close but not the same quantity.
+3. **The placebo's design applied to the potential itself.** Chosen.
+
+**What is declared:**
+- **Response.** For each unit, the contrast of the bicycle and of the motorcycle against the car.
+  It is fitted on the observed set pooled over the reference years 2023–2024, on the vehicle layer
+  and parties, with the amended weights: the same quantity the declared test found to differ. Only
+  those two contrasts are tested, because public transport and the other vehicles do not differ;
+  that restriction was chosen after seeing the test and is recorded as such.
+- **Units.** The 29 the regressions estimate on, read from the design table of `run_20261009_084114`,
+  the design D70 pins.
+- **Candidates.** Those every year of the window has, from `config.placebo_candidates`, as the
+  placebo takes them. That gives eleven in 2023–2024, since the vertical signage layer stops in 2023.
+  Each is the mean of its two years and is standardised over the units.
+- **Model.** One regression per contrast and candidate, 22 in all: weighted least squares of the
+  contrast on the standardised candidate and a constant, each unit weighted by the inverse of its
+  contrast's variance, with heteroscedasticity-robust (HC1) errors. A unit row is a pooled window,
+  so there are no year effects to add.
+- **Multiple comparisons.** Holm over the eleven candidates of each contrast, at 0.05.
+- **Reading.**
+  - If no candidate survives Holm in either contrast, the report says that the units differ little
+    in who takes the damage, that what differs is what ρ measures, and that no urban variable
+    explains it.
+  - If one survives, it enters the report as a finding of its own. Its sign is read with a positive
+    coefficient meaning that more of the feature goes with more of the damage taken by that type
+    against the car.
+- **Where it runs.** In the `hodge` route, as a fifth table, `analysis__hodge_environment`, with
+  checks that every coefficient has a positive standard error, that every Holm value lies in [0, 1]
+  and is never below its p-value, and that the rows are 2 × 11.
+
 ## D70 — Phase 4: the contrast with the European determinants, declared before estimating
 
 **Decided by Mateo on 2026-11-09, and committed before the first estimate on Bogotá's data.** The
