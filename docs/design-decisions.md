@@ -8923,6 +8923,11 @@ declared tests disagree. Three options were considered:
   checks that every coefficient has a positive standard error, that every Holm value lies in [0, 1]
   and is never below its p-value, and that the rows are 2 × 11.
 
+**What it found**, `run_20261110_010654`, section 33 of the verification report. One association of
+22 survives Holm: TransMilenio station density with the motorcycle against the car, +0.048 per
+standard deviation, Holm 0.043. The bicycle goes the same way at Holm 0.086. By the rule above it is a
+finding of its own. The report now quotes this run for everything Hodge.
+
 ## D70 — Phase 4: the contrast with the European determinants, declared before estimating
 
 **Decided by Mateo on 2026-11-09, and committed before the first estimate on Bogotá's data.** The

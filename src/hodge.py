@@ -40,9 +40,10 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import statsmodels.api as sm
 from scipy import stats
 
-from src import config
+from src import config, placebo
 from src.provenance import RunLog
 
 MATRIX_FILES = {
@@ -50,6 +51,7 @@ MATRIX_FILES = {
     config.CORRECTED_DATASET: f"{config.ANALYSIS_PREFIX}__matrix_long__{config.CORRECTION_FILE_SUFFIX}.parquet",
 }
 RHO_FILE = f"{config.ANALYSIS_PREFIX}__rho_long.parquet"
+DESIGN_FILE = f"{config.ANALYSIS_PREFIX}__regression_data.parquet"
 
 ACTORS: tuple[str, ...] = tuple(config.MATRIX_ROW_ORDER)
 INDEX = {actor: position for position, actor in enumerate(ACTORS)}
@@ -246,6 +248,9 @@ def read_inputs(log: RunLog) -> dict[str, pd.DataFrame]:
     run_dir = config.run_directory_holding(RHO_FILE, config.HODGE_RHO_SOURCE_RUN)
     frames["rho"] = pd.read_parquet(run_dir / config.DATA_SUBDIR / RHO_FILE)
     log.info("rho table read from %s", run_dir.name)
+    run_dir = config.run_directory_holding(DESIGN_FILE, config.HODGE_DESIGN_SOURCE_RUN)
+    frames["design"] = pd.read_parquet(run_dir / config.DATA_SUBDIR / DESIGN_FILE)
+    log.info("regression design read from %s", run_dir.name)
     return frames
 
 
@@ -380,6 +385,7 @@ class Tables:
     edges: pd.DataFrame
     triangles: pd.DataFrame
     heterogeneity: pd.DataFrame
+    environment: pd.DataFrame
     # Kept for the checks, never exported.
     city_matrices: dict[tuple[str, str], np.ndarray]
     unit_flows: dict[tuple[str, str, str], dict[str, Flow]]
@@ -477,7 +483,10 @@ def compute(frames: dict[str, pd.DataFrame], moments: dict[str, dict[str, Moment
            for (dataset, count, layer), flows in reference_flows.items()],
         ignore_index=True,
     )
-    return Tables(potential, edges, triangle_table, heterogeneity, city_matrices, unit_flows)
+    environment = environment_test(
+        reference_flows[(config.OBSERVED_DATASET, config.AFFECTED_PARTIES_COL, config.HODGE_HETEROGENEITY_LAYER)],
+        frames["design"])
+    return Tables(potential, edges, triangle_table, heterogeneity, environment, city_matrices, unit_flows)
 
 
 def heterogeneity_test(flows: dict[str, Flow], dataset: str, count: str, layer: str, window: str) -> pd.DataFrame:
@@ -574,6 +583,50 @@ def heterogeneity_test(flows: dict[str, Flow], dataset: str, count: str, layer: 
     return pd.DataFrame(rows)
 
 
+def environment_test(flows: dict[str, Flow], design: pd.DataFrame) -> pd.DataFrame:
+    """Does the environment explain how units differ in who takes the damage? (D69, second amendment.)
+
+    For each declared contrast, each unit's difference against the car on its reference-years
+    graph is regressed on one standardised candidate at a time, by weighted least squares with
+    the inverse of that difference's variance as weight and HC1 errors, over the estimating
+    units of the regression design. Holm runs over the candidates of each contrast. A positive
+    coefficient says more of the feature goes with more of the damage taken by that type
+    against the car.
+    """
+    reference = INDEX[config.HODGE_REFERENCE_ACTOR]
+    years = config.CORRECTION_REFERENCE_YEARS
+    candidates = config.placebo_candidates(years)
+    window = design[design[config.YEAR_COL].isin(years)].drop_duplicates([config.AREA_CODE_COL, config.YEAR_COL])
+    values = window.groupby(config.AREA_CODE_COL)[list(candidates)].mean()
+    rows = []
+    for actor in config.HODGE_ENVIRONMENT_CONTRASTS:
+        contrasts = {}
+        for area in values.index:
+            result = fit(flows[area])
+            if result.components == 1:
+                contrasts[area] = contrast(result, INDEX[actor], reference)
+        frame = pd.DataFrame(contrasts, index=["CONTRAST", "STD_ERROR"]).T.join(values, how="inner")
+        weights = 1.0 / frame["STD_ERROR"] ** 2
+        block = []
+        for name in candidates:
+            x = frame[name].astype(float)
+            standardised = (x - x.mean()) / x.std(ddof=0)
+            model = sm.WLS(frame["CONTRAST"].to_numpy(float), sm.add_constant(standardised.to_numpy()),
+                           weights=weights.to_numpy(float)).fit(cov_type="HC1")
+            block.append({config.ROAD_USER_TYPE_COL: actor, config.PLACEBO_CANDIDATE_COL: name,
+                          "UNITS": len(frame), "FIRST_YEAR": years[0], "LAST_YEAR": years[-1],
+                          "CITY_CONTRAST_WEIGHTED": float(np.sum(weights * frame["CONTRAST"]) / np.sum(weights)),
+                          config.PLACEBO_COEFFICIENT_COL: float(model.params[1]),
+                          config.PLACEBO_STD_ERROR_COL: float(model.bse[1]),
+                          config.PLACEBO_P_VALUE_COL: float(model.pvalues[1])})
+        block = pd.DataFrame(block)
+        # The same step-down adjustment the placebo of D68 applies, here over one contrast's candidates.
+        block[config.PLACEBO_P_HOLM_COL] = placebo._holm(block[config.PLACEBO_P_VALUE_COL])
+        block["ASSOCIATED"] = block[config.PLACEBO_P_HOLM_COL] < config.HODGE_ENVIRONMENT_ALPHA
+        rows.append(block)
+    return pd.concat(rows, ignore_index=True)
+
+
 # ---------------------------------------------------------------------------
 # Export, checks and report
 # ---------------------------------------------------------------------------
@@ -605,6 +658,13 @@ NOTES = {
         "decides, on the row with DECLARED_TEST true (D69). Per-type rows are Cochran Q tests on the "
         "contrast against CAR.\n"
     ),
+    config.HODGE_ENVIRONMENT_FILENAME: (
+        "# Does the environment explain how units differ in who takes the damage? (D69, second amendment "
+        "of 2026-11-10.) Each unit's contrast against CAR, observed set pooled over 2023-2024, vehicle "
+        "layer, parties, regressed by inverse-variance weighted least squares on one standardised "
+        "candidate at a time with HC1 errors; Holm over the candidates of each contrast. A positive "
+        "COEFFICIENT says more of the feature goes with more damage taken by that type against the car.\n"
+    ),
 }
 
 
@@ -615,14 +675,15 @@ def export(tables: Tables, log: RunLog) -> dict[str, Path]:
     for name, frame in ((config.HODGE_POTENTIAL_FILENAME, tables.potential),
                         (config.HODGE_EDGES_FILENAME, tables.edges),
                         (config.HODGE_TRIANGLES_FILENAME, tables.triangles),
-                        (config.HODGE_HETEROGENEITY_FILENAME, tables.heterogeneity)):
+                        (config.HODGE_HETEROGENEITY_FILENAME, tables.heterogeneity),
+                        (config.HODGE_ENVIRONMENT_FILENAME, tables.environment)):
         path = data_dir / f"{name}.csv"
         with open(path, "w", encoding="utf-8", newline="") as handle:
             frame.to_csv(handle, index=False)
             handle.write(NOTES[name])
         frame.to_parquet(path.with_suffix(".parquet"))
         paths[name] = path
-    log.info("exported the four Hodge tables to %s/", config.DATA_SUBDIR)
+    log.info("exported the five Hodge tables to %s/", config.DATA_SUBDIR)
     return paths
 
 
@@ -807,6 +868,21 @@ def verify(tables: Tables, frames: dict[str, pd.DataFrame], moments: dict[str, d
                    len(declared) == len(config.HODGE_HETEROGENEITY_TESTS)
                    and declared["P_VALUE_F"].between(0, 1).all(), f"{len(declared)} row(s)"))
 
+    # The environment test of the second amendment: one row per declared contrast and candidate,
+    # a defined error on each, and Holm values that are probabilities and never below their p.
+    environment = tables.environment
+    expected = len(config.HODGE_ENVIRONMENT_CONTRASTS) * len(config.placebo_candidates(config.CORRECTION_REFERENCE_YEARS))
+    checks.append(("the environment test has one row per contrast and candidate", len(environment) == expected,
+                   f"{len(environment)} of {expected}"))
+    checks.append(("every environment coefficient has a positive standard error",
+                   bool((environment[config.PLACEBO_STD_ERROR_COL] > 0).all()), ""))
+    holm, p = environment[config.PLACEBO_P_HOLM_COL], environment[config.PLACEBO_P_VALUE_COL]
+    checks.append(("every Holm value is in [0, 1] and never below its p",
+                   bool(holm.between(0, 1).all() and (holm >= p - 1e-15).all()), ""))
+    checks.append(("the environment test runs on the estimating units",
+                   bool((environment["UNITS"] == frames["design"][config.AREA_CODE_COL].nunique()).all()),
+                   f"{sorted(set(environment['UNITS']))} of {frames['design'][config.AREA_CODE_COL].nunique()}"))
+
     width = max(len(name) for name, _, _ in checks)
     lines = [f"{'check'.ljust(width)}  {'result':>8}  detail", f"{'-' * width}  {'-' * 8}  ------"]
     for name, ok, detail in checks:
@@ -846,5 +922,20 @@ def report(tables: Tables, log: RunLog) -> None:
     elif differ == {True}:
         log.info("verdict: the units differ in both tests; the unit potential is a candidate response (D69)")
     else:
-        log.warn("verdict: the two declared tests disagree; the decision of D69 does not follow from "
-                 "this run and has to be taken up again")
+        log.warn("verdict: the two declared tests disagree; the environment test of the second "
+                 "amendment of D69 is what the study reads")
+
+    lines = []
+    for row in tables.environment.itertuples():
+        lines.append(f"{getattr(row, config.ROAD_USER_TYPE_COL):<11} {getattr(row, config.PLACEBO_CANDIDATE_COL):<32} "
+                     f"{getattr(row, config.PLACEBO_COEFFICIENT_COL):+.3f} ({getattr(row, config.PLACEBO_STD_ERROR_COL):.3f})  "
+                     f"p {getattr(row, config.PLACEBO_P_VALUE_COL):.3f}  Holm {getattr(row, config.PLACEBO_P_HOLM_COL):.3f}"
+                     f"{'  ASSOCIATED' if row.ASSOCIATED else ''}")
+    log.table("environment test, contrast against the car per standard deviation of candidate:", "\n".join(lines))
+    survivors = tables.environment[tables.environment["ASSOCIATED"]]
+    if survivors.empty:
+        log.info("environment: no candidate survives Holm in either contrast; the units differ little in who "
+                 "takes the damage and no urban variable explains it (D69, second amendment)")
+    else:
+        log.info("environment: %d association(s) survive Holm; they are a finding of their own (D69, second "
+                 "amendment)", len(survivors))

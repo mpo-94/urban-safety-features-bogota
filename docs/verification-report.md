@@ -5479,6 +5479,68 @@ By five-year window, from `tools/heterogeneidad_de_hodge.py`, which calls this m
 | 2013–2017 | 0.44 | 1.11 |
 | 2018–2022 | 0.60 | 1.10 |
 
+### The amended run, 2026-11-10: the run to quote for Hodge
+
+Route `hodge`, **`run_20261110_010654`**, after the two amendments of D69 of 2026-11-10. The first
+weights each edge by the delta-method variance of crash counts with the crashes its two cells share
+(commit `3cab3e7`). The second declares the environment test (commit `3f9a7be`). Everything above in
+this section is the record of the first version. `run_20261110_005818` is the same route before the
+environment test, with identical potentials and heterogeneity tables.
+
+**Checks: thirty, all pass.** The sixteen of the first version, and fourteen more:
+- **Rebuilt cells.** The crashes rebuild every pinned cell of `run_20261006_203551` with a gap of zero.
+  That holds in both sets and three counts, over 540 observed and 510 corrected unit-years.
+- **Shared crashes.** They equal ρ's numerator in its nine pairs.
+- **Weights.** All 7,007 come from a positive variance. With no crash shared and one hurt per crash,
+  the weight equals the independent one to 0.
+- **The variance against a simulation.** The delta-method variance matches a simulation of shared
+  crashes with several hurt: 1.427e-3 against 1.422e-3.
+- **The environment test.** It has 22 rows on 29 units, every error is positive, and every Holm value
+  is valid.
+
+**What moved.** On the corrected set, in parties, against the car, without the pedestrian (first
+version in brackets):
+
+| Bicycle | Motorcycle | Public transport | Other | Gradient share | Dispersion |
+|---:|---:|---:|---:|---:|---:|
+| +1.105 (+1.179) | +0.969 (+0.972) | −0.697 (−0.755) | −1.326 (−1.362) | 98.2 % (97.9 %) | 109 (70) |
+
+With all six types the pedestrian bound is +1.209 (+1.283) and the gradient share 96.8 % (96.4 %).
+
+The mass slope (`tools/recta_de_masa.py run_20261110_010654`) is 0.386 in parties, 0.328 in persons
+injured and 0.971 in persons killed (0.41, 0.33, 0.97). The pedestrian's death bound is 5.66 against a
+predicted 2.84 (5.57 against 2.84).
+
+**The two declared tests disagree:**
+
+| Set and window | χ² | df | p | F | df | p (F) | within-unit dispersion |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| Corrected, 2008–2024 (declared) | 189.2 | 116 | 2e-5 | 0.41 | 116, 180 | 1.00 | 3.95 |
+| Observed, 2023–2024 (declared) | 199.2 | 116 | 2e-6 | 1.95 | 116, 170 | 3e-5 | 0.88 |
+
+In the reference years the units differ in bicycle and motorcycle against the car:
+
+| Contrast | I² | Spread across units | Unit error | City |
+|---|---:|---:|---:|---:|
+| Bicycle | 0.68 | 0.17 | 0.11 | 1.05 |
+| Motorcycle | 0.73 | 0.15 | 0.09 | 0.92 |
+
+`tools/dependencia_de_las_celdas.py` shows the motorcycle contrast correlates −0.98 across units with
+the share of crashes with both parties hurt.
+
+**The environment test of the second amendment.** Each contrast, per estimating unit, is regressed on
+each of the eleven candidates of the reference window. Of the 22 regressions one survives Holm:
+- **Motorcycle against the car, TransMilenio station density:** +0.048 per standard deviation
+  (HC1 error 0.017), p = 0.004, Holm 0.043.
+- **The same candidate on the bicycle:** +0.047, p = 0.008, Holm 0.086.
+- **The features of large roads go the same way in both contrasts without surviving Holm:**
+  - arterial road, bridge deck and signalised intersections are positive;
+  - speed cameras and trees are negative.
+
+Read by the declared rule, the association is a finding of its own. Its size is about 5 % of the
+motorcycle's distance to the car per standard deviation of stations, and about a third of the spread
+across units.
+
 ## 34. Phase 4: the contrast with the European determinants
 
 Route `contrast`, 2026-11-09, **`run_20261109_221331`**. It reads the matrix of `run_20261006_203551`,

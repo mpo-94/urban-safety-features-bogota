@@ -2943,6 +2943,15 @@ HODGE_POTENTIAL_FILENAME = f"{ANALYSIS_PREFIX}__hodge_potential"
 HODGE_EDGES_FILENAME = f"{ANALYSIS_PREFIX}__hodge_edges"
 HODGE_TRIANGLES_FILENAME = f"{ANALYSIS_PREFIX}__hodge_triangles"
 HODGE_HETEROGENEITY_FILENAME = f"{ANALYSIS_PREFIX}__hodge_heterogeneity"
+HODGE_ENVIRONMENT_FILENAME = f"{ANALYSIS_PREFIX}__hodge_environment"
+
+# The test of the second amendment of D69 (2026-11-10): whether the environment explains
+# what differs between units. Declared after the amended run showed the units differ in
+# these two contrasts, and before the test was run. It reads the design D70 pins, so its
+# units and candidate values are those of the regressions.
+HODGE_DESIGN_SOURCE_RUN: str | None = "run_20261009_084114"
+HODGE_ENVIRONMENT_CONTRASTS: tuple[str, ...] = (BICYCLE, MOTORCYCLE)
+HODGE_ENVIRONMENT_ALPHA = 0.05
 HODGE_LAYER_COL = "LAYER"
 HODGE_COUNT_COL = "COUNT"
 ROAD_USER_TYPE_COL = "ROAD_USER_TYPE"
