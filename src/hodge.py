@@ -459,6 +459,10 @@ def compute(frames: dict[str, pd.DataFrame], moments: dict[str, dict[str, Moment
                         potential_rows.append({
                             **common, config.ROAD_USER_TYPE_COL: actor,
                             "POTENTIAL": result.potential[INDEX[actor]],
+                            # The error of the potential itself, in the gauge of zero mean over the
+                            # types of its graph: the diagonal of the covariance the fit returns.
+                            "STD_ERROR": float(np.sqrt(max(result.covariance[INDEX[actor], INDEX[actor]], 0.0)))
+                            if not np.isnan(result.potential[INDEX[actor]]) else np.nan,
                             "POTENTIAL_VS_REFERENCE": value, "STD_ERROR_VS_REFERENCE": error,
                             "GRADIENT_SHARE": result.gradient_share, "EDGES": len(flow.edges),
                             "COMPONENTS": result.components,
@@ -652,7 +656,9 @@ NOTES = {
         "upper bound, because an unhurt pedestrian is almost never recorded; read WITHOUT_PEDESTRIAN "
         "for anything interpreted. Continuity correction 0.5 on every edge with a crash. UNIT_REFERENCE "
         "rows are each observed unit pooled over the reference years 2023-2024, the potential the second "
-        "declared test compares.\n"
+        "declared test compares. STD_ERROR is the error of POTENTIAL itself, in its gauge of zero mean, "
+        "from the same covariance; it too is multiplied by the square root of DISPERSION where that "
+        "exceeds 1.\n"
     ),
     config.HODGE_EDGES_FILENAME: (
         "# One row per edge with a crash. FLOW = log(COUNT_FIRST_HURT + 0.5) - log(COUNT_SECOND_HURT + "
@@ -875,6 +881,21 @@ def verify(tables: Tables, frames: dict[str, pd.DataFrame], moments: dict[str, d
     vehicles = potential[potential[config.HODGE_LAYER_COL] == config.HODGE_LAYER_VEHICLES]
     checks.append(("the vehicle layer holds no pedestrian",
                    not (vehicles[config.ROAD_USER_TYPE_COL] == config.PEDESTRIAN).any(), ""))
+
+    # The error of each potential against the error of its difference with the car. By
+    # Cauchy-Schwarz the difference's error lies between |SE_i - SE_car| and SE_i + SE_car, so a
+    # wrong diagonal cannot pass. The car's own rows have a difference of zero and are skipped.
+    keys = [config.DATASET_COL, config.HODGE_LEVEL_COL, config.AREA_CODE_COL, config.YEAR_COL,
+            config.HODGE_LAYER_COL, config.HODGE_COUNT_COL]
+    car = potential[potential[config.ROAD_USER_TYPE_COL] == config.HODGE_REFERENCE_ACTOR][keys + ["STD_ERROR"]]
+    paired = potential[potential[config.ROAD_USER_TYPE_COL] != config.HODGE_REFERENCE_ACTOR].merge(
+        car.rename(columns={"STD_ERROR": "_car"}), on=keys, how="inner").dropna(
+        subset=["STD_ERROR", "_car", "STD_ERROR_VS_REFERENCE"])
+    low = (paired["STD_ERROR"] - paired["_car"]).abs() - 1e-9
+    high = paired["STD_ERROR"] + paired["_car"] + 1e-9
+    within = paired["STD_ERROR_VS_REFERENCE"].between(low, high)
+    checks.append(("the error of each potential bounds the error of its difference with the car",
+                   bool(within.all()) and len(paired) > 0, f"{int((~within).sum())} of {len(paired)} outside"))
 
     declared = tables.heterogeneity[tables.heterogeneity["DECLARED_TEST"]
                                     & (tables.heterogeneity[config.ROAD_USER_TYPE_COL] == "ALL")]

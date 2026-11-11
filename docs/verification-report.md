@@ -5552,6 +5552,15 @@ exported so their distribution across units can be drawn.
   0.172 for the bicycle, 0.152 for the motorcycle, 0.205 for public transport and 0.245 for the
   other vehicles.
 
+**`run_20261111_095554` replaces it as the run to quote (2026-11-11).** The potential table gains
+`STD_ERROR`, the error of each potential in its own gauge of zero mean over the types of its graph,
+from the diagonal of the covariance the fit already returns.
+- The histograms of each actor's potential across units need it, since Olmos asked for each actor by
+  itself rather than against the car.
+- A thirty-first check bounds the error of each difference with the car between |SE_i − SE_car| and
+  SE_i + SE_car. All 28,681 rows fall inside.
+- Every other column of the five tables is identical, to zero tolerance, to `run_20261110_045446`.
+
 **What the report reads off this run**, from `tools/lectura_de_hodge.py`:
 - **Gaps on the corrected set, all six types**, over their errors scaled by the dispersion:
   - pedestrian–bicycle 1.0;

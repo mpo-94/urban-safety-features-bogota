@@ -8928,7 +8928,9 @@ declared tests disagree. Three options were considered:
 standard deviation, Holm 0.043. The bicycle goes the same way at Holm 0.086. By the rule above it is a
 finding of its own. The report quoted this run, and since the same day quotes `run_20261110_045446`,
 identical but for one exported level, each observed unit pooled over the reference years, which the
-histograms of the unit potential draw (verification §33).
+histograms of the unit potential draw (verification §33). On 2026-11-11 it moved to
+`run_20261111_095554`, which adds the error of each potential in its own gauge of zero mean, for the
+histograms of each actor by itself.
 
 ## D70 — Phase 4: the contrast with the European determinants, declared before estimating
 

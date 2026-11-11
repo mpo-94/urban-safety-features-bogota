@@ -3,7 +3,7 @@
     .venv/Scripts/python.exe tools/lectura_de_hodge.py [run]
 
 **Read only.** It reads the potential and edge tables the `hodge` route exported, by default from
-`run_20261110_045446`, the run of the amended D69 the report quotes, and writes nothing. It refits
+`run_20261111_095554`, the run of the amended D69 the report quotes, and writes nothing. It refits
 nothing either: the city covariance comes from `hodge.fit` on the exported flows and weights, which
 is the route's own fit on the same numbers.
 
@@ -35,7 +35,7 @@ sys.path.insert(0, str(ROOT / "tools"))
 from src import config, hodge  # noqa: E402
 from recta_de_masa import PEDESTRIAN_MASS_KG, REFERENCE_MASS_KG, mass_line  # noqa: E402
 
-RUN = "run_20261110_045446"
+RUN = "run_20261111_095554"
 PARTIES, COR, OBS = config.AFFECTED_PARTIES_COL, config.CORRECTED_DATASET, config.OBSERVED_DATASET
 VEHICLES, ALL = config.HODGE_LAYER_VEHICLES, config.HODGE_LAYER_ALL
 
