@@ -18,13 +18,14 @@ Four checks, each one a way the estimator could be wrong without raising:
   3. **The quadrature.** The log-likelihood at the fitted parameters with 20, 30 and 60 nodes must
      agree; if it moves, 30 nodes are too few for unit effects of this size.
   4. **Recovery.** Over many simulated panels the estimates must centre on the true values, and
-     the 95 % intervals of the within slope must cover it about 95 % of the time.
+     the intervals of the within slope, at the study's `config.CONFIDENCE_LEVEL`, must cover it
+     about that often. They were 95 % until D71 made them 90 %.
 
 **What it found on 2026-10-27, and what it changed in src/panel.py.** Nodes fixed around zero gave
 a log-likelihood that moved by 2.5 between 20, 30 and 60 nodes, so the quadrature became adaptive.
 BFGS flagged half the fits as failed with a gradient below 1e-5, so convergence is judged on the
-gradient. And with twenty-nine units the coefficient of a constant variable covers at 0.91 rather
-than 0.95, because maximum likelihood underestimates sigma on few groups; with 120 units it covers
+gradient. And with twenty-nine units the 95 % interval of a constant variable covered at 0.91
+rather than 0.95, because maximum likelihood underestimates sigma on few groups; with 120 units it covers
 at 0.95. The within slope is unbiased and covers at 0.93 either way.
 """
 
@@ -41,6 +42,9 @@ sys.path.insert(0, str(ROOT))
 import numpy as np
 import statsmodels.api as sm
 
+from scipy import stats
+
+from src import config
 from src.panel import RandomInterceptNB
 
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -126,6 +130,9 @@ def main() -> int:
     truth = np.r_[TRUE_COVARIATES, np.log(TRUE_ALPHA), np.log(TRUE_SIGMA)]
     labels = ("varying", "constant", "log alpha", "log sigma")
     estimates, covered_model, covered_clustered, converged = [], [], [], 0
+    # The quantile of the study's interval, so the coverage measured is the one the tables print.
+    z = float(stats.norm.ppf(0.5 + config.CONFIDENCE_LEVEL / 2))
+    nominal = config.CONFIDENCE_LEVEL
     for _ in range(arguments.replicas):
         y, X, offset, unit, beta = simulate(rng)
         model = RandomInterceptNB(y, X, offset, unit)
@@ -134,12 +141,12 @@ def main() -> int:
         converged += fit.converged
         values = fit.params[-4:]
         estimates.append(values)
-        covered_model.append(np.abs(values - truth) <= 1.96 * fit.standard_errors(clustered=False)[-4:])
-        covered_clustered.append(np.abs(values - truth) <= 1.96 * fit.standard_errors(clustered=True)[-4:])
+        covered_model.append(np.abs(values - truth) <= z * fit.standard_errors(clustered=False)[-4:])
+        covered_clustered.append(np.abs(values - truth) <= z * fit.standard_errors(clustered=True)[-4:])
     estimates = np.array(estimates)
     covered_model, covered_clustered = np.array(covered_model), np.array(covered_clustered)
     print(f"4. recovery over {arguments.replicas} simulated panels, {converged} converged; "
-          "95 % coverage with the model's errors and with the clustered ones:")
+          f"{100 * nominal:.0f} % coverage with the model's errors and with the clustered ones:")
     for j, label in enumerate(labels):
         bias = estimates[:, j].mean() - truth[j]
         # The Monte Carlo error of the mean, so a bias is judged against what the replicas can see.
@@ -150,12 +157,13 @@ def main() -> int:
         # Both slopes must be unbiased; the varying one, which is the within effect the panel is
         # for, must also be covered. The constant one learns from twenty-nine units only, and with
         # them maximum likelihood underestimates sigma and so the constant's errors: measured on
-        # 2026-10-27, its coverage is 0.913 with 29 units and 0.947 with 120, and sigma's bias goes
+        # 2026-10-27 at 95 %, its coverage was 0.913 with 29 units and 0.947 with 120, and sigma's bias goes
         # from -0.071 to -0.017. That is the method on few groups, not a defect, so it is reported
         # and declared in the thesis rather than failed on.
         if j < 2 and abs(bias) > 3 * noise + 0.005:
             failures.append(f"the {label} coefficient is biased")
-        if j == 0 and covered_model[:, j].mean() < 0.92:
+        # Three points under nominal, the margin the 95 % check allowed when it read 0.92.
+        if j == 0 and covered_model[:, j].mean() < nominal - 0.03:
             failures.append(f"the {label} coefficient's intervals do not cover")
     if converged < 0.95 * arguments.replicas:
         failures.append("too many simulated fits did not converge")

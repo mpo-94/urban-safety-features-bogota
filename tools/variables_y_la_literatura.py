@@ -1,4 +1,4 @@
-"""How many variables survive at 5 % and at 10 %, and do the ones the literature names?
+"""How many variables survive at the study's level, and do the ones the literature names?
 
     .venv/Scripts/python.exe tools/variables_y_la_literatura.py [run]
 
@@ -9,33 +9,24 @@ beside its log. Nothing in `src/` imports it.
 The advisor asked two things on 2026-10-12 and they need different arithmetic, because
 the two selection methods use the p-value in opposite ways. In backward elimination the
 alpha **is** the stopping rule, so everything that survives is significant by
-construction and what a looser alpha changes is how many variables survive. In the AIC
+construction and what the alpha changes is how many variables survive. In the AIC
 search the p-value never enters, so significance can be counted afterwards on what AIC
 chose.
 
-**At 5 % the median cell keeps three variables and 84 of 1 766 keep none; at 10 % the
-median is four and only 8 keep none.** The counterfactual is exact rather than refitted:
-the elimination rule is the same for any alpha and all that changes is where the walk
-stops, so a looser alpha is a prefix of the stricter walk and is read off the recorded
-path. It is validated by reconstructing alpha = 0.05, which reproduces 1 766 of 1 766
-walks the run saved. **It only works in the loosening direction** — a stricter alpha
-would need steps that never happened.
-
-| Family | cells | median at 5 % | none at 5 % | median at 10 % | none at 10 % |
-|---|---:|---:|---:|---:|---:|
-| Least squares | 624 | 2 | 72 | 2 | 8 |
-| Poisson | 624 | 6 | 0 | 6 | 0 |
-| Negative binomial | 518 | 3 | 12 | 4 | 0 |
-
-**All eight cells that stay empty at 10 % are least squares**, and the 72 that the
-loosening rescues are too. Poisson never has an empty cell at either alpha, which is
-overdispersion and not explanatory power: its standard errors come out too small, so
-almost nothing is eliminated.
+**Both are read at one level, `config.SIGNIFICANCE_LEVEL`, and the elimination stops at
+`config.BACKWARD_ELIMINATION_ALPHA`, which is the same 0.10 (D71).** Until 2026-11-16 the
+elimination stopped at 0.05 and this tool compared it with 0.10 by reading the looser stop
+off the recorded path. That comparison cannot be made the other way: a stricter alpha would
+need steps that never happened, so on a run that stops at 0.10 the tool measures the level
+the run used and validates itself by reconstructing it from the path. The figures it gives
+are recorded in section 35 of the verification report; the 0.05 reading is in sections 26
+and 27.
 
 The second half is the crossing, and the answer changed shape twice as the literature was
 actually read instead of assumed. **Of the twelve candidates only three have a quantified
 expectation with a definite sign, one has a mechanism and no estimate, five are disputed,
-one is a reported null and two have nothing in the corpus at all.** The three with a sign
+one is a reported null and two have nothing in the corpus at all.** Measured at 0.05 on
+`run_20261009_084114`, before D71, the three with a sign
 split two to one: the arterial road agrees in 80 % of its significant coefficients and the
 street tree in 71 %, while the signalised intersection carries the opposite sign in 93 % of
 its own. The sidewalk, the one that rests on a mechanism, agrees in 60 %.
@@ -150,16 +141,19 @@ def surviving_at(walk: pd.DataFrame, alpha: float) -> int:
     return len(walk) - steps_that_still_happen
 
 
-def count_by_alpha(walks: pd.DataFrame) -> pd.DataFrame:
-    """One row per completed walk: how many variables at each alpha, and what was saved."""
+def count_surviving(walks: pd.DataFrame) -> pd.DataFrame:
+    """One row per completed walk: how many variables survive the declared stop, and what was saved.
+
+    `surviving` is rebuilt from the path at `config.BACKWARD_ELIMINATION_ALPHA`; `saved_by_the_run`
+    is what the run kept. They must agree in every walk, and that agreement is the validation.
+    """
     rows = []
     for key, walk in walks.groupby(CELL, observed=True):
         rows.append(
             dict(
                 zip(CELL, key),
                 candidates=len(walk),
-                at_05=surviving_at(walk, 0.05),
-                at_10=surviving_at(walk, 0.10),
+                surviving=surviving_at(walk, config.BACKWARD_ELIMINATION_ALPHA),
                 saved_by_the_run=int(walk["SURVIVED"].sum()),
             )
         )
@@ -167,7 +161,7 @@ def count_by_alpha(walks: pd.DataFrame) -> pd.DataFrame:
 
 
 def search_significance_by_family(data: Path) -> pd.DataFrame:
-    """In the AIC search, how many chosen coefficients are significant at 5 % and 10 %, by family.
+    """In the AIC search, the share of chosen coefficients below the study's level, by family.
 
     The twin of the elimination counts: there the alpha is the stopping rule, here it never
     enters, so significance is read afterwards on what AIC chose. Pure, so a document table can
@@ -178,8 +172,7 @@ def search_significance_by_family(data: Path) -> pd.DataFrame:
                           & (coefficients["SELECTION_METHOD"] == config.BEST_SUBSET_SELECTION)]
     return chosen.groupby("FAMILY").agg(
         models=("MODEL_ID", "nunique"), chosen=("TERM", "size"),
-        at_05=("P_VALUE", lambda column: (column <= 0.05).mean()),
-        at_10=("P_VALUE", lambda column: (column <= 0.10).mean()))
+        significant=("P_VALUE", lambda column: (column < config.SIGNIFICANCE_LEVEL).mean()))
 
 
 def method_agreement(data: Path, dataset: str, offset: str, family: str) -> pd.DataFrame:
@@ -214,76 +207,61 @@ def method_agreement(data: Path, dataset: str, offset: str, family: str) -> pd.D
     })
 
 
-def report_alpha(data: Path) -> pd.DataFrame:
+def report_significance(data: Path) -> pd.DataFrame:
     paths = pd.read_parquet(data / "analysis__regression_elimination_path.parquet")
     coefficients = pd.read_parquet(data / "analysis__regression_coefficients.parquet")
     predictors = coefficients[coefficients["TERM"] != "INTERCEPT"]
 
     print("=" * 78)
-    print("HOW MANY VARIABLES ARE SIGNIFICANT, AT 5 % AND AT 10 %")
+    print(f"HOW MANY VARIABLES ARE SIGNIFICANT, AT {config.SIGNIFICANCE_LEVEL}")
     print("=" * 78)
 
     aic = predictors[predictors["SELECTION_METHOD"] == config.BEST_SUBSET_SELECTION]
-    per_model = (
-        aic.assign(at_05=aic["P_VALUE"] <= 0.05, at_10=aic["P_VALUE"] <= 0.10)
-        .groupby(CELL, observed=True)
-        .agg(chosen=("TERM", "size"), at_05=("at_05", "sum"), at_10=("at_10", "sum"))
-    )
+    level = config.SIGNIFICANCE_LEVEL
+    below = aic["P_VALUE"] < level
+    per_model = aic.assign(significant=below).groupby(CELL, observed=True).agg(
+        chosen=("TERM", "size"), significant=("significant", "sum"))
+    empty = int((per_model["significant"] == 0).sum())
     print(
         f"\nAIC search — the p-value does not select, so significance is read afterwards."
         f"\n  {len(per_model)} models, {len(aic)} chosen coefficients"
-        f"\n  significant at 5 %: {int((aic['P_VALUE'] <= 0.05).sum())}"
-        f" ({(aic['P_VALUE'] <= 0.05).mean():.1%} of what AIC chose)"
-        f"\n  significant at 10 %: {int((aic['P_VALUE'] <= 0.10).sum())}"
-        f" ({(aic['P_VALUE'] <= 0.10).mean():.1%})"
+        f"\n  significant at {level}: {int(below.sum())} ({below.mean():.1%} of what AIC chose)"
+        f"\n  median {per_model['significant'].median():.0f} per model,"
+        f" mean {per_model['significant'].mean():.2f},"
+        f" models with none {empty} ({empty / len(per_model):.1%})"
     )
-    for column, alpha in (("at_05", 0.05), ("at_10", 0.10)):
-        empty = int((per_model[column] == 0).sum())
-        print(
-            f"  at {alpha:.2f}: median {per_model[column].median():.0f} per model,"
-            f" mean {per_model[column].mean():.2f},"
-            f" models with none {empty} ({empty / len(per_model):.1%})"
-        )
 
     walks = paths[paths["WALK_COMPLETED"]]
     incomplete = paths[~paths["WALK_COMPLETED"]].groupby(CELL, observed=True).ngroups
-    counts = count_by_alpha(walks)
+    counts = count_surviving(walks)
+    alpha = config.BACKWARD_ELIMINATION_ALPHA
 
-    disagreeing = int((counts["at_05"] != counts["saved_by_the_run"]).sum())
+    disagreeing = int((counts["surviving"] != counts["saved_by_the_run"]).sum())
     print(
         f"\nBackward elimination — the alpha is the stopping rule."
         f"\n  {len(counts)} completed walks, {incomplete} cells with none"
-        f"\n  VALIDATION: reconstructing 0.05 matches"
+        f"\n  VALIDATION: reconstructing {alpha} matches"
         f" {len(counts) - disagreeing} of {len(counts)} walks"
         f"  {'OK' if disagreeing == 0 else 'FAILS'}"
     )
     if disagreeing:
         raise SystemExit(
-            "the reconstruction does not reproduce the run, so the 10 % figure cannot be trusted"
+            "the reconstruction does not reproduce the run: either the run did not stop at the declared "
+            "alpha or the path is not what the counts below assume"
         )
 
-    for column, alpha in (("at_05", 0.05), ("at_10", 0.10)):
-        empty = int((counts[column] == 0).sum())
-        print(
-            f"  at {alpha:.2f}: median {counts[column].median():.0f} per cell,"
-            f" mean {counts[column].mean():.2f},"
-            f" cells with none {empty} ({empty / len(counts):.1%})"
-        )
-    rescued = int(((counts["at_05"] == 0) & (counts["at_10"] > 0)).sum())
-    still_empty = counts[(counts["at_05"] == 0) & (counts["at_10"] == 0)]
+    empty = counts[counts["surviving"] == 0]
     print(
-        f"  of the {int((counts['at_05'] == 0).sum())} cells empty at 0.05,"
-        f" {rescued} stop being empty at 0.10;"
-        f" the {len(still_empty)} that remain are"
-        f" {', '.join(sorted(FAMILY_LABELS.get(f, f) for f in still_empty['FAMILY'].unique()))}"
+        f"  at {alpha}: median {counts['surviving'].median():.0f} per cell,"
+        f" mean {counts['surviving'].mean():.2f},"
+        f" cells with none {len(empty)} ({len(empty) / len(counts):.1%}),"
+        f" all of them {', '.join(sorted(FAMILY_LABELS.get(f, f) for f in empty['FAMILY'].unique())) or 'none'}"
     )
 
     by_family = counts.groupby("FAMILY").agg(
-        cells=("at_05", "size"),
-        median_05=("at_05", "median"),
-        none_05=("at_05", lambda column: int((column == 0).sum())),
-        median_10=("at_10", "median"),
-        none_10=("at_10", lambda column: int((column == 0).sum())),
+        cells=("surviving", "size"),
+        median=("surviving", "median"),
+        none=("surviving", lambda column: int((column == 0).sum())),
     )
     by_family.index = [FAMILY_LABELS.get(name, name) for name in by_family.index]
     print("\n  by family:")
@@ -323,7 +301,7 @@ def literature_crossing(data: Path, dataset: str | None = None, offset: str | No
     for name in config.REGRESSION_URBAN_CANDIDATES:
         expectation = config.LITERATURE_EXPECTATIONS_BY_PREDICTOR[name]
         appearances = pedestrian[pedestrian["TERM"] == name]
-        significant = appearances[appearances["P_VALUE"] <= 0.05]
+        significant = appearances[appearances["P_VALUE"] < config.SIGNIFICANCE_LEVEL]
         positive = int((significant["COEFFICIENT_STANDARDISED"] > 0).sum())
         share_positive = positive / len(significant) if len(significant) else float("nan")
         wanted = EXPECTED_SIGN[expectation.direction]
@@ -349,7 +327,7 @@ def literature_crossing(data: Path, dataset: str | None = None, offset: str | No
                 "basis": expectation.basis,
                 "sources": " ".join(expectation.source_citation) or "-",
                 "appears": len(appearances),
-                "significant_05": len(significant),
+                "significant": len(significant),
                 "share_positive": share_positive,
                 "verdict": verdict,
             }
@@ -448,7 +426,7 @@ def placement_against_arterial(data: Path, **specification: str) -> pd.DataFrame
         if wanted is None:
             verdicts[row["predictor"]] = "no expectation"
             continue
-        if not row["significant_05"]:
+        if not row["significant"]:
             verdicts[row["predictor"]] = "no significant coefficient"
             continue
         share = row["share_positive"] if wanted > 0 else 1 - row["share_positive"]
@@ -505,7 +483,7 @@ def main() -> int:
         return 1
     print(f"run: {run}\n")
 
-    counts = report_alpha(data)
+    counts = report_significance(data)
     crossing = report_literature(data)
     placement = report_placement(data)
 
@@ -513,7 +491,7 @@ def main() -> int:
     # holds only what the pipeline put there and stays diffable against another.
     output = REPO / "results" / "_tools_literatura"
     output.mkdir(parents=True, exist_ok=True)
-    counts.to_csv(output / "variables_por_alfa.csv", index=False, encoding="utf-8")
+    counts.to_csv(output / "variables_que_sobreviven.csv", index=False, encoding="utf-8")
     crossing.to_csv(output / "variables_y_la_literatura.csv", index=False, encoding="utf-8")
     placement.to_csv(output / "colocacion_en_la_arterial.csv", index=False, encoding="utf-8")
     print(f"\nwritten to {output}")

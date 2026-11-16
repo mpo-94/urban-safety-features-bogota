@@ -345,7 +345,8 @@ CONSTANTS = tuple(c for c in config.REGRESSION_URBAN_CANDIDATES if c not in (CYC
 FE_NB, FE_POISSON, CRE, MUNDLAK, REFERENCE = "FE_NB", "FE_POISSON", "CRE", "MUNDLAK", "REFERENCE"
 WITHIN, BETWEEN, CONSTANT, YEAR_EFFECT = "WITHIN", "BETWEEN", "CONSTANT", "YEAR"
 LEVEL_OBSERVED, LEVEL_CARRIED = "OBSERVED_TOTAL", "CARRIED_PREVIOUS_YEAR"
-Z = 1.959963984540054  # the two-sided 95 % normal quantile
+# The two-sided normal quantile of the study's interval, CONFIDENCE_LEVEL (D71).
+Z = float(stats.norm.ppf(0.5 + config.CONFIDENCE_LEVEL / 2))
 
 
 HORIZONTAL_FLOW = config.PANEL_HORIZONTAL_MARKING_FLOW
@@ -825,8 +826,8 @@ def validation_rows(panel: PanelData, fits: PairFits) -> list[dict]:
 
 
 def stars(p: float) -> int:
-    """How many of the declared levels (10, 5 and 1 %) the unadjusted p-value is below."""
-    return int(sum(p < level for level in config.PANEL_STAR_LEVELS)) if np.isfinite(p) else 0
+    """How many of the study's star levels (10, 5 and 1 %) the unadjusted p-value is below."""
+    return int(sum(p < level for level in config.STAR_LEVELS)) if np.isfinite(p) else 0
 
 
 # -- the rule that chooses the model (amendment of 2026-11-03) ---------------------------------

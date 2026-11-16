@@ -231,7 +231,7 @@ def model_rows(table: pd.DataFrame, log: RunLog) -> pd.DataFrame:
         fits = [fit_standardised(block, v) for v in subsets()]
         best = min(fits, key=lambda f: f.aic)
         for fit in fits:
-            intervals = fit.result.conf_int(alpha=config.CONTRAST_SIGNIFICANCE)
+            intervals = fit.result.conf_int(alpha=1 - config.CONFIDENCE_LEVEL)
             for position, variable in enumerate(fit.variables):
                 rows.append({
                     config.DATASET_COL: dataset, "STRATUM": stratum, "SERIES": series,
@@ -245,7 +245,7 @@ def model_rows(table: pd.DataFrame, log: RunLog) -> pd.DataFrame:
                 })
         family, count = fit_count(block, best.variables)
         if count is not None:
-            intervals = np.asarray(count.conf_int(alpha=config.CONTRAST_SIGNIFICANCE))
+            intervals = np.asarray(count.conf_int(alpha=1 - config.CONFIDENCE_LEVEL))
             for position, variable in enumerate(best.variables, start=1):
                 rows.append({
                     config.DATASET_COL: dataset, "STRATUM": stratum, "SERIES": series, "FAMILY": family,
@@ -268,6 +268,19 @@ def model_rows(table: pd.DataFrame, log: RunLog) -> pd.DataFrame:
 # ---------------------------------------------------------------------------
 
 
+def european_interval(europe: config.EuropeanAssociation) -> tuple[float, float]:
+    """The European interval at the study's confidence, converted from the 95 % one they publish.
+
+    Their data are not available, so the conversion assumes the published interval is the normal
+    one, beta plus and minus 1.959964 standard errors: the error is its width over 2 times that
+    quantile, and the interval at CONFIDENCE_LEVEL is beta plus and minus its own quantile times
+    the error (D71). Their intervals are symmetric about beta, which is what the assumption needs.
+    """
+    error = (europe.high - europe.low) / (2 * stats.norm.ppf(0.975))
+    half = float(stats.norm.ppf(0.5 + config.CONFIDENCE_LEVEL / 2)) * error
+    return europe.beta - half, europe.beta + half
+
+
 def classify(level: bool, europe: config.EuropeanAssociation, beta: float, low: float, high: float,
              p_value: float) -> str:
     """The rule of D70.6, applied to one association that Bogota's selected model holds."""
@@ -275,7 +288,8 @@ def classify(level: bool, europe: config.EuropeanAssociation, beta: float, low: 
     significant = p_value < config.CONTRAST_SIGNIFICANCE
     if not same_sign:
         return config.CONTRAST_DIVERGENT if significant else config.CONTRAST_INCONCLUSIVE
-    if level and (high < europe.low or low > europe.high):
+    europe_low, europe_high = european_interval(europe)
+    if level and (high < europe_low or low > europe_high):
         return config.CONTRAST_DIVERGENT
     return config.CONTRAST_REPRODUCED
 
@@ -303,7 +317,8 @@ def classification(models: pd.DataFrame) -> pd.DataFrame:
                     config.PAIR_FIRST_COL: europe.series.affected, config.PAIR_SECOND_COL: europe.series.counterpart,
                     config.DATASET_COL: dataset, "STRATUM": stratum,
                     "COMPARISON": "LEVEL" if level else "DIRECTION",
-                    "EUROPE_BETA": europe.beta, "EUROPE_CI_LOW": europe.low, "EUROPE_CI_HIGH": europe.high,
+                    "EUROPE_BETA": europe.beta, "EUROPE_CI_LOW": european_interval(europe)[0],
+                    "EUROPE_CI_HIGH": european_interval(europe)[1],
                     "BOGOTA_BETA": row.COEFFICIENT, "BOGOTA_CI_LOW": row.CI_LOW, "BOGOTA_CI_HIGH": row.CI_HIGH,
                     "BOGOTA_P_VALUE": row.P_VALUE, "BOGOTA_MODEL": row.VARIABLES,
                     "SELECTED_IN_BOGOTA": bool(len(chosen)),
@@ -336,7 +351,8 @@ NOTES = {
         "of direction only (D70.1).\n"),
     config.CONTRAST_CLASSIFICATION_FILENAME: (
         "# Each European association with an equivalent here, classified by D70.6: in LEVEL on deaths, "
-        "in DIRECTION on the injured. NOT_SELECTED means Bogota's AIC-selected model leaves the variable "
+        "in DIRECTION on the injured, at the study's level with 90 % intervals; EUROPE_CI_LOW and EUROPE_CI_HIGH "
+        "are the published 95 % interval converted to 90 % assuming normality (D71). NOT_SELECTED means Bogota's AIC-selected model leaves the variable "
         "out; its coefficient is then the three-covariate model's, for direction only.\n"),
 }
 

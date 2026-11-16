@@ -2197,18 +2197,22 @@ PANEL_HOLDOUT_YEAR = 2024
 # The one pair estimated on the observed set too, as the sensitivity check of the
 # amendment: it holds 97.1 % of what the correction adds.
 PANEL_SENSITIVITY_PAIR = "CAR__MOTORCYCLE"
-# The one level at which the study reads every test it reports (D71). No adjustment for
-# multiple comparisons: a family of tests is read by its count against the share chance
-# alone would put below this level.
-SIGNIFICANCE_LEVEL = 0.05
+# The one level at which the study reads every test it reports, asked for by the panel adviser
+# (D71). No adjustment for multiple comparisons: a family of tests is read by its count against
+# the share chance alone would put below this level. Every other reading constant is this one
+# under the name its route uses, so no route can drift to a level of its own again.
+SIGNIFICANCE_LEVEL = 0.10
+# The stars, the same in every table of the study: one star is exactly an association at
+# SIGNIFICANCE_LEVEL, and the other two say how far below it the p-value falls.
+STAR_LEVELS = (SIGNIFICANCE_LEVEL, 0.05, 0.01)
+# Every interval this work computes, chosen so that "the interval does not cross zero" and
+# "p is below SIGNIFICANCE_LEVEL" say the same thing (D71).
+CONFIDENCE_LEVEL = 1 - SIGNIFICANCE_LEVEL
 # Moran's criterion: the permutations behind its p-value, and the level below which the
 # unadjusted p-value says the residuals hold a spatial structure the model does not capture.
 PANEL_MORAN_PERMUTATIONS = 999
-PANEL_MORAN_ALPHA = 0.05
+PANEL_MORAN_ALPHA = SIGNIFICANCE_LEVEL
 PANEL_RANDOM_SEED = 20261027
-# Significance as the panel reports it: stars at these levels on the unadjusted p-value, as the
-# articles the panel adviser shared do. No adjustment for multiple comparisons (D71).
-PANEL_STAR_LEVELS = (0.10, 0.05, 0.01)
 # The rule that chooses between the two models, fixed before the second run. Condition 1: every
 # within effect of the correlated model lies within this many clustered standard errors of the
 # fixed-effects estimate. Condition 2: its 2024 log-likelihood, summed over the eight pairs, is not
@@ -2924,7 +2928,7 @@ HODGE_UNIT_REFERENCE = "UNIT_REFERENCE"
 # the first run: below this p-value of the dispersion-robust F test the units differ
 # and the unit potential becomes a candidate response; above it the potential stays
 # descriptive and the finding is that the asymmetry belongs to the city.
-HODGE_HETEROGENEITY_ALPHA = 0.05
+HODGE_HETEROGENEITY_ALPHA = SIGNIFICANCE_LEVEL
 HODGE_HETEROGENEITY_LAYER = HODGE_LAYER_VEHICLES
 # Two windows. ALL_YEARS pools each set over its whole period; REFERENCE pools the
 # reference years of the correction, where the two sets coincide.
@@ -2956,7 +2960,7 @@ HODGE_ENVIRONMENT_FILENAME = f"{ANALYSIS_PREFIX}__hodge_environment"
 # units and candidate values are those of the regressions.
 HODGE_DESIGN_SOURCE_RUN: str | None = "run_20261009_084114"
 HODGE_ENVIRONMENT_CONTRASTS: tuple[str, ...] = (BICYCLE, MOTORCYCLE)
-HODGE_ENVIRONMENT_ALPHA = 0.05
+HODGE_ENVIRONMENT_ALPHA = SIGNIFICANCE_LEVEL
 HODGE_LAYER_COL = "LAYER"
 HODGE_COUNT_COL = "COUNT"
 ROAD_USER_TYPE_COL = "ROAD_USER_TYPE"
@@ -3008,7 +3012,7 @@ CONTRAST_DIRECTION_STRATUM = PERSONS_INJURED_COL
 CONTRAST_STRATA: tuple[str, ...] = (CONTRAST_LEVEL_STRATUM, CONTRAST_DIRECTION_STRATUM)
 # The rate is per million inhabitants, as theirs.
 CONTRAST_RATE_PER = 1_000_000
-CONTRAST_SIGNIFICANCE = 0.05
+CONTRAST_SIGNIFICANCE = SIGNIFICANCE_LEVEL
 
 
 @dataclass(frozen=True)
@@ -3147,13 +3151,15 @@ SELECTION_METHOD_SUFFIXES: dict[str, str] = {
     BACKWARD_ELIMINATION_SELECTION: "__eliminacion",
 }
 
-# Where backward elimination stops. **It is the value the adviser's own function
-# used and it is more aggressive than the AIC**, not equivalent to it: dropping a
-# term improves the AIC whenever its |z| is below sqrt(2), which is p > 0.157, so
-# 0.05 removes terms the AIC would have kept. The exported table says so under
+# Where backward elimination stops. In this method surviving is asserting, so it stops at
+# the study's reading level (D71); the function the adviser sent stopped at 0.05. It keeps
+# a name of its own because it is a selection rule as well as a reading. **It is more
+# aggressive than the AIC**, not equivalent to it: dropping a term improves the AIC whenever
+# its |z| is below sqrt(2), which is p > 0.157, so 0.10 still removes terms the AIC would
+# have kept. The exported table says so under
 # itself, because "it keeps the global significance" is the one claim about this
 # method that is not true.
-BACKWARD_ELIMINATION_ALPHA = 0.05
+BACKWARD_ELIMINATION_ALPHA = SIGNIFICANCE_LEVEL
 
 # The interval every coefficient is reported with, and the level below which it is
 # marked significant. Both declared in the anteproyecto.
@@ -3377,8 +3383,8 @@ FAMILY_COL = "FAMILY"
 # selection methods without it holds two rows that look like one row written twice.
 SELECTION_METHOD_COL = "SELECTION_METHOD"
 
-REGRESSION_CONFIDENCE = 0.95
-REGRESSION_SIGNIFICANCE = 0.05
+REGRESSION_CONFIDENCE = CONFIDENCE_LEVEL
+REGRESSION_SIGNIFICANCE = SIGNIFICANCE_LEVEL
 
 
 # Columns of the predictor tables. Scale, unit and year deliberately reuse the

@@ -65,6 +65,9 @@ import predictors as predictores_mod
 import regressions
 from provenance import RunLog
 
+# The stop of the investigation this tool records, run before the pipeline had an elimination of
+# its own; regression-inventory.md quotes its figures at this value. The pipeline stops at
+# config.BACKWARD_ELIMINATION_ALPHA, 0.10 since D71, and this stays 0.05 so the record reproduces.
 ALFA = 0.05
 MAX_K = 4          # hasta cuatro sobrevivientes: enumerar todo por encima no cabe
 MUESTRA = 30

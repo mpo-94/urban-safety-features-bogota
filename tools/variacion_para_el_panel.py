@@ -85,6 +85,10 @@ REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "src"))
 
 import config  # noqa: E402
+from scipy import stats  # noqa: E402
+
+# The two-sided quantile of the study's level (D71): the band and the test it prices both read it.
+Z_LEVEL = float(stats.norm.ppf(0.5 + config.CONFIDENCE_LEVEL / 2))
 import loading  # noqa: E402
 import predictors  # noqa: E402
 from provenance import RunLog  # noqa: E402
@@ -281,14 +285,14 @@ def lead_lag_correlations(frame: pd.DataFrame, regressor: str) -> pd.DataFrame:
         shifted = with_shifted(frame, regressor, shift, column)
         r, n = demeaned_correlation(shifted, "LOG_CASUALTIES", column)
         rows.append({"shift": shift, "wording": wording, "r": r, "n": n,
-                     "band": 1.96 / np.sqrt(max(n - 3, 1))})
+                     "band": Z_LEVEL / np.sqrt(max(n - 3, 1))})
     return pd.DataFrame(rows)
 
 
 def print_correlations(label: str, frame: pd.DataFrame, regressor: str) -> None:
     print(f"\n  {label}")
     for row in lead_lag_correlations(frame, regressor).itertuples():
-        print(f"    {row.wording:<32} r = {row.r:+.3f}   n = {row.n:>3}   naive 95 % band ±{row.band:.3f}")
+        print(f"    {row.wording:<32} r = {row.r:+.3f}   n = {row.n:>3}   naive {100 * config.CONFIDENCE_LEVEL:.0f} % band ±{row.band:.3f}")
 
 
 def casualties_by_unit_year(table: pd.DataFrame) -> pd.DataFrame:
@@ -307,13 +311,14 @@ def cycleway_changes(units_by_year: pd.DataFrame) -> pd.DataFrame:
     return cycle
 
 
-def observations_needed(r: float, z_alpha: float = 1.96, z_power: float = 0.84) -> float:
+def observations_needed(r: float, z_alpha: float | None = None, z_power: float = 0.84) -> float:
     """Independent observations needed to tell a correlation `r` from zero.
 
-    Fisher's transformation, at a two-sided 5 % and 80 % power by default. It is what a
+    Fisher's transformation, at the study's two-sided level (D71) and 80 % power by default. It is what a
     model on the marking flow would need, against the 203 unit-years it would have, which are
     not independent either.
     """
+    z_alpha = Z_LEVEL if z_alpha is None else z_alpha
     return ((z_alpha + z_power) / np.arctanh(r)) ** 2 + 3
 
 

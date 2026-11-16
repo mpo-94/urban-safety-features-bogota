@@ -874,13 +874,21 @@ def _over_deviation(value: float, deviation: float) -> float:
 
 
 def _significance(p_value: float) -> str:
-    """The usual stars, so a table can be read without reading every number."""
+    """The study's stars, the same scale as the panel's: one star is an association (D71)."""
     if not np.isfinite(p_value):
         return ""
-    for threshold, mark in ((0.001, "***"), (0.01, "**"), (config.REGRESSION_SIGNIFICANCE, "*")):
-        if p_value < threshold:
-            return mark
-    return ""
+    return "*" * sum(p_value < level for level in config.STAR_LEVELS)
+
+
+def _percent(fraction: float) -> str:
+    """A confidence as the figures print it: 0.9 is "90"."""
+    return f"{100 * fraction:.0f}"
+
+
+def _star_legend() -> str:
+    """The star scale written out, from config, so a legend cannot drift from the marks."""
+    return "  ".join(f"{'*' * (i + 1)} p<{level:.2f}".replace(".", ",")
+                     for i, level in enumerate(config.STAR_LEVELS))
 
 
 def _collinear_pairs(frame: pd.DataFrame, predictors: tuple[str, ...]) -> list[tuple[str, str, float]]:
@@ -2330,7 +2338,7 @@ def _coefficient_panel(
     figure, axes = _panel_grid(_with_method(
         f"Coeficientes estandarizados · {year} · {config.FAMILY_LABELS_ES[family]}\n"
         f"conjunto: {config.DATASET_LABELS_ES[dataset]} · candidatas: "
-        f"{_candidate_label(candidate_set)} · un color por offset · intervalo del 95 %\n"
+        f"{_candidate_label(candidate_set)} · un color por offset · intervalo del {_percent(config.REGRESSION_CONFIDENCE)} %\n"
         f"variables {config.series_available_in(year)}\n"
         f"cada punto: {_coefficient_quantity_es(family)}"
     , method))
@@ -2683,8 +2691,8 @@ def _beta_heatmap(
             f"seleccionara. La señalización vertical va de {span[0]} a {span[1]}.   ·   "
             "Nombre en gris: la variable compitió en todos los años y no ganó ninguno.   ·   "
             "Color divergente centrado en cero, así que el signo se lee antes que la "
-            "magnitud.   ·   Sin asterisco, el intervalo del 95 % contiene el cero. "
-            "* p<0,05  ** p<0,01  *** p<0,001 — inflados por la selección: son el ganador de "
+            f"magnitud.   ·   Sin asterisco, el intervalo del {_percent(config.REGRESSION_CONFIDENCE)} % contiene el cero. "
+            f"{_star_legend()} — inflados por la selección: son el ganador de "
             "una búsqueda sobre todos los subconjuntos declarados. Las medianas no llevan "
             "asterisco porque una mediana de coeficientes no tiene contraste."
         ),
