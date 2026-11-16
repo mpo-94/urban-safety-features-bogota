@@ -2643,6 +2643,8 @@ en vez de con un argumento.
 y `BACKWARD_ELIMINATION_ALPHA = 0.05`, declarada con la relación contra el AIC escrita al
 lado para que nadie la lea como equivalente.
 
+**Nota del 2026-11-16 (D71).** La eliminación se detiene ahora en 0,10, el nivel con que el estudio lee toda prueba. El 0,05 de arriba es el registro de la regla como se decidió y corrió hasta entonces.
+
 **Las tablas.** La tabla de modelos y la de coeficientes ganan una columna
 `SELECTION_METHOD`, que es **parte de la clave y no una descripción**, por la misma razón
 que `EXPOSURE_VARIANT` lo es (D42): dos filas que difieren sólo en ella son dos respuestas

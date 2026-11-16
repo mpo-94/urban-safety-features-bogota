@@ -7891,6 +7891,8 @@ between the two.
 
 ## D65 — Two selection methods run side by side, and the study has not yet chosen between them
 
+**Note of 2026-11-16 (D71).** The elimination now stops at 0.10, the level every test of the study reads, and no longer at the 0.05 of the function the adviser sent. What follows records the rule as it was decided and run until then.
+
 **Decided 2026-10-09.** The panel adviser asked on 2026-10-07 for backward elimination, a
 procedure that starts with every candidate and drops the least significant until none
 exceeds a declared alpha. It is now implemented beside the exhaustive search over the
@@ -8063,6 +8065,8 @@ chapter, which is where chapter 2 promised the contrast would be made.
 ---
 
 ## D67 — The panel specification: correlated random effects in within-between form, with year effects
+
+**Note of 2026-11-16 (D71).** Holm is withdrawn and the dagger with it. Every reading is at 0.10 on the unadjusted p-value, Moran's included, and the intervals are 90 %. The multiple-comparison clause and the dagger below are the record of what the second run reported.
 
 **Decided by Mateo on 2026-10-15. Not implemented.** It closes the first of the questions the
 panel adviser left open, which pieces of the panel are fixed effects and which random, and it
@@ -8561,6 +8565,8 @@ Section 31 of `docs/verification-report.md`; the presentation is
 
 ## D68 — Completeness per unit, by empirical Bayes, and the placebo regression on it
 
+**Note of 2026-11-16 (D71).** The placebo is read at 0.10 against what chance alone would give, with no Holm adjustment. The counts below are the record of the old reading.
+
 **Decided by Mateo on 2026-10-16. Built the same day.** It fulfils two clauses of the approved
 anteproyecto's Phase 1 that nothing fulfilled until then: completeness is measured per pair,
 unit and year and moved toward the city value in inverse proportion to the number of crashes
@@ -8650,6 +8656,8 @@ with the regime and touches the between effects of the constants, not the within
 cycleway.
 
 ## D69 — Who takes the damage: HodgeRank on the matrix, as an addition to the study
+
+**Note of 2026-11-16 (D71).** The environment test of the second amendment and the heterogeneity test are read at 0.10, and the environment test without Holm. What the amendments below report is the record of the old reading.
 
 **Decided by Mateo on 2026-11-06. Built the same day.** The approved plan of the study binds in
 one direction only: what it promises is delivered, and the final report may carry more. This line
@@ -8934,6 +8942,8 @@ histograms of each actor by itself.
 
 ## D70 — Phase 4: the contrast with the European determinants, declared before estimating
 
+**Note of 2026-11-16 (D71).** Decision 6 is read at 0.10 with 90 % intervals. The European intervals are converted from their published 95 % bounds, assuming normality. The rule's structure is unchanged.
+
 **Decided by Mateo on 2026-11-09, and committed before the first estimate on Bogotá's data.** The
 approved plan of the study promises a Phase 4: Bogotá's results set against those of the European
 study it replicates (`klanjcicIdentifyingUrbanFeatures2022`) for the covariates with an equivalent
@@ -9029,3 +9039,132 @@ blind to the results.
   cross-sections (1.25), with the logarithm of the summed population as offset.
 - **The intervals** of ordinary least squares are the usual t intervals. With 29 units and at most
   three covariates there are 25 or more residual degrees of freedom.
+
+## D71 — Holm withdrawn, and every test the study reads at one level, 0.10
+
+**Decided by Mateo on 2026-11-16, at the panel adviser's request, and decided after the results it
+changes had been seen.** That last clause is the difference between this entry and D67's amendments
+or D70, which were committed before estimating. Here the estimates already exist. What this entry
+can still do is fix the new rules, and the counts they are expected to move, in a commit of its own
+before any code changes. The rerun then has a declared prediction to meet.
+
+The panel adviser asked for two things.
+
+- **Withdraw the Holm adjustment from every procedure, from the data processing and from both
+  books.** Her argument is that the study's multiple comparisons are not numerous enough to need it.
+  Each adjustment ran over a small family: eight pairs per variable in the panel, the tests of one
+  window in the placebo, eleven candidates per contrast in the Hodge environment test. With
+  twenty-nine units, Holm over eight tests asks the smallest p-value to fall below 0.0125 at the
+  level the dagger read, and that erases effects the design does hold.
+- **Read every test the study reports at one level, 0.10.** She asked for it explicitly. Until now
+  the study read at several levels: the dagger at 0.10 after Holm, Moran, the placebo and the Hodge
+  tests at 0.05, phase 4 at 5 %, the cross-sections at 0.05, and the backward elimination stopped at
+  0.05.
+
+Mateo and the panel adviser both know that more associations will cross the threshold, and that the
+conclusions written on the old reading have to be reconsidered. Those are reconsidered last, on
+results that no longer carry Holm and are all read at the same level. The plan is
+`deliverables/sin-holm/plan.md`, in Spanish.
+
+### What is decided
+
+1. **No adjustment for multiple comparisons, anywhere.**
+   - **What goes:** `panel.holm`, `placebo._holm`, the columns `P_HOLM`, `HOLM_DAGGER` and
+     `P_VALUE_HOLM`, and the dagger in every table.
+   - **What replaces it is a reading against chance, stated in figures.** With G tests, about 0.10·G
+     fall below 0.10 by chance alone. The report gives that number beside the observed one wherever
+     it reads a family of tests: the placebo, the environment test and the panel's constants.
+2. **One reading level, 0.10.**
+   - **Where it applies:**
+     - the panel's text;
+     - Moran's request for a spatial term;
+     - the Hodge environment test;
+     - the Hodge heterogeneity test;
+     - phase 4's rule;
+     - the cross-sections' `SIGNIFICANT`.
+   - **How it is declared:** as one constant in `config`, read by every route, so the routes cannot
+     drift apart again.
+3. **The backward elimination stops at 0.10.**
+   - In this method surviving is asserting, because everything it keeps has a p-value below the
+     stop. A stricter stop would make it the one procedure that asserts on a different criterion
+     from every other.
+   - The constant keeps its own name, because it is a selection rule as well as a reading.
+4. **Every interval this work computes is a 90 % interval,** so that "the interval does not cross
+   zero" and "p < 0.10" say the same thing in every table and figure.
+   - **Phase 4.** The European intervals are published at 95 % and their data are not available.
+     They are converted from the published bounds by assuming normality: the standard error is the
+     width over 2·1.959964, and the 90 % interval is β ± 1.644854 times it. Their intervals are
+     symmetric about β (−0.49 [−0.80, −0.17]), so the assumption is visible in the paper's own
+     numbers. That example becomes −0.49 [−0.75, −0.23].
+   - **The simulated coverage** of the panel's intervals is measured again at 90 %.
+   - **Intervals that belong to a source are not touched:** a survey's sampling design and the
+     literature's.
+5. **One star scale, the panel's:** 0.10, 0.05 and 0.01, in the cross-sections as well. Until now
+   the cross-sections used 0.05, 0.01 and 0.001, so the same two stars meant two different things in
+   two chapters. One star now means exactly "an association" at the study's level.
+6. **The report shows the placebo as counts, and the annex book shows it complete.**
+   - **The report's table** gives, for each window and set, the tests, those below 0.10 and the
+     number chance alone would give.
+   - **The annex book** gives all 108 combinations, grouped by pair. There is no row selection,
+     because any rule choosing rows among 63 would be chosen after seeing them.
+7. **The panel's table of constants** counts, for each constant and pair, the panels in which its
+   p-value is below 0.10.
+
+### The departure from the approved plan
+
+The approved plan says of the panel that "significance is adjusted for multiple comparisons". D67's
+amendment of 2026-11-03 put the dagger in to keep that clause. This entry departs from it, and the
+report says so: what was planned, what was done instead, and why it is better. The reasons are two.
+The families are small, and with twenty-nine units the adjustment erases effects the design holds.
+The reading against chance keeps what the clause protected, an honest account of how many tests
+were run, without discarding results.
+
+### What it changes, measured on the runs it replaces
+
+The figures below were measured on 2026-11-16, on the runs the books quote. **They are the
+prediction the rerun has to meet.** A difference the table does not predict stops the plan.
+
+| Test | Run replaced | With Holm, or at 0.05 | At 0.10, unadjusted |
+|---|---|---|---|
+| Panel, within effects (correlated model, corrected set, three reported panels, 48) | `run_20261104_002829` | 4 daggers | 11 |
+| Panel, between effects (48) | same | 13 | 24 |
+| Panel, constants (240) | same | 24 | 63, in 28 of 80 constant-and-pair cells |
+| Panel, year effects of the main panel (96) | same | 40 | 55 |
+| Hausman (48) | same | 1 | 2 |
+| Moran, spatial term requested (54) | same | 5 | 11 |
+| Growth-year test | same | 0 | 0 |
+| Placebo, per window and set | `run_20261016_031937` | 1 to 6 | 23 to 35, against about 10 by chance |
+| Hodge environment test (22) | `run_20261111_095554` | 1 | 11 |
+| Hodge heterogeneity | same | the two tests disagree | unchanged (p = 1 and p = 0.00003) |
+| Phase 4 classification (20) | `run_20261109_221331` | 18 reproduced, 2 divergent | none expected to change; intervals narrower |
+| Backward elimination, reported set (1,868 models) | `run_20261009_084114` | stop at 0.05 | 814 models stop earlier and keep at least one more term |
+| Backward elimination, robustness set | `run_20261105_060136` | stop at 0.05 | measured the same way before that run |
+
+**What does not change:**
+
+- every estimate of the panel, the placebo, Hodge and the exhaustive search, because the threshold
+  acts only after estimating;
+- the rule choosing the panel model, which uses neither Holm nor a threshold.
+
+### What it touches outside the routes
+
+- **The exported tables lose three columns.** `P_HOLM`, `HOLM_DAGGER` and `P_VALUE_HOLM` go.
+  `CI_LOW` and `CI_HIGH` become 90 % intervals, and `STARS` and `SIGNIFICANT` change scale in the
+  cross-sections. The dashboard built outside this repository reads these tables and has to be
+  checked against them.
+- **The tools that read at 0.05 read `config` instead:**
+  - `variables_y_la_literatura.py`, including its literature crossing and its validation of the
+    elimination;
+  - `verificar_panel.py`;
+  - `verificar_estimador_panel.py`;
+  - `variacion_para_el_panel.py`.
+
+### What is not rewritten
+
+D65, D67, D68, D69 and D70 keep what they said, each with a dated note pointing here. A decision
+whose text changed without trace would make its earlier commit prove nothing. Sections 26 to 34 of
+the verification report stay as the record of the runs read the old way. Section 35 records the
+reruns.
+
+**The run to quote** will be filled in by section 35. Until then the runs named in the table above are
+the ones replaced, not the ones to quote.
