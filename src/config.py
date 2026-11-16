@@ -2197,17 +2197,18 @@ PANEL_HOLDOUT_YEAR = 2024
 # The one pair estimated on the observed set too, as the sensitivity check of the
 # amendment: it holds 97.1 % of what the correction adds.
 PANEL_SENSITIVITY_PAIR = "CAR__MOTORCYCLE"
-# Moran's criterion, fixed before estimating: the permutations behind its p-value,
-# and the level below which, after Holm over the eight pairs, the residuals are said
-# to hold a spatial structure the model does not capture.
+# The one level at which the study reads every test it reports (D71). No adjustment for
+# multiple comparisons: a family of tests is read by its count against the share chance
+# alone would put below this level.
+SIGNIFICANCE_LEVEL = 0.05
+# Moran's criterion: the permutations behind its p-value, and the level below which the
+# unadjusted p-value says the residuals hold a spatial structure the model does not capture.
 PANEL_MORAN_PERMUTATIONS = 999
 PANEL_MORAN_ALPHA = 0.05
 PANEL_RANDOM_SEED = 20261027
-# Significance as the second run reports it (amendment of 2026-11-03): stars at these levels on
-# the unadjusted p-value, as the articles the panel adviser shared do, and a dagger on what stays
-# below PANEL_HOLM_ALPHA after Holm over the eight pairs, which keeps the approved correction.
+# Significance as the panel reports it: stars at these levels on the unadjusted p-value, as the
+# articles the panel adviser shared do. No adjustment for multiple comparisons (D71).
 PANEL_STAR_LEVELS = (0.10, 0.05, 0.01)
-PANEL_HOLM_ALPHA = 0.10
 # The rule that chooses between the two models, fixed before the second run. Condition 1: every
 # within effect of the correlated model lies within this many clustered standard errors of the
 # fixed-effects estimate. Condition 2: its 2024 log-likelihood, summed over the eight pairs, is not
@@ -2861,7 +2862,6 @@ PLACEBO_CANDIDATE_COL = "CANDIDATE"
 PLACEBO_COEFFICIENT_COL = "COEFFICIENT"
 PLACEBO_STD_ERROR_COL = "STD_ERROR"
 PLACEBO_P_VALUE_COL = "P_VALUE"
-PLACEBO_P_HOLM_COL = "P_VALUE_HOLM"
 PLACEBO_CELLS_COL = "CELLS"
 PLACEBO_UNITS_COL = "UNITS"
 

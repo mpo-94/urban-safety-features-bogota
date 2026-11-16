@@ -15,7 +15,8 @@ numbers to be judged.
      the previous year alone.
   3. **What is left to each variable.** The route's share of variance left by unit and year
      effects against `variacion_para_el_panel.variance_shares` on the same rows.
-  4. **Holm.** Recomputed per variable over the eight pairs with statsmodels.
+  4. **Moran's request for a spatial term.** Recomputed from the unadjusted p-value at the level
+     the route declares, with no adjustment over the pairs (D71).
   5. **The level of the held-out year.** With it fixed by the observed total, every model's
      predicted total equals the observed one.
   6. **The two models agree where they should.** The within effects of fixed effects, of the
@@ -23,12 +24,12 @@ numbers to be judged.
      pair by pair. Not required to be equal with a log link (D67); reported, and failed only if a
      sign flips between fixed effects and the correlated model on an effect that either declares
      significant.
-  7. **Significance and the rule** (amendment of 2026-11-03). The stars and the dagger recounted
+  7. **Significance and the rule** (amendment of 2026-11-03). The stars recounted
      from the p-values, and the model choice recomputed from the coefficient and validation tables
      by a path of its own, against the route's rule tables.
   8. **The growth-year test** (amendment of 2026-11-04). The observed total of 2018 against the
      affected parties of the main panel's rows; the level fixed by it reproduced; the error and the
-     R² recomputed from the unit predictions; the training years; Holm and the stars recounted on
+     R² recomputed from the unit predictions; the training years; the stars recounted on
      the cycleway effect learned in them.
 """
 
@@ -47,7 +48,6 @@ sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 import numpy as np
 import pandas as pd
-from statsmodels.stats.multitest import multipletests
 
 from src import config, panel
 from src.provenance import RunLog
@@ -120,15 +120,12 @@ def main() -> int:
                 failures.append(f"the remaining share of {v} in {spec.key} differs from variance_shares")
 
     coefficients = read(run, "coefficients")
-    worst_holm = 0.0
-    for _, block in coefficients.groupby(["DATASET", "PANEL", "MODEL", "TERM", "ROLE"]):
-        valid = block["P_VALUE"].notna()
-        if valid.sum():
-            again = multipletests(block.loc[valid, "P_VALUE"], method="holm")[1]
-            worst_holm = max(worst_holm, float(np.max(np.abs(again - block.loc[valid, "P_HOLM"]))))
-    print(f"4. Holm recomputed with statsmodels: largest gap {worst_holm:.2e}")
-    if worst_holm > 1e-12:
-        failures.append("Holm does not reproduce")
+    moran = read(run, "moran")
+    asks = moran["P_VALUE"] < config.PANEL_MORAN_ALPHA
+    print(f"4. Moran: {int(asks.sum())} of {len(moran)} rows ask for a spatial term at {config.PANEL_MORAN_ALPHA}; "
+          f"{int((asks != moran['ASKS_FOR_SPATIAL_TERM']).sum())} differ from the route")
+    if (asks != moran["ASKS_FOR_SPATIAL_TERM"]).any():
+        failures.append("Moran's request does not follow its unadjusted p-value")
 
     validation = read(run, "validation")
     fixed = validation[validation["LEVEL"] == panel.LEVEL_OBSERVED]
@@ -139,7 +136,7 @@ def main() -> int:
 
     within = coefficients[(coefficients["ROLE"] == panel.WITHIN) & (coefficients["DATASET"] == config.CORRECTED_DATASET)]
     wide = within.pivot_table(index=["PANEL", "PAIR", "TERM"], columns="MODEL", values="COEFFICIENT")
-    significant = within.pivot_table(index=["PANEL", "PAIR", "TERM"], columns="MODEL", values="P_VALUE") < 0.05
+    significant = within.pivot_table(index=["PANEL", "PAIR", "TERM"], columns="MODEL", values="P_VALUE") < config.SIGNIFICANCE_LEVEL
     print("6. within effects, largest absolute gap against fixed effects (NB), per model:")
     for model in (panel.CRE, panel.FE_POISSON, panel.MUNDLAK):
         print(f"   {model:10s} {float((wide[model] - wide[panel.FE_NB]).abs().max()):.4f}   "
@@ -152,11 +149,9 @@ def main() -> int:
 
     # The levels are typed here rather than read from config, so a change there shows as a failure.
     recounted = sum((coefficients["P_VALUE"] < level).astype(int) for level in (0.10, 0.05, 0.01))
-    dagger = coefficients["P_HOLM"] < 0.10
-    print(f"7. stars recounted at 10, 5 and 1 %: {int((recounted != coefficients['STARS']).sum())} differ; "
-          f"daggers at 10 % after Holm: {int((dagger != coefficients['HOLM_DAGGER']).sum())} differ")
-    if (recounted != coefficients["STARS"]).any() or (dagger != coefficients["HOLM_DAGGER"]).any():
-        failures.append("the stars or the dagger do not follow the declared levels")
+    print(f"7. stars recounted at 10, 5 and 1 %: {int((recounted != coefficients['STARS']).sum())} differ")
+    if (recounted != coefficients["STARS"]).any():
+        failures.append("the stars do not follow the declared levels")
     reported = [spec.key for spec in config.PANEL_SPECS]
     mine = within[within["PANEL"].isin(reported)]
     by_model = {m: mine[mine["MODEL"] == m].set_index(["PANEL", "PAIR", "TERM"]) for m in (panel.FE_NB, panel.CRE)}
@@ -198,18 +193,12 @@ def main() -> int:
                             abs(r2 - mine["R2"]))
     years_ok = bool((gc["FIRST_YEAR"] == 2012).all() and (gc["LAST_YEAR"] == 2017).all()
                     and (gp["YEAR"] == 2018).all())
-    worst_growth_holm = 0.0
-    for _, block in gc[gc["CONVERGED"]].groupby(["MODEL", "TERM", "ROLE"]):
-        again = multipletests(block["P_VALUE"], method="holm")[1]
-        worst_growth_holm = max(worst_growth_holm, float(np.max(np.abs(again - block["P_HOLM"]))))
-    if gc.loc[~gc["CONVERGED"], "P_HOLM"].notna().any():
-        failures.append("a growth-test fit that did not converge entered Holm")
     recounted_growth = sum((gc["P_VALUE"] < level).astype(int) for level in (0.10, 0.05, 0.01))
     print(f"8. growth test: {gp['PAIR'].nunique()} pairs, models {sorted(gp['MODEL'].unique())}; "
           f"2018 totals against the panel rows, largest gap {gap_total:.2e}; level reproduced to {gap_level:.2e}; "
           f"error and R² recomputed to {worst_measure:.2e}; years 2012-2017 -> 2018: {years_ok}; "
-          f"Holm to {worst_growth_holm:.2e}; stars differ in {int((recounted_growth != gc['STARS']).sum())}")
-    if (gap_total > 1e-9 or gap_level > 1e-6 or worst_measure > 1e-9 or not years_ok or worst_growth_holm > 1e-12
+          f"stars differ in {int((recounted_growth != gc['STARS']).sum())}")
+    if (gap_total > 1e-9 or gap_level > 1e-6 or worst_measure > 1e-9 or not years_ok
             or (recounted_growth != gc["STARS"]).any() or gp["PAIR"].nunique() != 8):
         failures.append("the growth-year test does not reproduce")
 

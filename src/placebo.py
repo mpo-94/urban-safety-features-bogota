@@ -102,14 +102,6 @@ def unit_cells(frames: dict[str, pd.DataFrame], log: RunLog) -> dict[str, pd.Dat
     return out
 
 
-def _holm(p_values: pd.Series) -> pd.Series:
-    """Holm's step-down adjustment over every test of one window and one set."""
-    order = p_values.sort_values().index
-    m = len(order)
-    adjusted = np.maximum.accumulate([(m - i) * p_values[j] for i, j in enumerate(order)])
-    return pd.Series(np.minimum(adjusted, 1.0), index=order).reindex(p_values.index)
-
-
 def fit(cells: dict[str, pd.DataFrame], design: pd.DataFrame, log: RunLog) -> pd.DataFrame:
     """Every declared window, set, pair and candidate, one regression each."""
     by_unit_year = design.drop_duplicates([config.AREA_CODE_COL, config.YEAR_COL])
@@ -149,10 +141,6 @@ def fit(cells: dict[str, pd.DataFrame], design: pd.DataFrame, log: RunLog) -> pd
                                  config.PLACEBO_STD_ERROR_COL: float(model.bse[1]),
                                  config.PLACEBO_P_VALUE_COL: float(model.pvalues[1])})
     table = pd.DataFrame(rows)
-    table[config.PLACEBO_P_HOLM_COL] = np.nan
-    for _, group in table.groupby([config.PLACEBO_WINDOW_COL, config.DATASET_COL]):
-        defined = group[config.PLACEBO_P_VALUE_COL].dropna()
-        table.loc[defined.index, config.PLACEBO_P_HOLM_COL] = _holm(defined)
     log.info("placebo: %d regressions over %d windows", int(table[config.PLACEBO_P_VALUE_COL].notna().sum()),
              len(config.PLACEBO_WINDOWS))
     return table
@@ -168,8 +156,9 @@ def export(table: pd.DataFrame, log: RunLog) -> dict[str, Path]:
         handle.write(
             "# Binomial regressions of rho on one standardised candidate at a time, with year "
             "effects and errors clustered by unit. COEFFICIENT is the change in the log-odds of "
-            "both parties being recorded per standard deviation. P_VALUE_HOLM adjusts over every "
-            "test of the same WINDOW and DATASET. rho is not only recording, so read the windows "
+            "both parties being recorded per standard deviation. P_VALUE is not adjusted for multiple "
+            "comparisons (D71): read the number below 0.10 in a WINDOW and DATASET against the tenth of "
+            "its tests that chance alone would put there. rho is not only recording, so read the windows "
             "against each other (D68).\n"
         )
     table.to_parquet(path.with_suffix(".parquet"))
@@ -216,9 +205,8 @@ def verify(table: pd.DataFrame, cells: dict[str, pd.DataFrame], frames: dict[str
 
     defined = table[config.PLACEBO_P_VALUE_COL].notna()
     p = table.loc[defined, config.PLACEBO_P_VALUE_COL]
-    holm = table.loc[defined, config.PLACEBO_P_HOLM_COL]
-    checks.append(("every p-value and every Holm value lies in [0, 1], Holm never below its p",
-                   bool(p.between(0, 1).all() and holm.between(0, 1).all() and (holm >= p - 1e-15).all()),
+    checks.append(("every p-value lies in [0, 1]",
+                   bool(p.between(0, 1).all()),
                    f"{int(defined.sum())} defined, {int((~defined).sum())} with no coefficient to give"))
     positive_se = bool((table.loc[defined, config.PLACEBO_STD_ERROR_COL] > 0).all())
     checks.append(("every defined coefficient has a positive standard error", positive_se,
@@ -236,15 +224,16 @@ def verify(table: pd.DataFrame, cells: dict[str, pd.DataFrame], frames: dict[str
 
 
 def report(table: pd.DataFrame, log: RunLog) -> None:
-    """How many tests clear 0.05 against chance, per window and set, and which survive Holm."""
+    """How many tests fall below the study's level, per window and set, against what chance gives."""
+    level = config.SIGNIFICANCE_LEVEL
     lines = []
     for (window, dataset), group in table.groupby([config.PLACEBO_WINDOW_COL, config.DATASET_COL], sort=False):
         defined = group[group[config.PLACEBO_P_VALUE_COL].notna()]
-        below = int((defined[config.PLACEBO_P_VALUE_COL] < 0.05).sum())
-        survive = defined[defined[config.PLACEBO_P_HOLM_COL] < 0.05]
-        lines.append(f"{window:<10} {dataset:<14} {len(defined):>4} tests, {below:>3} below 0.05 "
-                     f"({0.05 * len(defined):.1f} by chance), {len(survive)} after Holm")
-        for row in survive.itertuples():
+        below = defined[defined[config.PLACEBO_P_VALUE_COL] < level]
+        # With no adjustment, the honest reading of a family is its count against chance (D71).
+        lines.append(f"{window:<10} {dataset:<14} {len(defined):>4} tests, {len(below):>3} below {level} "
+                     f"({level * len(defined):.1f} by chance)")
+        for row in below.itertuples():
             lines.append(f"    {getattr(row, config.PAIR_COL):<28} {getattr(row, config.PLACEBO_CANDIDATE_COL):<34} "
                          f"{getattr(row, config.PLACEBO_COEFFICIENT_COL):+.3f} "
                          f"({getattr(row, config.PLACEBO_STD_ERROR_COL):.3f})")

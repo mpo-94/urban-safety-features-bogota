@@ -37,7 +37,6 @@ import numpy as np
 import pandas as pd
 import statsmodels.api as sm
 from scipy import optimize, special, stats
-from statsmodels.stats.multitest import multipletests
 from statsmodels.stats.sandwich_covariance import cov_cluster
 
 try:  # regular package import
@@ -325,8 +324,9 @@ class RandomInterceptNB:
 # ---------------------------------------------------------------------------
 #
 # Everything below follows the D67 amendment of 2026-10-27, committed before the first
-# estimate, and the amendment of 2026-11-03, committed before the second: stars and a Holm dagger,
-# the horizontal marking also estimated as a flow, and the rule that chooses between the models. The design is the cross-sections' (the same rows, exposure and candidates, read
+# estimate, and the amendment of 2026-11-03, committed before the second: stars on the unadjusted
+# p-value, the horizontal marking also estimated as a flow, and the rule that chooses between the
+# models. D71 withdrew the adjustment for multiple comparisons that amendment had added. The design is the cross-sections' (the same rows, exposure and candidates, read
 # from the run that exported it), extended with the horizontal marking and with the delays;
 # nothing that decides what a cell counts is rebuilt here.
 
@@ -829,16 +829,6 @@ def stars(p: float) -> int:
     return int(sum(p < level for level in config.PANEL_STAR_LEVELS)) if np.isfinite(p) else 0
 
 
-def holm(table: pd.DataFrame, keys: list[str], column: str = "P_VALUE") -> pd.Series:
-    """Holm over the eight pairs, within every other key: per variable, panel and model."""
-    adjusted = pd.Series(np.nan, index=table.index)
-    for _, block in table.groupby(keys, dropna=False):
-        valid = block[column].notna()
-        if valid.any():
-            adjusted.loc[block.index[valid]] = multipletests(block.loc[valid, column], method="holm")[1]
-    return adjusted
-
-
 # -- the rule that chooses the model (amendment of 2026-11-03) ---------------------------------
 
 def rule_within(coefficients: pd.DataFrame) -> pd.DataFrame:
@@ -1023,11 +1013,8 @@ def run(log: RunLog) -> dict[str, pd.DataFrame]:
     tables = {name: (pd.concat(rows, ignore_index=True) if rows and isinstance(rows[0], pd.DataFrame)
                      else pd.DataFrame(rows)) for name, rows in out.items()}
     coefficients = tables["coefficients"]
-    coefficients["P_HOLM"] = holm(coefficients, ["DATASET", "PANEL", "MODEL", "TERM", "ROLE"])
-    coefficients["HOLM_DAGGER"] = coefficients["P_HOLM"] < config.PANEL_HOLM_ALPHA
-    tables["hausman"]["P_HOLM"] = holm(tables["hausman"], ["DATASET", "PANEL", "TERM"])
-    tables["moran"]["P_HOLM"] = holm(tables["moran"], ["DATASET", "PANEL", "MODEL"])
-    tables["moran"]["ASKS_FOR_SPATIAL_TERM"] = tables["moran"]["P_HOLM"] < config.PANEL_MORAN_ALPHA
+    # The unadjusted p-value decides, with no correction over the eight pairs (D71).
+    tables["moran"]["ASKS_FOR_SPATIAL_TERM"] = tables["moran"]["P_VALUE"] < config.PANEL_MORAN_ALPHA
     for table in tables.values():
         if "PANEL" in table:
             table["VARIANT"] = table["PANEL"].map(lambda key: config.PANEL_SPECS_BY_KEY[key].variant)
@@ -1046,14 +1033,7 @@ def run(log: RunLog) -> dict[str, pd.DataFrame]:
     tag = {"DATASET": config.CORRECTED_DATASET, "PANEL": config.PANEL_GROWTH_TEST_PANEL}
     tables["growth_predictions"] = pd.concat(predictions, ignore_index=True).assign(**tag)
     tables["growth_validation"] = prediction_measures(tables["growth_predictions"]).assign(**tag)
-    growth_coefficients = pd.DataFrame(learned)
-    # A pair whose fit did not converge is reported as not estimated (D67), so it does not enter
-    # Holm: the correction runs over the pairs that were estimated.
-    growth_coefficients["P_HOLM"] = holm(
-        growth_coefficients.assign(P_VALUE=growth_coefficients["P_VALUE"].where(growth_coefficients["CONVERGED"])),
-        ["MODEL", "TERM", "ROLE"])
-    growth_coefficients["HOLM_DAGGER"] = growth_coefficients["P_HOLM"] < config.PANEL_HOLM_ALPHA
-    tables["growth_coefficients"] = growth_coefficients
+    tables["growth_coefficients"] = pd.DataFrame(learned)
     tables["marking"] = marking
     for table in tables.values():
         table.attrs["source_run"] = source_run
