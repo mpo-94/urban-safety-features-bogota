@@ -9174,3 +9174,81 @@ and nothing else moved:
 - the panel, `run_20261116_172543`;
 - Hodge, `run_20261116_172451`;
 - phase 4, `run_20261116_172533`.
+
+## D72 — Breusch-Pagan and Mundlak before the panel's rule: the full sequence of the model choice
+
+**Decided by Mateo on 2026-11-17, at the panel adviser's request, after the panel had been estimated.**
+Like D71, this entry is written after seeing results. Two parts of it were not, and that is what makes it
+worth committing before any code changes:
+- the tests are fixed here;
+- so is the level they are read at;
+- so is what each outcome will mean.
+
+The working note is `deliverables/informes/breusch-pagan.md`, in Spanish.
+
+The panel adviser asked for two tests to justify the choice of model: Breusch-Pagan and Mundlak.
+
+### What the two tests ask
+
+They are not alternatives. They answer two successive questions, and the rule of D67 answers the third.
+
+1. **Breusch-Pagan asks whether a unit effect is needed at all:** pooled against random effects. The test
+   meant is the 1980 Lagrange multiplier test for random effects, not the 1979 test for
+   heteroskedasticity. The latter decides nothing about a panel, and in a negative binomial the variance
+   depends on the mean by construction.
+2. **Mundlak asks whether that unit effect is correlated with the variables:** plain random effects
+   against fixed or correlated random effects. It is the regression form of Hausman's test, on the model
+   that adds each unit's means. Unlike the classical Hausman, it holds with clustered errors and in a
+   non-linear model.
+3. **The rule of D67 decides between fixed effects and correlated random effects,** on the within
+   estimates and on the prediction of a year neither model saw. It is unchanged.
+
+### What is decided
+
+1. **Breusch-Pagan in two forms, per pair and panel.**
+   - **On the study's own model:** the likelihood ratio of σ = 0, the standard deviation of the unit
+     random intercept. It compares the correlated model (`CRE`) with the pooled negative binomial that
+     carries the same unit means (`MUNDLAK`), which the panel route already fits.
+     - σ cannot be negative, so the test sits on the boundary.
+     - Its p-value is half the χ² tail with one degree of freedom (χ̄²).
+   - **The classical Lagrange multiplier,** on the pooled residuals of a linear model of the log rate
+     with the same regressors and year effects. This is the form the adviser will recognise by name.
+     Rates of zero need a rule, and it is fixed here: log(count + 0.5) minus log exposure.
+2. **Mundlak jointly, per pair and panel.**
+   - It is a Wald test, with errors clustered by unit, that the coefficients of the unit means of every
+     variable that changes in time are all zero. That is one to three variables, by panel.
+   - The per-variable test the report already calls Hausman (`eq:hausman`) is Mundlak for one variable,
+     and stays as the joint test's breakdown. In the books it is renamed accordingly: "the Mundlak test,
+     variable by variable, the form of Hausman's test that admits clustered errors".
+3. **Every test is read at 0.10 (D71), and each family by its count against chance.**
+4. **The rule of D67 is unchanged** and still makes the choice. These tests are the steps before it.
+
+### What each outcome will mean, fixed now
+
+- **If Breusch-Pagan rejects,** a unit effect is needed, and the pooled model is ruled out. The
+  preliminary measurement on `run_20261116_172543`, computed from the exported log-likelihoods without
+  estimating anything new, rejects in all 24 combinations:
+  - the likelihood ratio runs from 27 to 269;
+  - σ runs from 0.15 to 0.34.
+- **If Mundlak does not reject,** no correlation is detected between the unit effect and what changes in
+  time. Plain random effects would then be consistent for those variables. The correlated model is still
+  the one used, for three reasons:
+  - it contains plain random effects as the case in which the means are zero;
+  - it separates the within from the between effect, which is what the study reads of the cycleway and of
+    the European contrast;
+  - its within effects agree with fixed effects in all 48 combinations (D67).
+
+  The per-variable tests already reported give 2 of 48 below 0.10, both for the vertical signage, which is
+  not identified, against about 5 by chance. So this is the expected outcome.
+- **If Mundlak rejects,** plain random effects are ruled out, and the choice between fixed and
+  correlated random effects is the rule's, as it already is.
+- **What neither test can reach.** Mundlak can only test the variables that change in time. Nothing tests
+  the ten constants, which is why they are read as associations between units (D67).
+
+### What is pending
+
+- **The implementation,** in the panel route, as a rerun declared as added after the run.
+- **Writing the results into the report:**
+  - in 4.8, as the sequence of the choice;
+  - in 5.6, the results;
+  - the renaming of the per-variable test in both books.
