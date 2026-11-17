@@ -640,10 +640,12 @@ the methodology chapter has to be able to say.
 | Poisson against negative binomial by overdispersion | **applied** | Not ceremony: see below |
 | AIC and BIC between non-nested specifications | **applied** | Forced by fifteen candidates on thirty rows |
 | Moran's I on the residuals | **applied** | Defined on a cross-section, and it informs the panel |
-| 95 % intervals, significance at p < 0.05 | **applied, with a caveat** | How a coefficient is reported |
+| 95 % intervals, significance at p < 0.05 | **applied, with a caveat; replaced by D71** | How a coefficient is reported |
 | Hausman | **deferred** | Panel |
 | Fixed against random effects | **deferred** | Panel |
 | Correlated random effects | **deferred** | Panel |
+
+**Note of 2026-11-16 (D71).** The 95 % and the 0.05 were the submitted anteproyecto's; the approved one fixes no level. Since D71 every interval this work computes is 90 % and every test is read at 0.10, with no adjustment for multiple comparisons.
 
 ### The three that are deferred are deferred structurally
 

@@ -3050,7 +3050,7 @@ def _variables_table(
             "variables y otros con dos.   ·   "
             "AIC y BIC están en la escala que esta familia ajusta y no se comparan con los "
             "de otra.   ·   R² sobre conteos, que va negativo cuando el modelo predice peor "
-            "que la media.   ·   * p<0,05  ** p<0,01  *** p<0,001 — inflados por la "
+            f"que la media.   ·   {_star_legend()} — inflados por la "
             "selección."
         ),
         out_path=out_path,
