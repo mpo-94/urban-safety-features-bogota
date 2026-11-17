@@ -5933,7 +5933,12 @@ years no survey covers, so what holds for the city is firmer than what holds per
   - April 2020 has 34 % of April 2019's parties.
   - In 2020, against 2019, parties per trip are ×1.91 for car occupants, ×1.42 for motorcyclists,
     ×1.36 for cyclists and ×0.99 for pedestrians; deaths per trip ×2.51, ×1.57, ×1.37 and ×1.04.
-  - The 2020 exposure is a city-wide factor.
+  - Those ratios are on the observed set. On the corrected set, the one the study reports, parties per
+    trip are ×1.65 for car occupants, ×1.37 for motorcyclists, ×1.36 for cyclists and ×0.99 for
+    pedestrians. Deaths are not reclassified by the correction and come out the same. The
+    observed car occupant also carries the recording ramp. (Added 2026-11-17.)
+  - The 2020 exposure adjustment is one factor per mode for the whole city. Every mode but the
+    bicycle takes one common shock from visits to destinations, not from traffic counts.
 - **P15. The recording change without ρ.**
   - Monthly parties in 2018 are 7 to 10 % above 2017 in January and February, and 12 to 43 % above it
     from March.

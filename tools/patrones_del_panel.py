@@ -178,11 +178,17 @@ def pandemic_and_recording() -> None:
     m = table("matrix", "analysis__matrix_long")
     m = m[m.SCALE == "UPL"].groupby(["YEAR", "PARTY_TYPE"])[["AFFECTED_PARTIES", "PERSONS_KILLED"]].sum()
     trips = weekday_trips().groupby(level="YEAR").sum()
-    for column, label in (("AFFECTED_PARTIES", "parties"), ("PERSONS_KILLED", "killed")):
-        per_trip = m[column].unstack()[MODES].loc[2019:2022] / trips[MODES].loc[2019:2022]
-        rel = per_trip / per_trip.loc[2019]
-        print(f"  {label} per trip against 2019: " + "; ".join(
-            f"{mode.lower()} " + " ".join(f"{y}:{rel.loc[y, mode]:.2f}" for y in (2020, 2021, 2022)) for mode in MODES))
+    # The corrected set is the one the study reports. The recording ramp runs through these years
+    # and inflates the observed car occupant, so both are printed; deaths are not reclassified by
+    # the correction and come out the same in the two.
+    corrected = table("matrix", "analysis__matrix_long__rho_corrected")
+    corrected = corrected[corrected.SCALE == "UPL"].groupby(["YEAR", "PARTY_TYPE"])[["AFFECTED_PARTIES", "PERSONS_KILLED"]].sum()
+    for counts, dataset in ((m, "observed"), (corrected, "corrected")):
+        for column, label in (("AFFECTED_PARTIES", "parties"), ("PERSONS_KILLED", "killed")):
+            per_trip = counts[column].unstack()[MODES].loc[2019:2022] / trips[MODES].loc[2019:2022]
+            rel = per_trip / per_trip.loc[2019]
+            print(f"  {label} per trip against 2019, {dataset}: " + "; ".join(
+                f"{mode.lower()} " + " ".join(f"{y}:{rel.loc[y, mode]:.2f}" for y in (2020, 2021, 2022)) for mode in MODES))
 
     print("\nP15. The recording change without rho (observed set)")
     print("  2018 against 2017 by month, %: " + " ".join(f"{100 * x:.0f}" for x in parties.loc[2018] / parties.loc[2017]))
