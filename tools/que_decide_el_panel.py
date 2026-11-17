@@ -49,7 +49,7 @@ sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 from src import config  # noqa: E402
 
-DEFAULT_RUN = "run_20261009_084114"
+DEFAULT_RUN = "run_20261116_172435"
 
 # Lo que identifica una celda cuando se comparan familias entre sí: todo menos la familia.
 CELL_WITHOUT_FAMILY = ["DATASET", "OFFSET", "PAIR", "YEAR", "SELECTION_METHOD"]

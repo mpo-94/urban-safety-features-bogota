@@ -4758,6 +4758,8 @@ by the candidate set their tables declare rather than by folder name.
 
 ## 26. The run the study reports, after the agreed changes
 
+**Note of 2026-11-16 (D71).** The levels this section reads, Holm and 0.05, are no longer the study's. Section 35 reruns it at 0.10 without the adjustment, and its runs are the ones to quote.
+
 Route `regressions`, two runs on 2026-09-28, both with every check passing:
 
 | | Candidate set | Run | Checks |
@@ -4891,6 +4893,8 @@ not evidence that the code is wrong**, and both times the first thing to check w
 the check.
 
 ## 27. The run on twenty-nine units, with the figures the panel adviser asked for
+
+**Note of 2026-11-16 (D71).** The levels this section reads, Holm and 0.05, are no longer the study's. Section 35 reruns it at 0.10 without the adjustment, and its runs are the ones to quote.
 
 Route `regressions`, 2026-10-02, **`run_20261002_141517`**, candidate set urban only,
 40.1 minutes, **23 checks and every one passing**.
@@ -5039,6 +5043,8 @@ empty cells get a figure instead of a gap in a folder.
 
 ## 28. Completeness per unit, and the placebo regression on it
 
+**Note of 2026-11-16 (D71).** The levels this section reads, Holm and 0.05, are no longer the study's. Section 35 reruns it at 0.10 without the adjustment, and its runs are the ones to quote.
+
 Two routes, D68. `python -m src.run_pipeline rho` now shrinks every unit cell toward the city
 value by empirical Bayes, run `run_20261016_031817`; `python -m src.run_pipeline placebo` is
 new and regresses ρ on the urban candidates, run `run_20261016_031937`, reading that ρ run, the
@@ -5104,6 +5110,8 @@ of D68 is already 2012-2016.
 
 
 ## 29. The panel's first attempt: fixed effects against correlated random effects
+
+**Note of 2026-11-16 (D71).** The levels this section reads, Holm and 0.05, are no longer the study's. Section 35 reruns it at 0.10 without the adjustment, and its runs are the ones to quote.
 
 **Run:** `run_20261027_052859`, route `panel`, on the design of `run_20261009_084114`. Declared before
 estimating in the D67 amendment of 2026-10-27 (commit `3595133`); the route is commit `bc24729`. An
@@ -5205,6 +5213,8 @@ constants are somewhat narrow with 29 units, as the estimator's verification mea
 
 ## 30. The panel's second run: significance as declared, the horizontal flow and the model choice
 
+**Note of 2026-11-16 (D71).** The levels this section reads, Holm and 0.05, are no longer the study's. Section 35 reruns it at 0.10 without the adjustment, and its runs are the ones to quote.
+
 **Run:** `run_20261103_020323`, route `panel`, on the same design as section 29. Declared before
 estimating in the D67 amendment of 2026-11-03 (commit `d3331dd`); the route is commit `ec95b18`.
 Section 29 stays as the record of the first attempt; this is the run to quote for the panel.
@@ -5285,6 +5295,8 @@ against the run by its own path, and all agree.
 
 ## 31. The growth-year prediction test
 
+**Note of 2026-11-16 (D71).** The levels this section reads, Holm and 0.05, are no longer the study's. Section 35 reruns it at 0.10 without the adjustment, and its runs are the ones to quote.
+
 **Run:** `run_20261104_002829`, route `panel`. Declared before estimating in the D67 amendment of
 2026-11-04 (commit `156b0b6`); the route is commit `6d04deb`. **This is now the run to quote for the
 panel**: every table of section 30's run is reproduced exactly, including every coefficient, Holm
@@ -5353,6 +5365,8 @@ agreeing.
 
 ## 32. The robustness run on the fitted exposure, and the volume elasticities
 
+**Note of 2026-11-16 (D71).** The levels this section reads, Holm and 0.05, are no longer the study's. Section 35 reruns it at 0.10 without the adjustment, and its runs are the ones to quote.
+
 Route `regressions --candidates with-leftovers`, 2026-11-05, **`run_20261105_060136`**, 61.8
 minutes, exposure read from `run_20261009_043126`, **26 checks and every one passing**.
 
@@ -5404,6 +5418,8 @@ This is the reading the thesis gives the cycleway's within effect in bicycle aga
 where the population offset puts the cyclists' own exponent at 0.534 and 0.653.
 
 ## 33. The Hodge route: who takes the damage, and whether units differ
+
+**Note of 2026-11-16 (D71).** The levels this section reads, Holm and 0.05, are no longer the study's. Section 35 reruns it at 0.10 without the adjustment, and its runs are the ones to quote.
 
 Route `hodge`, 2026-11-06, **`run_20261106_091921`**. It reads the matrix of `run_20261006_203551`
 and the rho table of `run_20261016_031817`, and runs **16 checks, every one passing** (an earlier version of this section said 18; recounted
@@ -5581,6 +5597,8 @@ from the diagonal of the covariance the fit already returns.
 
 ## 34. Phase 4: the contrast with the European determinants
 
+**Note of 2026-11-16 (D71).** The levels this section reads, Holm and 0.05, are no longer the study's. Section 35 reruns it at 0.10 without the adjustment, and its runs are the ones to quote.
+
 Route `contrast`, 2026-11-09, **`run_20261109_221331`**. It reads the matrix of `run_20261006_203551`,
 the regression design of `run_20261009_084114` and the surveys of 2015, 2019 and 2023, and runs
 **15 checks, every one passing**. Every rule was declared in D70 and committed in `d43a6f0` before
@@ -5669,3 +5687,210 @@ are and where people walk least.
 
 The final report reads the divergence as one of place and not of the works, alongside the difference
 between protected and all cycleway.
+
+## 35. The reruns without Holm, every test read at 0.10
+
+D71 withdrew the Holm adjustment and set one reading level, 0.10, for every test the study
+reports. It also stops the backward elimination at that level, makes every interval this work
+computes a 90 % interval, and gives the whole study one star scale. D71 was committed before any
+code changed (`463cec9`), with the counts the rerun was expected to move. The code followed in two
+commits: `ee8d907` removed Holm and `fc778de` set the single level. This section is the rerun of
+every route those commits touch, checked against that prediction.
+
+### The six runs
+
+All six ran on 2026-11-16 with the routes' own checks, and every check passed.
+
+| Route | New run | Replaces | Checks |
+|---|---|---|---|
+| `regressions` (urban only, the study's) | `run_20261116_172435` | `run_20261009_084114` | 27, every one passing |
+| `regressions --candidates with-leftovers` | `run_20261116_182223` | `run_20261105_060136` | 26, every one passing |
+| `placebo` | `run_20261116_172445` | `run_20261016_031937` | 6, every one passing |
+| `panel` | `run_20261116_172543` | `run_20261104_002829` | its run, then the eight checks of `tools/verificar_panel.py`, every one passing |
+| `hodge` | `run_20261116_172451` | `run_20261111_095554` | every one passing |
+| `contrast` | `run_20261116_172533` | `run_20261109_221331` | 13, every one passing |
+
+**One attempt was discarded.** A first robustness run, `run_20261116_172440`, ran beside the
+reported one and ended in a `MemoryError` before its checks. It is not quoted. The run above
+repeated it alone.
+
+**Where the panel and the placebo read their design.** They read the design from the most recent
+run that exported one. While these routes ran, that was `run_20261105_060136`, whereas the runs they
+replace read `run_20261009_084114`. The two design tables are identical, and so is the new one
+exported by `run_20261116_172435`: compared with `DataFrame.equals`, 3,016 rows and 22 columns
+each, in both sets. Hodge and phase 4 still read their design from `run_20261009_084114`, which they
+pin in `config`, so they read the same table too.
+
+### The reproduction
+
+A script compared each new run with the one it replaces, table by table, against the prediction
+D71 declared. **Every prediction was met, and nothing else moved.**
+
+- **The estimates are identical, with a largest difference of 0.0:**
+  - the placebo's 504 coefficients, errors and p-values;
+  - the panel's 2,358 coefficients with both errors, its 144 model fits, the 216 validation rows,
+    81 Hausman tests, 72 Moran tests and 16 growth-test coefficients;
+  - Hodge's 38,841 potential rows, 99 heterogeneity rows and 22 environment regressions;
+  - phase 4's 182 model rows;
+  - the exhaustive search of both regression runs: 1,868 models and 7,055 coefficients in the
+    reported one, 7,268 coefficients in the robustness one.
+- **The panel's model choice** is still the correlated model.
+- **Hodge's two declared heterogeneity tests** still disagree: the observed reference window differs
+  and the corrected window does not.
+- **The panel's intervals** are β ± 1.645 times the clustered error in every row, and its stars
+  recount on 0.10, 0.05 and 0.01.
+- **The backward elimination** changed in exactly the models whose recorded path removed a term with
+  a p-value between 0.05 and 0.10, with none unexpected and none missed:
+  - 814 of 1,868 in the reported run;
+  - 817 of 1,870 in the robustness run.
+
+  The highest p-value that survives is 0.09999, and it carries its star.
+- **Phase 4.**
+  - Every interval is narrower.
+  - The European intervals are converted: −0.49 [−0.80, −0.17] becomes [−0.75, −0.23].
+  - None of the 24 classifications changed. The two divergences and the reproductions stay as they
+    were.
+- **No exported table carries `P_HOLM`, `HOLM_DAGGER` or `P_VALUE_HOLM`.**
+
+### What 0.10 reads, without the adjustment
+
+**The counts D71 predicted, now measured on the new runs:**
+
+| Test | Before D71 | At 0.10 |
+|---|---|---|
+| Panel, within effects (correlated model, corrected set, three reported panels, 48) | 4 daggers | 11 |
+| Panel, between effects (48) | 13 | 24 |
+| Panel, constants (240) | 24 | 63; 28 of the 80 constant-and-pair cells in at least one panel, 14 in all three |
+| Panel, year effects of the three panels (208) | 85 | 116 |
+| Moran, spatial term requested in the three reported panels (54) | 5 | 11 |
+| Placebo, whole window, observed (99) | 5 | 32, against 9.9 by chance |
+| Placebo, whole window, corrected (99) | 4 | 35, against 9.9 |
+| Placebo, stable regime (99) | 4 | 25, against 9.9 |
+| Placebo, ramp (108) | 6 | 27, against 10.8 |
+| Placebo, reference window (99) | 1 | 23, against 9.9 |
+| Hodge environment test (22) | 1 | 11, against 2.2 by chance |
+
+**The eleven within effects of the correlated model at 0.10, corrected set:**
+
+| Variable | Pair | Panel | Coefficient | Clustered error | p | Stars |
+|---|---|---|---:|---:|---:|---|
+| `CYCLEWAY_LENGTH_DENSITY` | BICYCLE__CAR | PRINCIPAL | −0.150 | 0.072 | 0.037 | ** |
+| `CYCLEWAY_LENGTH_DENSITY` | BICYCLE__MOTORCYCLE | DOS | −0.313 | 0.111 | 0.005 | *** |
+| `CYCLEWAY_LENGTH_DENSITY` | BICYCLE__MOTORCYCLE | VERTICAL | −0.370 | 0.120 | 0.002 | *** |
+| `CYCLEWAY_LENGTH_DENSITY` | CAR__CAR | VERTICAL | −0.110 | 0.056 | 0.050 | * |
+| `CYCLEWAY_LENGTH_DENSITY` | PEDESTRIAN__CAR | PRINCIPAL | −0.157 | 0.071 | 0.027 | ** |
+| `CYCLEWAY_LENGTH_DENSITY` | PEDESTRIAN__CAR | VERTICAL | −0.156 | 0.084 | 0.063 | * |
+| `HORIZONTAL_MARKING_CUMULATIVE` | BICYCLE__CAR | DOS | +0.189 | 0.069 | 0.006 | *** |
+| `HORIZONTAL_MARKING_CUMULATIVE` | MOTORCYCLE__MOTORCYCLE | DOS | +0.151 | 0.072 | 0.036 | ** |
+| `VERTICAL_SIGNAGE_DENSITY` | BICYCLE__MOTORCYCLE | VERTICAL | +1.970 | 0.764 | 0.010 | *** |
+| `VERTICAL_SIGNAGE_DENSITY` | CAR__CAR | VERTICAL | +0.891 | 0.521 | 0.087 | * |
+| `VERTICAL_SIGNAGE_DENSITY` | PEDESTRIAN__MOTORCYCLE | DOS | −1.182 | 0.658 | 0.072 | * |
+
+**Moran asks for a spatial term in eleven rows of the reported panels**, all of them on the
+corrected set:
+
+| Panel | Pair | Model | I | p |
+|---|---|---|---:|---:|
+| DOS | MOTORCYCLE__MOTORCYCLE | CRE | 0.150 | 0.063 |
+| DOS | MOTORCYCLE__MOTORCYCLE | FE_NB | 0.202 | 0.059 |
+| PRINCIPAL | BICYCLE__MOTORCYCLE | CRE | 0.158 | 0.086 |
+| PRINCIPAL | BICYCLE__MOTORCYCLE | FE_NB | 0.403 | 0.001 |
+| PRINCIPAL | CAR__CAR | CRE | 0.167 | 0.092 |
+| PRINCIPAL | MOTORCYCLE__MOTORCYCLE | CRE | 0.306 | 0.005 |
+| PRINCIPAL | MOTORCYCLE__MOTORCYCLE | FE_NB | 0.430 | 0.002 |
+| PRINCIPAL | PEDESTRIAN__MOTORCYCLE | FE_NB | 0.135 | 0.075 |
+| VERTICAL | MOTORCYCLE__MOTORCYCLE | CRE | 0.369 | 0.003 |
+| VERTICAL | MOTORCYCLE__MOTORCYCLE | FE_NB | 0.511 | 0.001 |
+| VERTICAL | PEDESTRIAN__MOTORCYCLE | FE_NB | 0.138 | 0.072 |
+
+Before D71 only the five with p ≤ 0.005 asked, all of them motorcycle against motorcycle or bicycle
+against motorcycle.
+
+**The eleven environment associations of Hodge**, each unit's contrast against the car, observed
+set, 2023–2024, per standard deviation of the candidate:
+
+| Contrast | Candidate | Coefficient | HC1 error | p |
+|---|---|---:|---:|---:|
+| bicycle | `TRANSMILENIO_STATION_DENSITY` | +0.047 | 0.018 | 0.008 |
+| bicycle | `BRIDGE_AREA_SHARE` | +0.064 | 0.027 | 0.016 |
+| bicycle | `SIGNALISED_INTERSECTION_DENSITY` | +0.045 | 0.019 | 0.017 |
+| bicycle | `ARTERIAL_ROAD_AREA_SHARE` | +0.065 | 0.028 | 0.019 |
+| bicycle | `TREE_DENSITY` | −0.058 | 0.031 | 0.058 |
+| bicycle | `SPEED_CAMERA_DENSITY` | −0.053 | 0.030 | 0.080 |
+| motorcycle | `TRANSMILENIO_STATION_DENSITY` | +0.048 | 0.017 | 0.004 |
+| motorcycle | `BRIDGE_AREA_SHARE` | +0.045 | 0.022 | 0.035 |
+| motorcycle | `SIGNALISED_INTERSECTION_DENSITY` | +0.043 | 0.022 | 0.047 |
+| motorcycle | `ARTERIAL_ROAD_AREA_SHARE` | +0.051 | 0.026 | 0.050 |
+| motorcycle | `SPEED_CAMERA_DENSITY` | −0.054 | 0.029 | 0.059 |
+
+### The tools, measured again
+
+**`tools/variables_y_la_literatura.py`**, on `run_20261116_172435`.
+- **The exhaustive search.** 4,773 of the 5,187 chosen coefficients, 92.0 %, are below 0.10. The
+  median model holds three, and 18 models hold none.
+- **The elimination.**
+  - Its validation rebuilds the 0.10 stop from the recorded path in 1,766 of 1,766 completed walks.
+  - The median cell keeps four variables, and eight keep none, all of them least squares.
+  - By family: least squares keeps two (624 cells), Poisson six (624) and the negative binomial
+    four (518).
+- **The literature crossing**, pedestrian pairs, both methods pooled. It keeps the pattern it had at
+  0.05, which the tool's docstring records:
+  - in the expected direction: the arterial road 80 % (80 % before), the street tree 70 % (71 %),
+    the sidewalk 62 % (60 %);
+  - against it: the signalised intersection, with 9 % in the expected direction (7 %).
+
+**`tools/estabilidad_de_la_seleccion.py`.** The tool leaves one unit out at a time; it refits the
+reported specification with `fit_cell` and first reproduces all 193 models of
+`run_20261116_172435`. Twenty-five of the 29 units are measurable.
+- **The exhaustive search** gives what it gave before: the winner changes in 806 of 2,600 cells
+  (31.0 %), the Spearman median is 0.949 with a minimum of 0.851, and the largest move is two places
+  in the median removal and five in the worst.
+- **The elimination** at 0.10:
+  - the winner changes in 889 of 2,153 cells (41.3 %, against 35.7 % at 0.05);
+  - Spearman has a median of 0.944 and a minimum of 0.774 (0.946 and 0.818 before);
+  - the largest move is two places in the median removal and six in the worst (three and five
+    before).
+
+**`tools/elasticidades_del_volumen.py`**, on `run_20261116_182223`.
+- **The exhaustive search.** Its medians are those of section 32. Only its counts of significant
+  years grow where a coefficient lay between 0.05 and 0.10.
+- **The elimination.** It changes wherever its stop moved. The same-mode exponents, one plus the
+  coefficient, are:
+  - car against car: 0.455 over 5 of 7 years (0.576 before);
+  - motorcycle against motorcycle: 0.617 over 4 of 9 years (0.773 over 3 before).
+- **What the leftovers take** under the affected mode's exposure: 17.3 % of the selected terms with
+  the search and 18.6 % with the elimination. Under the population offset: 31.7 % and 23.0 %.
+
+**`tools/verificar_estimador_panel.py`**, the coverage of the panel's intervals on simulated panels
+shaped like this one (seed 20261027, model errors):
+
+| Replicas | Level | Within slope | Constant |
+|---|---|---:|---:|
+| 500 | 95 % | 0.938 | 0.910 |
+| 1000 | 95 % | 0.936 | 0.923 |
+| 1000 | 90 % | 0.886 | 0.874 |
+
+- **The reading to quote is the last row.** At 90 % nominal, the interval of a within effect covers
+  88.6 % of the time and that of a constant 87.4 %.
+- **With the clustered errors** the same thousand panels give 0.866 and 0.835.
+- **The figure of October** (0.913 for the constant at 95 %) reproduces to three thousandths with
+  500 replicas. The number of replicas behind it was not recorded.
+
+**`tools/variacion_para_el_panel.py`.** The naive band of the strict exogeneity correlations is now
+the 90 % one: ±0.116 to ±0.126 on the horizontal marking. No correlation reaches it, so the finding
+that painting does not follow casualties stands.
+
+**`tools/lectura_de_hodge.py`, `tools/ciclorruta_entre_unidades.py` and
+`tools/que_decide_el_panel.py`** give, on the new runs, the figures they gave before:
+- the separations and the yearly series of Hodge;
+- 27 of 30 units keeping the full order;
+- the cycleway's correlations across units;
+- the dispersion and family figures.
+
+None of them reads a level.
+
+### The runs to quote
+
+Every figure this study quotes from the regressions, the robustness run, the placebo, the panel,
+Hodge or phase 4 is quoted from the six runs of the table above. The runs they replace stay as
+the record of what sections 26 to 34 read.

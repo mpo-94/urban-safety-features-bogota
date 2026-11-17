@@ -85,7 +85,7 @@ from src import config  # noqa: E402
 # The run the docstring's figures come from. Named here rather than resolved to the
 # newest one, so a number a document quotes can be recomputed against the run it
 # came from instead of against whatever ran last.
-DEFAULT_RUN = "run_20261009_084114"
+DEFAULT_RUN = "run_20261116_172435"
 
 # The year the placement test is taken in. Ten of the twelve candidates are a snapshot, so
 # the year only moves the cycleway and the vertical signage; the last one is taken so that

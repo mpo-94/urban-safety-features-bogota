@@ -93,7 +93,7 @@ import loading  # noqa: E402
 import predictors  # noqa: E402
 from provenance import RunLog  # noqa: E402
 
-DEFAULT_RUN = "run_20261009_084114"
+DEFAULT_RUN = "run_20261116_172435"
 # The latest run of the `corrected` route, which is the one that writes the persons killed
 # per cell of both sets; the regression tables carry affected parties only.
 DEFAULT_MATRIX_RUN = "run_20261006_203551"

@@ -7891,7 +7891,7 @@ between the two.
 
 ## D65 — Two selection methods run side by side, and the study has not yet chosen between them
 
-**Note of 2026-11-16 (D71).** The elimination now stops at 0.10, the level every test of the study reads, and no longer at the 0.05 of the function the adviser sent. What follows records the rule as it was decided and run until then.
+**Note of 2026-11-16 (D71).** The elimination now stops at 0.10, the level every test of the study reads, and no longer at the 0.05 of the function the adviser sent. What follows records the rule as it was decided and run until then. The run to quote is `run_20261116_172435` (verification report, section 35).
 
 **Decided 2026-10-09.** The panel adviser asked on 2026-10-07 for backward elimination, a
 procedure that starts with every candidate and drops the least significant until none
@@ -8066,7 +8066,7 @@ chapter, which is where chapter 2 promised the contrast would be made.
 
 ## D67 — The panel specification: correlated random effects in within-between form, with year effects
 
-**Note of 2026-11-16 (D71).** Holm is withdrawn and the dagger with it. Every reading is at 0.10 on the unadjusted p-value, Moran's included, and the intervals are 90 %. The multiple-comparison clause and the dagger below are the record of what the second run reported.
+**Note of 2026-11-16 (D71).** Holm is withdrawn and the dagger with it. Every reading is at 0.10 on the unadjusted p-value, Moran's included, and the intervals are 90 %. The multiple-comparison clause and the dagger below are the record of what the second run reported. The run to quote is `run_20261116_172543` (verification report, section 35).
 
 **Decided by Mateo on 2026-10-15. Not implemented.** It closes the first of the questions the
 panel adviser left open, which pieces of the panel are fixed effects and which random, and it
@@ -8565,7 +8565,7 @@ Section 31 of `docs/verification-report.md`; the presentation is
 
 ## D68 — Completeness per unit, by empirical Bayes, and the placebo regression on it
 
-**Note of 2026-11-16 (D71).** The placebo is read at 0.10 against what chance alone would give, with no Holm adjustment. The counts below are the record of the old reading.
+**Note of 2026-11-16 (D71).** The placebo is read at 0.10 against what chance alone would give, with no Holm adjustment. The counts below are the record of the old reading. The run to quote is `run_20261116_172445` (verification report, section 35).
 
 **Decided by Mateo on 2026-10-16. Built the same day.** It fulfils two clauses of the approved
 anteproyecto's Phase 1 that nothing fulfilled until then: completeness is measured per pair,
@@ -8657,7 +8657,7 @@ cycleway.
 
 ## D69 — Who takes the damage: HodgeRank on the matrix, as an addition to the study
 
-**Note of 2026-11-16 (D71).** The environment test of the second amendment and the heterogeneity test are read at 0.10, and the environment test without Holm. What the amendments below report is the record of the old reading.
+**Note of 2026-11-16 (D71).** The environment test of the second amendment and the heterogeneity test are read at 0.10, and the environment test without Holm. What the amendments below report is the record of the old reading. The run to quote is `run_20261116_172451` (verification report, section 35).
 
 **Decided by Mateo on 2026-11-06. Built the same day.** The approved plan of the study binds in
 one direction only: what it promises is delivered, and the final report may carry more. This line
@@ -8942,7 +8942,7 @@ histograms of each actor by itself.
 
 ## D70 — Phase 4: the contrast with the European determinants, declared before estimating
 
-**Note of 2026-11-16 (D71).** Decision 6 is read at 0.10 with 90 % intervals. The European intervals are converted from their published 95 % bounds, assuming normality. The rule's structure is unchanged.
+**Note of 2026-11-16 (D71).** Decision 6 is read at 0.10 with 90 % intervals. The European intervals are converted from their published 95 % bounds, assuming normality. The rule's structure is unchanged. The run to quote is `run_20261116_172533` (verification report, section 35).
 
 **Decided by Mateo on 2026-11-09, and committed before the first estimate on Bogotá's data.** The
 approved plan of the study promises a Phase 4: Bogotá's results set against those of the European
@@ -9166,5 +9166,11 @@ whose text changed without trace would make its earlier commit prove nothing. Se
 the verification report stay as the record of the runs read the old way. Section 35 records the
 reruns.
 
-**The run to quote** will be filled in by section 35. Until then the runs named in the table above are
-the ones replaced, not the ones to quote.
+**The runs to quote** are those of section 35 of the verification report, every prediction above met
+and nothing else moved:
+- the regressions, `run_20261116_172435`;
+- the robustness run, `run_20261116_182223`;
+- the placebo, `run_20261116_172445`;
+- the panel, `run_20261116_172543`;
+- Hodge, `run_20261116_172451`;
+- phase 4, `run_20261116_172533`.

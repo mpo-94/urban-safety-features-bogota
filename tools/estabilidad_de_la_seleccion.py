@@ -51,7 +51,7 @@ from src.provenance import RunLog
 
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
-DEFAULT_RUN = "run_20261009_084114"
+DEFAULT_RUN = "run_20261116_172435"
 DATASET = config.CORRECTED_DATASET
 OFFSET_NAME = "MODE_EXPOSURE"
 FAMILY = config.NEGATIVE_BINOMIAL_FAMILY
