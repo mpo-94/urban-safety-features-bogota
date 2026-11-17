@@ -31,6 +31,12 @@ numbers to be judged.
      affected parties of the main panel's rows; the level fixed by it reproduced; the error and the
      R² recomputed from the unit predictions; the training years; the stars recounted on
      the cycleway effect learned in them.
+  9. **Breusch-Pagan** (D72, runs after it only). The likelihood ratio from the exported
+     log-likelihoods, and the Lagrange multiplier from least squares fitted here with statsmodels on
+     the raw variables and their unit means, the same column space as the route's design.
+ 10. **Mundlak** (D72). The joint statistic is never below a per-variable one and equals it with a
+     single time-varying variable, both exact properties of a Wald test; its p-value and degrees
+     of freedom recomputed.
 """
 
 from __future__ import annotations
@@ -202,11 +208,95 @@ def main() -> int:
             or (recounted_growth != gc["STARS"]).any() or gp["PAIR"].nunique() != 8):
         failures.append("the growth-year test does not reproduce")
 
+    # 9 and 10 exist only in runs made after D72; an older run has neither table and skips them.
+    if (ROOT / "results" / run / "data" / f"{config.ANALYSIS_PREFIX}__panel_breusch_pagan.parquet").exists():
+        failures += check_breusch_pagan(run, rows)
+        failures += check_mundlak(run)
+        checks = "ten"
+    else:
+        print("9-10. no Breusch-Pagan or Mundlak table in this run: it predates D72")
+        checks = "eight"
+
     if failures:
         print("\nFAILED: " + "; ".join(failures))
         return 1
-    print("\nall eight checks pass")
+    print(f"\nall {checks} checks pass")
     return 0
+
+
+# The flow variant swaps the accumulated marking for the flow; typed here rather than read from the
+# route, so that a change in how the route builds the variant shows up as a failure.
+VARYING_BY_PANEL = {spec.key: spec.varying for spec in config.PANEL_SPECS}
+VARYING_BY_PANEL["DOS_FLUJO"] = ("CYCLEWAY_LENGTH_DENSITY", "VERTICAL_SIGNAGE_DENSITY", "HORIZONTAL_MARKING_FLOW")
+
+
+def check_breusch_pagan(run: str, rows: pd.DataFrame) -> list[str]:
+    """9. Breusch-Pagan (D72), both forms, by a path of its own.
+
+    The likelihood ratio from the exported log-likelihoods of the correlated and the pooled models.
+    The Lagrange multiplier from statsmodels' least squares on the raw variables, each with its unit
+    mean, and the year as a category: the same column space as the route's standardised
+    within-between design, so the residuals, and with them the statistic, must be the same.
+    """
+    import statsmodels.formula.api as smf
+    from scipy import stats
+
+    bp, models = read(run, "breusch_pagan"), read(run, "models")
+    ll = models.pivot_table(index=["DATASET", "PANEL", "PAIR"], columns="MODEL", values="LOG_LIKELIHOOD")
+    worst_lr = worst_lm = worst_p = 0.0
+    for _, test in bp.iterrows():
+        key = (test["DATASET"], test["PANEL"], test["PAIR"])
+        ratio = 2 * (ll.loc[key, panel.CRE] - ll.loc[key, panel.MUNDLAK])
+        worst_lr = max(worst_lr, abs(ratio - test["LR_STATISTIC"]))
+        worst_p = max(worst_p, abs(0.5 * stats.chi2.sf(max(ratio, 0.0), 1) - test["LR_P_VALUE"]))
+
+        block = rows[(rows["DATASET"] == key[0]) & (rows["PANEL"] == key[1]) & (rows["PAIR"] == key[2])].copy()
+        terms = ["C(YEAR)"]
+        for v in VARYING_BY_PANEL[key[1]]:
+            block[f"MEAN_{v}"] = block.groupby(config.AREA_CODE_COL)[v].transform("mean")
+            terms += [v, f"MEAN_{v}"]
+        terms += list(panel.CONSTANTS)
+        block["LOG_RATE"] = np.log(block["AFFECTED_PARTIES"] + 0.5) - np.log(block["EXPOSURE_AFFECTED"])
+        residual = smf.ols("LOG_RATE ~ " + " + ".join(terms), data=block).fit().resid
+        by_unit = residual.groupby(block[config.AREA_CODE_COL])
+        n, t_u = len(residual), by_unit.size()
+        lm = (n**2 / (2 * (t_u * (t_u - 1)).sum())
+              * ((by_unit.sum() ** 2).sum() / (residual**2).sum() - 1) ** 2)
+        worst_lm = max(worst_lm, abs(lm - test["LM_STATISTIC"]) / test["LM_STATISTIC"])
+    rejects = int(((bp["LR_P_VALUE"] < config.SIGNIFICANCE_LEVEL) & (bp["LM_P_VALUE"] < config.SIGNIFICANCE_LEVEL)).sum())
+    print(f"9. Breusch-Pagan: {len(bp)} tests; ratio recomputed to {worst_lr:.2e}, its p-value to {worst_p:.2e}; "
+          f"multiplier recomputed by least squares of its own to a relative {worst_lm:.2e}; "
+          f"both forms reject in {rejects} of {len(bp)}")
+    if worst_lr > 1e-9 or worst_p > 1e-12 or worst_lm > 1e-8:
+        return ["Breusch-Pagan does not reproduce from the exported log-likelihoods and the panel rows"]
+    return []
+
+
+def check_mundlak(run: str) -> list[str]:
+    """10. The joint Mundlak test (D72) against the per-variable one.
+
+    A Wald statistic over several restrictions is at least that of any one of them, because the joint
+    statistic is the largest squared z over every combination of the restrictions; with a single
+    time-varying variable the two are the same test. Both hold exactly whatever the data, so a joint
+    statistic below a per-variable one means the contrast or the covariance was taken wrong.
+    """
+    from scipy import stats
+
+    joint, single = read(run, "mundlak"), read(run, "hausman")
+    keys = ["DATASET", "PANEL", "PAIR"]
+    largest = single.groupby(keys)["STATISTIC"].max().rename("LARGEST_SINGLE")
+    merged = joint.merge(largest.reset_index(), on=keys)
+    below = int((merged["STATISTIC"] < merged["LARGEST_SINGLE"] - 1e-9).sum())
+    one = merged[merged["VARIABLES"] == 1]
+    gap_one = float((one["STATISTIC"] - one["LARGEST_SINGLE"]).abs().max())
+    gap_p = float((stats.chi2.sf(merged["STATISTIC"], merged["DEGREES_OF_FREEDOM"]) - merged["P_VALUE"]).abs().max())
+    degrees = bool((merged["DEGREES_OF_FREEDOM"] == merged["PANEL"].map(lambda k: len(VARYING_BY_PANEL[k]))).all())
+    print(f"10. Mundlak: {len(merged)} joint tests; below a per-variable one in {below}; equal to it with one "
+          f"variable to {gap_one:.2e}; p-value recomputed to {gap_p:.2e}; degrees of freedom as typed: {degrees}; "
+          f"{int((merged['P_VALUE'] < config.SIGNIFICANCE_LEVEL).sum())} below {config.SIGNIFICANCE_LEVEL}")
+    if below or gap_one > 1e-8 or gap_p > 1e-12 or not degrees or len(merged) != len(joint):
+        return ["the joint Mundlak test is inconsistent with the per-variable one"]
+    return []
 
 
 if __name__ == "__main__":

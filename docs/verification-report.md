@@ -6023,6 +6023,28 @@ where chance gives about 2.4.**
 - **The cycleway's within and between effects are never told apart,** in any pair or panel.
 - **In the panel with both signages the joint test does not reject in any pair,** and in the main panel,
   which has the cycleway alone, neither.
+- **Outside the 24, two more places reject.** These are not part of the count against chance, which
+  is over the reported panels of the corrected set:
+  - **The flow variant of the horizontal marking** rejects in four pairs: pedestrian against motorcycle,
+    pedestrian against car, bicycle against motorcycle and bicycle against car (p from 0.001 to 0.008).
+    The flow carries them, with per-variable p of 0.001 or less. This matches the per-variable reading
+    the report already gave of that variant.
+  - **The observed set,** fitted for car occupant against motorcycle only, rejects in three panels:
+    - the main panel, p 0.005, where the cycleway's within effect is 0.168 and its between effect −0.341;
+    - the vertical panel, 0.003;
+    - the flow variant, 0.046.
+
+    It does not reject in the panel with both signages. With the corrected set the same pair rejects
+    nowhere, so whether the unit effect is correlated with the cycleway in that pair depends on the
+    correction, like the within effect itself (D67.2).
+
+**Checked by a path of its own.** `tools/verificar_panel.py`, checks 9 and 10, passes on this run:
+- **The likelihood ratio,** recomputed from the exported log-likelihoods: exact.
+- **The Lagrange multiplier,** recomputed from statsmodels least squares on the raw variables and their
+  unit means: relative gap 6 × 10⁻¹⁵.
+- **The joint Mundlak statistic:**
+  - it is never below a per-variable one, in 36 of 36 tests;
+  - it equals the per-variable statistic where there is one variable, to 2 × 10⁻¹⁴.
 
 **The reading fixed by D72 applies:**
 1. a unit effect is needed, and the pooled model is ruled out;
