@@ -5898,3 +5898,58 @@ The per-variable table figures that `run_20261116_172435` and `run_20261116_1822
 Every figure this study quotes from the regressions, the robustness run, the placebo, the panel,
 Hodge or phase 4 is quoted from the six runs of the table above. The runs they replace stay as
 the record of what sections 26 to 34 read.
+
+## 36. What the panel shows by itself: the descriptive patterns the discussion reads
+
+`tools/patrones_del_panel.py`, 2026-11-17. It reads tables the pipeline already exported and fits no
+model of the study. Units are the thirty, Torca included, and the years compared are 2012 and 2023.
+Trips are weekday trips of the fitted exposure, and casualties are affected parties. Correlations
+across units are Spearman.
+
+The population of a unit is a DANE-SDP projection, and the trips of a unit are a construction in the
+years no survey covers, so what holds for the city is firmer than what holds per unit.
+
+- **P9. Casualties follow where people go.**
+  - Trips touching a unit per resident run from 0.23 to 1.87 in 2023.
+  - Parties per resident follow that attraction at 0.83, and parties per trip do not (−0.21).
+  - Attraction goes with the arterial share (0.86) and TransMilenio (0.70), and against population
+    growth (−0.58).
+- **P10. The city grows where the infrastructure is not.**
+  - Population rises 9.5 %. The five fastest units take 46 % of the growth, and Torca alone 11.7 %
+    (26,206 to 105,614 residents).
+  - Population growth runs against traffic lights (−0.64), the arterial share (−0.51) and TransMilenio
+    (−0.50).
+  - The cycleway grew from 161 to 474 km where the arterial already was (0.60), not where people moved
+    (−0.25).
+- **P11. The motorcycle.**
+  - Weekday motorcycle trips grow 141 %, and their share of motorised trips rises from 0.192 to 0.337.
+  - The rise is largest in Bosa, Rafael Uribe, Restrepo, Fontibón and Kennedy, and runs against
+    population growth (−0.52).
+- **P12. The bicycle.** Trips grow 109 %, more where the cycleway grew (0.34).
+- **P13. The rate per trip.**
+  - Corrected parties rise from 12,419 to 16,715 and trips by 26 %.
+  - Per unit, the rate per trip fell more where the cycleway grew (−0.42).
+- **P14. The pandemic.**
+  - April 2020 has 34 % of April 2019's parties.
+  - In 2020, against 2019, parties per trip are ×1.91 for car occupants, ×1.42 for motorcyclists,
+    ×1.36 for cyclists and ×0.99 for pedestrians; deaths per trip ×2.51, ×1.57, ×1.37 and ×1.04.
+  - The 2020 exposure is a city-wide factor.
+- **P15. The recording change without ρ.**
+  - Monthly parties in 2018 are 7 to 10 % above 2017 in January and February, and 12 to 43 % above it
+    from March.
+  - Deaths per thousand injured fall from 40.7 in 2017 to 30.4 in 2018, and stay there.
+  - The car occupant's share of parties rises from 9.4 % to 18.3 % by 2023.
+- **P16. The cross-sections against the panel.**
+  - In the inherited specification, for variable-pair combinations chosen in three years or more, the
+    majority sign of the cross-sections agrees with the main panel's between-unit sign in 38 of 42 with
+    the search and 51 of 58 with the elimination.
+  - Wherever the panel finds an association, it agrees in all of them (18 and 23).
+  - The selection share is higher where the panel finds an association (median 0.38 against 0.15, and
+    0.58 against 0.27).
+- **P17. Phase 4 under a second denominator.**
+  - The cycleway's standardised beta for corrected pedestrian deaths against cars is +0.54 (p 0.003) per
+    resident.
+  - Per weekday pedestrian trip it is +0.32 (p 0.110), no longer an association at 0.10; in the injured,
+    +0.23 against +0.02.
+  - The denominator accounts for part of the divergence. The sign stays, and what remains is placement.
+  - The phase 4 classification is unchanged: it is defined per resident, as the European study's.
