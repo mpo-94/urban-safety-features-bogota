@@ -5986,3 +5986,48 @@ The other pairs sit between 0.6 and 0.85.
 **The reading.** The failure is concentrated in the unit that gained the most cycleway, and there the rate
 per trip fell, in the direction the full panel estimates. It is one unit with twelve cases: it explains
 the test, and asserts no effect.
+
+## 38. Breusch-Pagan and Mundlak, the steps before the panel's rule (D72)
+
+The run is `run_20261117_075900`, route `panel`, on 2026-11-17. It adds two tables, and leaves the
+others untouched:
+- **The added tables** are `analysis__panel_breusch_pagan` and `analysis__panel_mundlak`.
+- **The other tables** are coefficients, models, the per-variable test, validation, the growth test and
+  the choice. They reproduce `run_20261116_172543` with a largest absolute difference of 0.0, so every
+  figure quoted from that run stands.
+- **The route's checks pass,** among them the one that the joint Mundlak test reduces to the per-variable
+  one where a panel has a single time-varying variable.
+
+**Breusch-Pagan, whether a unit effect is needed: yes, in all 24 combinations of pair and reported
+panel, in both forms.**
+- **The likelihood ratio of σ = 0** on the negative binomial runs from 27.3 to 269.1, with σ from 0.15
+  to 0.34. Every boundary p-value is below 10⁻⁶.
+- **The classical Lagrange multiplier** on the linear model of the log rate runs from 15.2 to 720.8.
+  Every p-value is below 0.001.
+- **Where the unit effect matters most:** both forms put car occupant against motorcycle highest, and
+  motorcycle against motorcycle and the pedestrian pairs lowest.
+
+**Mundlak, whether the unit effect is correlated with what changes in time: in 3 of 24 combinations,
+where chance gives about 2.4.**
+- **All three rejections are in the panel with the vertical signage:**
+
+  | Pair | p |
+  |---|---:|
+  | Bicycle against motorcycle | 0.009 |
+  | Car occupant against motorcycle | 0.057 |
+  | Car against car | 0.048 |
+
+- **The vertical signage carries them,** not the cycleway. Its per-variable tests there are 0.002, 0.125
+  and 0.089, while the cycleway's are 0.445, 0.164 and 0.414. The signage keeps 0.23 % of its variance
+  after the unit and year effects, which is why its within effect is not identified (5.6).
+- **The cycleway's within and between effects are never told apart,** in any pair or panel.
+- **In the panel with both signages the joint test does not reject in any pair,** and in the main panel,
+  which has the cycleway alone, neither.
+
+**The reading fixed by D72 applies:**
+1. a unit effect is needed, and the pooled model is ruled out;
+2. no correlation between the unit effect and the cycleway is detected, so for the cycleway plain random
+   effects would also be consistent, and the correlated model, which contains them, is kept for the
+   reasons D72 gives;
+3. the rule of D67 then chooses the correlated model, as before: 48 of 48 within effects agree, 3 of 3
+   panels.

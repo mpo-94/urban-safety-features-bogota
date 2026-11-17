@@ -784,6 +784,74 @@ def hausman_rows(panel: PanelData, fits: PairFits) -> list[dict]:
     return rows
 
 
+def breusch_pagan_rows(panel: PanelData, fits: PairFits) -> list[dict]:
+    """Whether a unit effect is needed at all: the first step before the rule (D72), in two forms.
+
+    **On the study's own model,** the likelihood ratio of sigma = 0. The correlated model with
+    sigma at zero is exactly the pooled negative binomial with the same unit means, which the route
+    already fits as `MUNDLAK`, so the ratio needs no new estimate. Sigma cannot be negative, so the
+    null sits on the boundary of the parameter space and the statistic is half a point mass at zero
+    and half a chi-square with one degree of freedom: the p-value is half the chi-square tail.
+
+    **The classical Lagrange multiplier,** Breusch and Pagan's test for random effects, on the
+    pooled least-squares residuals of a linear model of the log rate with the correlated model's own
+    regressors. It is the form the panel adviser asked for by name. Written for unbalanced panels,
+    with n the rows and T_u the years of unit u:
+
+        LM = n^2 / (2 sum_u T_u (T_u - 1)) * (sum_u (sum_t e_ut)^2 / sum_ut e_ut^2 - 1)^2  ~ chi2(1)
+
+    which with every unit observed T years is the textbook NT / (2 (T - 1)) times the same bracket.
+    """
+    rows = panel.rows[panel.rows["PAIR"] == fits.pair].reset_index(drop=True)
+    years = list(panel.spec.years)
+    X = cre_design(rows, panel.spec.varying, unit_means(rows, panel.spec.varying), years).to_numpy()
+    counts = rows[RESPONSE].to_numpy(dtype=float)
+    log_rate = np.log(counts + config.PANEL_BREUSCH_PAGAN_CONTINUITY) - np.log(rows[EXPOSURE].to_numpy(dtype=float))
+    beta, *_ = np.linalg.lstsq(X, log_rate, rcond=None)
+    residual = pd.Series(log_rate - X @ beta)
+    groups = rows[config.AREA_CODE_COL].to_numpy()
+    per_unit_sum = residual.groupby(groups).sum()
+    per_unit_count = residual.groupby(groups).size()
+    n = len(residual)
+    bracket = float((per_unit_sum**2).sum() / (residual**2).sum() - 1)
+    lm = n**2 / (2 * float((per_unit_count * (per_unit_count - 1)).sum())) * bracket**2
+
+    ratio = 2 * (fits.cre.log_likelihood - fits.mundlak.log_likelihood)
+    return [{"DATASET": panel.dataset, "PANEL": panel.spec.key, "PAIR": fits.pair,
+             "LR_STATISTIC": ratio, "LR_P_VALUE": float(0.5 * stats.chi2.sf(max(ratio, 0.0), 1)),
+             "SIGMA": fits.cre.sigma, "LM_STATISTIC": lm, "LM_P_VALUE": float(stats.chi2.sf(lm, 1)),
+             "LM_BRACKET": bracket, "ROWS": n, "UNITS": len(per_unit_count),
+             "CONVERGED": fits.cre.converged and fits.mundlak.converged}]
+
+
+def mundlak_rows(panel: PanelData, fits: PairFits) -> list[dict]:
+    """Whether the unit effect is correlated with what changes in time: the second step (D72).
+
+    The joint form of `hausman_rows`. In the within-between form the correlated model fits each
+    time-varying variable's deviation from its unit mean (W) and the mean itself (B); Mundlak's
+    coefficient on the mean is B - W, and plain random effects are consistent when it is zero for
+    every variable. The test is the Wald statistic of all those differences at once, on the
+    clustered covariance, with as many degrees of freedom as time-varying variables in the panel.
+    The per-variable test `hausman_rows` reports is its breakdown.
+    """
+    varying = panel.spec.varying
+    names = list(fits.cre.params.index)
+    contrast = np.zeros((len(varying), len(names)))
+    for i, variable in enumerate(varying):
+        contrast[i, names.index(f"B[{variable}]")] = 1.0
+        contrast[i, names.index(f"W[{variable}]")] = -1.0
+    difference = contrast @ fits.cre.params.to_numpy()
+    covariance = contrast @ fits.cre.cov_clustered.to_numpy() @ contrast.T
+    try:
+        statistic = float(difference @ np.linalg.solve(covariance, difference))
+    except np.linalg.LinAlgError:
+        statistic = float("nan")
+    p = float(stats.chi2.sf(statistic, len(varying))) if np.isfinite(statistic) else float("nan")
+    return [{"DATASET": panel.dataset, "PANEL": panel.spec.key, "PAIR": fits.pair,
+             "VARIABLES": len(varying), "TERMS": ", ".join(varying), "STATISTIC": statistic,
+             "DEGREES_OF_FREEDOM": len(varying), "P_VALUE": p, "CONVERGED": fits.cre.converged}]
+
+
 def moran_rows(panel: PanelData, fits: PairFits, weights: np.ndarray, codes: tuple[str, ...]) -> list[dict]:
     """Moran's I of each unit's mean residual, with a permutation p-value, for both main models."""
     rows = []
@@ -986,8 +1054,8 @@ def run(log: RunLog) -> dict[str, pd.DataFrame]:
     weights, codes = regressions.contiguity_weights(units)
     marking = horizontal_marking(units, log)
     out: dict[str, list] = {name: [] for name in
-                            ("coefficients", "models", "hausman", "moran", "validation", "predictions",
-                             "variables", "panel_rows")}
+                            ("coefficients", "models", "hausman", "breusch_pagan", "mundlak", "moran",
+                             "validation", "predictions", "variables", "panel_rows")}
     jobs = [(config.CORRECTED_DATASET, pair.name) for pair in config.REGRESSION_PAIRS]
     jobs.append((config.OBSERVED_DATASET, config.PANEL_SENSITIVITY_PAIR))
     for spec in config.PANEL_ESTIMATED_SPECS:
@@ -1005,6 +1073,8 @@ def run(log: RunLog) -> dict[str, pd.DataFrame]:
             out["coefficients"] += coefficient_rows(panel, fits)
             out["models"] += model_rows(panel, fits)
             out["hausman"] += hausman_rows(panel, fits)
+            out["breusch_pagan"] += breusch_pagan_rows(panel, fits)
+            out["mundlak"] += mundlak_rows(panel, fits)
             out["moran"] += moran_rows(panel, fits, weights, codes)
             out["validation"] += validation_rows(panel, fits)
             out["predictions"].append(fits.predictions.assign(DATASET=dataset, PANEL=spec.key, PAIR=pair))
@@ -1016,6 +1086,11 @@ def run(log: RunLog) -> dict[str, pd.DataFrame]:
     coefficients = tables["coefficients"]
     # The unadjusted p-value decides, with no correction over the eight pairs (D71).
     tables["moran"]["ASKS_FOR_SPATIAL_TERM"] = tables["moran"]["P_VALUE"] < config.PANEL_MORAN_ALPHA
+    # The steps before the rule (D72), read at the same level and with no correction either.
+    bp = tables["breusch_pagan"]
+    bp["LR_NEEDS_UNIT_EFFECT"] = bp["LR_P_VALUE"] < config.PANEL_BREUSCH_PAGAN_ALPHA
+    bp["LM_NEEDS_UNIT_EFFECT"] = bp["LM_P_VALUE"] < config.PANEL_BREUSCH_PAGAN_ALPHA
+    tables["mundlak"]["CORRELATED"] = tables["mundlak"]["P_VALUE"] < config.PANEL_MUNDLAK_ALPHA
     for table in tables.values():
         if "PANEL" in table:
             table["VARIANT"] = table["PANEL"].map(lambda key: config.PANEL_SPECS_BY_KEY[key].variant)
@@ -1062,6 +1137,19 @@ def verify(tables: dict[str, pd.DataFrame], log: RunLog) -> list[str]:
     prediction = tables["rule_prediction"]
     if len(prediction) != len(config.PANEL_SPECS) or (prediction["PAIRS"] != len(config.REGRESSION_PAIRS)).any():
         failures.append("condition 2 did not sum the eight pairs of each reported panel")
+    # The steps before the rule (D72): one row per pair, panel and dataset fitted, every one finite.
+    fitted = len(models.drop_duplicates(["DATASET", "PANEL", "PAIR"]))
+    for name, columns in (("breusch_pagan", ("LR_STATISTIC", "LM_STATISTIC")), ("mundlak", ("STATISTIC",))):
+        table = tables[name]
+        if len(table) != fitted:
+            failures.append(f"{name} has {len(table)} rows, not one per fitted pair and panel ({fitted})")
+        if not np.isfinite(table[list(columns)].to_numpy(dtype=float)).all():
+            failures.append(f"{name} has a statistic that is not finite")
+    # Mundlak's joint test must reduce to the per-variable one where a panel has a single variable.
+    single = tables["mundlak"][tables["mundlak"]["VARIABLES"] == 1].merge(
+        tables["hausman"], on=["DATASET", "PANEL", "PAIR"], suffixes=("", "_ONE"))
+    if len(single) and (single["STATISTIC"] - single["STATISTIC_ONE"]).abs().max() > 1e-8:
+        failures.append("the joint Mundlak test does not reduce to the per-variable one with one variable")
     coefficients = tables["coefficients"]
     if (coefficients["P_VALUE"].apply(stars) != coefficients["STARS"]).any():
         failures.append("the stars do not follow the declared levels")

@@ -2224,6 +2224,14 @@ PANEL_RULE_PANELS_NEEDED = 2
 # year. The city cycleway is flat to 2015 and jumps in 2016, 2017 and 2018; it grows far less after.
 PANEL_GROWTH_TEST_PANEL = "PRINCIPAL"
 PANEL_GROWTH_TEST_YEAR = 2018
+# The steps before the rule (D72): Breusch-Pagan, whether a unit effect is needed, and Mundlak,
+# whether it is correlated with what changes in time. Both are read at the study's level.
+PANEL_BREUSCH_PAGAN_ALPHA = SIGNIFICANCE_LEVEL
+PANEL_MUNDLAK_ALPHA = SIGNIFICANCE_LEVEL
+# The classical Breusch-Pagan runs on a linear model of the log rate, and a unit-year with no
+# affected party has no logarithm. D72 fixes the rule before any run: log(count + 0.5) minus the log
+# of the exposure.
+PANEL_BREUSCH_PAGAN_CONTINUITY = 0.5
 
 
 # -- the unit that does not enter the models --------------------------------
