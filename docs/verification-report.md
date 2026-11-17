@@ -5889,6 +5889,10 @@ that painting does not follow casualties stands.
 
 None of them reads a level.
 
+### One known flaw in the reruns' working figures
+
+The per-variable table figures that `run_20261116_172435` and `run_20261116_182223` keep in their own folders print the old star legend, 0.05, 0.01 and 0.001, beside stars computed on the study's scale of 0.10, 0.05 and 0.01. The legend was written by hand in `src/regressions.py` and was fixed after these runs, in `2a1e8f2`. The exported tables are right, and neither book uses these figures, so the runs were not repeated: a rerun would give the same numbers under new identifiers. Read the stars of those figures on the study's scale. The next run of the route draws the right legend.
+
 ### The runs to quote
 
 Every figure this study quotes from the regressions, the robustness run, the placebo, the panel,
