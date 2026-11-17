@@ -5958,3 +5958,31 @@ years no survey covers, so what holds for the city is firmer than what holds per
     +0.23 against +0.02.
   - The denominator accounts for part of the divergence. The sign stays, and what remains is placement.
   - The phase 4 classification is unchanged: it is defined per resident, as the European study's.
+
+## 37. Where the 2018 prediction test fails for bicycle against motorcycle
+
+`tools/prueba_2018_por_unidad.py`, 2026-11-17, on `run_20261116_172543` (main panel, corrected set, the
+2018 level fixed by the observed total). It reads the route's exports and estimates nothing.
+
+**The result in question.** Fitted on 2012 to 2017 and predicting 2018, bicycle against motorcycle has an
+R-squared of 0.009 with the cycleway, 0.150 without it, and 0.241 for the reference with no environment.
+The other pairs sit between 0.6 and 0.85.
+
+- **One unit carries 56 % of the squared error: Patio Bonito (UPL14).** The model predicts 42.3 there,
+  the reference 33.5, and 12 happened.
+- **Without that unit,** the R-squared is 0.568, 0.563 and 0.523.
+- **The noise ceiling.** The pair averages 14 cases per unit. At the dispersion the model estimated, count
+  noise alone leaves 691 of a total variation of 1,636 unexplained, so no model passes an R-squared of
+  about 0.58.
+- **What happened in Patio Bonito.** Its cycleway went from 0.47 km/km² in 2016 to 1.35 in 2017 and 2.13
+  in 2018, the largest growth of any unit. Its rate per thousand bicycle trips fell from 0.92 to 0.33 in
+  2018, and stayed at 0.37 in 2019.
+- **Why the model misses it.** The within effect learned on 2012 to 2017 is +0.090 (p 0.72), learned with
+  4.36 % of the cycleway's variance. Applied to that jump, and to the growth of bicycle trips, it pushes
+  the prediction up.
+- **The full panel gives this pair the opposite sign.** The within effect is negative, and an association
+  in the two panels with signage.
+
+**The reading.** The failure is concentrated in the unit that gained the most cycleway, and there the rate
+per trip fell, in the direction the full panel estimates. It is one unit with twelve cases: it explains
+the test, and asserts no effect.
